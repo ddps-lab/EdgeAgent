@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Environment variables
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test outputs
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Logs
+*.log
+
+# MacOS
+.DS_Store
+
+# Documentation (internal only)
+docs/
