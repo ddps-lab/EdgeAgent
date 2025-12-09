@@ -4,12 +4,38 @@ Tool Registry
 Multi-endpoint tool 설정을 관리하는 registry
 """
 
+import os
+import re
 import yaml
 from pathlib import Path
 from typing import Optional
 
 from .types import Location
 from .profiles import ToolProfile, EndpointConfig, ToolConfig
+
+
+def _expand_env_vars(value: str) -> str:
+    """Expand environment variables in string.
+
+    Supports:
+    - ${VAR} - required variable
+    - ${VAR:-default} - variable with default value
+    """
+    def replacer(match):
+        var_expr = match.group(1)
+        if ":-" in var_expr:
+            var_name, default = var_expr.split(":-", 1)
+            return os.environ.get(var_name, default)
+        else:
+            return os.environ.get(var_expr, "")
+
+    return re.sub(r'\$\{([^}]+)\}', replacer, value)
+
+
+def _expand_env_dict(env_dict: dict) -> dict:
+    """Expand environment variables in a dictionary."""
+    return {k: _expand_env_vars(v) if isinstance(v, str) else v
+            for k, v in env_dict.items()}
 
 
 class ToolRegistry:
@@ -73,20 +99,23 @@ class ToolRegistry:
             for location, endpoint_data in endpoints_data.items():
                 transport = endpoint_data.get("transport", "stdio")
 
+                # Expand environment variables in env dict
+                env = _expand_env_dict(endpoint_data.get("env", {}))
+
                 if transport == "stdio":
                     endpoint = EndpointConfig(
                         location=location,
                         transport=transport,
                         command=endpoint_data.get("command"),
                         args=endpoint_data.get("args", []),
-                        env=endpoint_data.get("env", {}),
+                        env=env,
                     )
                 else:  # streamable_http
                     endpoint = EndpointConfig(
                         location=location,
                         transport=transport,
                         url=endpoint_data.get("url"),
-                        env=endpoint_data.get("env", {}),
+                        env=env,
                     )
 
                 endpoints[location] = endpoint

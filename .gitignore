@@ -33,3 +33,15 @@ htmlcov/
 
 # Documentation (internal only)
 docs/
+
+# Public datasets (download via scripts/download_public_datasets.py)
+data/scenario1/defects4j/
+data/scenario1/sample_repo/
+data/scenario3/s2orc/
+data/scenario4/coco/
+data/scenario4/sample_images/
+
+# Keep loghub samples (small, included in repo)
+!data/scenario2/
+
+results

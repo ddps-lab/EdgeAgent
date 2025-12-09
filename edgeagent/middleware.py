@@ -7,9 +7,9 @@ LangChain MCP Adapters를 확장하여 location-aware tool routing을 제공
 - LLM은 "무엇을 할지"만 결정 (tool 이름에 location suffix 없음)
 - Middleware/Scheduler가 "어디서 실행할지" 결정
 - ProxyTool 패턴으로 호출 시점에 적절한 backend tool로 routing
+- 통합 메트릭 수집 지원
 """
 
-import asyncio
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -21,6 +21,7 @@ from .types import Location
 from .registry import ToolRegistry
 from .scheduler import StaticScheduler
 from .proxy_tool import LocationAwareProxyTool
+from .metrics import MetricsCollector, MetricsConfig
 
 
 class EdgeAgentMCPClient:
@@ -38,10 +39,17 @@ class EdgeAgentMCPClient:
             # use tools...
     """
 
-    def __init__(self, config_path: str | Path):
+    def __init__(
+        self,
+        config_path: str | Path,
+        metrics_config: Optional[MetricsConfig] = None,
+        collect_metrics: bool = True,
+    ):
         """
         Args:
             config_path: YAML 설정 파일 경로
+            metrics_config: 메트릭 수집 설정 (None이면 기본값 사용)
+            collect_metrics: 메트릭 수집 활성화 여부 (기본: True)
         """
         self.config_path = Path(config_path)
 
@@ -55,8 +63,16 @@ class EdgeAgentMCPClient:
         # Tool → Location 매핑 저장 (스케줄링 결과)
         self.tool_placement: dict[str, Location] = {}
 
-        # 실행 trace 저장
+        # 실행 trace 저장 (backward compatibility)
         self.execution_trace: list[dict] = []
+
+        # 통합 메트릭 수집기 초기화
+        self._collect_metrics = collect_metrics
+        if collect_metrics:
+            config = metrics_config or MetricsConfig()
+            self.metrics_collector = MetricsCollector(config)
+        else:
+            self.metrics_collector = None
 
         # Session 관리를 위한 AsyncExitStack
         self._exit_stack: Optional[AsyncExitStack] = None
@@ -200,6 +216,7 @@ class EdgeAgentMCPClient:
                 scheduler=self.scheduler,
                 parent_tool_name=parent_tool,
                 execution_trace=[],  # 임시 빈 리스트로 초기화
+                metrics_collector=self.metrics_collector,  # 메트릭 수집기 전달
             )
             # execution_trace 리스트 참조 공유 (Pydantic model 생성 후)
             object.__setattr__(proxy_tool, 'execution_trace', self.execution_trace)
@@ -251,8 +268,18 @@ class EdgeAgentMCPClient:
         return self.tool_placement.get(tool_name)
 
     def get_execution_trace(self) -> list[dict]:
-        """실행 trace 조회"""
+        """실행 trace 조회 (backward compatibility)"""
         return self.execution_trace
+
+    def get_metrics(self) -> Optional[MetricsCollector]:
+        """통합 메트릭 수집기 반환"""
+        return self.metrics_collector
+
+    def reset_metrics(self):
+        """메트릭 수집기 초기화 (새 세션 시작 시)"""
+        if self.metrics_collector is not None:
+            self.metrics_collector.reset()
+        self.execution_trace.clear()
 
     def print_placement_summary(self):
         """Tool placement 요약 출력"""
@@ -290,6 +317,13 @@ class EdgeAgentMCPClient:
             print(f"   Location: {trace['location']}")
             print(f"   Server: {trace['server']}")
             print()
+
+    def print_metrics_summary(self):
+        """통합 메트릭 요약 출력"""
+        if self.metrics_collector is not None:
+            self.metrics_collector.print_summary()
+        else:
+            print("Metrics collection is disabled.")
 
     def __repr__(self) -> str:
         return (

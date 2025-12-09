@@ -5,8 +5,11 @@ Tool 실행 location 결정을 위한 스케줄러 구현
 
 - BaseScheduler: 추상 인터페이스 (향후 Heuristic/DP Scheduler로 교체 가능)
 - StaticScheduler: YAML static_mapping + args 기반 동적 routing
+- Baseline Schedulers: All-DEVICE, All-EDGE, All-CLOUD (비교 실험용)
+- HeuristicScheduler: Profile 기반 휴리스틱 스케줄러
 """
 
+import time
 import yaml
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -16,6 +19,25 @@ from typing import Optional, Any
 from .types import Location, Runtime, LOCATIONS
 from .registry import ToolRegistry
 from .profiles import ToolProfile
+
+
+# ============================================================================
+# Scheduling Result
+# ============================================================================
+
+@dataclass
+class SchedulingResult:
+    """
+    Scheduler 결정 결과 (location + metadata)
+
+    스케줄링 결정의 추적을 위해 location뿐 아니라
+    결정 이유, 검사된 제약조건, 사용 가능한 위치 등을 함께 반환합니다.
+    """
+    location: Location                          # 결정된 실행 위치
+    reason: str                                  # 결정 이유 (static_mapping, data_affinity, etc.)
+    constraints_checked: list[str] = field(default_factory=list)  # 검사된 제약조건
+    available_locations: list[str] = field(default_factory=list)  # 사용 가능한 위치
+    decision_time_ns: int = 0                    # 결정 소요 시간 (나노초)
 
 
 # ============================================================================
@@ -64,6 +86,26 @@ class BaseScheduler(ABC):
 
         Returns:
             결정된 location (DEVICE/EDGE/CLOUD)
+        """
+        pass
+
+    @abstractmethod
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        """
+        호출 시점 location 결정 (상세 정보 포함)
+
+        Args:
+            tool_name: Tool 이름
+            args: Tool 호출 인자
+            context: Scheduling 컨텍스트
+
+        Returns:
+            SchedulingResult: location과 결정 메타데이터
         """
         pass
 
@@ -294,6 +336,131 @@ class StaticScheduler(BaseScheduler):
         # 3. Static mapping / Profile 기반 fallback
         return self.get_location(tool_name)
 
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        """
+        호출 시점 location 결정 (상세 정보 포함)
+
+        get_location_for_call()과 동일한 로직이지만,
+        결정 이유와 제약조건 정보를 함께 반환합니다.
+
+        Args:
+            tool_name: Tool 이름 (registry에 등록된 이름)
+            args: Tool 호출 인자
+            context: Scheduling 컨텍스트 (향후 확장용)
+
+        Returns:
+            SchedulingResult: location과 결정 메타데이터
+        """
+        start_time_ns = time.perf_counter_ns()
+
+        profile = self.registry.get_profile(tool_name)
+        constraints_checked: list[str] = []
+        available_locations: list[str] = list(LOCATIONS)
+
+        # Profile 기반 사용 가능한 location 계산
+        if profile:
+            available_locations = self._get_valid_locations(profile)
+
+        # 1. Hard Constraints 체크
+        if profile:
+            # Cloud API 필수 → 무조건 CLOUD
+            if profile.requires_cloud_api:
+                constraints_checked.append("requires_cloud_api")
+                decision_time_ns = time.perf_counter_ns() - start_time_ns
+                return SchedulingResult(
+                    location="CLOUD",
+                    reason="cloud_api_required",
+                    constraints_checked=constraints_checked,
+                    available_locations=available_locations,
+                    decision_time_ns=decision_time_ns,
+                )
+
+            # Privacy 민감 체크
+            if profile.privacy_sensitive:
+                constraints_checked.append("privacy_sensitive")
+
+        # 2. Args 기반 location 추론
+        if args:
+            location_hint = self._extract_location_from_args(tool_name, args)
+            if location_hint:
+                # Privacy 민감한 경우 CLOUD hint는 무시
+                if profile and profile.privacy_sensitive and location_hint == "CLOUD":
+                    pass  # fallback to static mapping
+                else:
+                    decision_time_ns = time.perf_counter_ns() - start_time_ns
+                    return SchedulingResult(
+                        location=location_hint,
+                        reason="args_based_hint",
+                        constraints_checked=constraints_checked,
+                        available_locations=available_locations,
+                        decision_time_ns=decision_time_ns,
+                    )
+
+        # 3. Static mapping 확인
+        if tool_name in self.static_mapping:
+            mapped_location = self.static_mapping[tool_name]
+
+            # Constraint 검증
+            if profile and self._is_valid_location(profile, mapped_location):
+                decision_time_ns = time.perf_counter_ns() - start_time_ns
+                return SchedulingResult(
+                    location=mapped_location,
+                    reason="static_mapping",
+                    constraints_checked=constraints_checked,
+                    available_locations=available_locations,
+                    decision_time_ns=decision_time_ns,
+                )
+            # Constraint 위반 시 아래로 fallback
+
+        # 4. Profile 기반 location 선택
+        if not profile:
+            # Profile이 없으면 EDGE 기본값
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location="EDGE",
+                reason="default_no_profile",
+                constraints_checked=constraints_checked,
+                available_locations=available_locations,
+                decision_time_ns=decision_time_ns,
+            )
+
+        # data_affinity 우선순위 적용
+        if profile.data_affinity in available_locations:
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location=profile.data_affinity,
+                reason="data_affinity",
+                constraints_checked=constraints_checked,
+                available_locations=available_locations,
+                decision_time_ns=decision_time_ns,
+            )
+
+        # 첫 번째 유효한 location
+        if available_locations:
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location=available_locations[0],
+                reason="first_available",
+                constraints_checked=constraints_checked,
+                available_locations=available_locations,
+                decision_time_ns=decision_time_ns,
+            )
+
+        # Fallback: EDGE
+        decision_time_ns = time.perf_counter_ns() - start_time_ns
+        return SchedulingResult(
+            location="EDGE",
+            reason="fallback_default",
+            constraints_checked=constraints_checked,
+            available_locations=available_locations,
+            decision_time_ns=decision_time_ns,
+        )
+
     def _extract_location_from_args(
         self,
         tool_name: str,
@@ -368,3 +535,317 @@ class StaticScheduler(BaseScheduler):
 
     def __repr__(self) -> str:
         return f"StaticScheduler(mappings={len(self.static_mapping)})"
+
+
+# ============================================================================
+# Baseline Schedulers (비교 실험용)
+# ============================================================================
+
+class AllDeviceScheduler(BaseScheduler):
+    """
+    Baseline: 모든 Tool → DEVICE
+
+    비교 실험을 위한 baseline 스케줄러.
+    모든 tool을 DEVICE에서 실행합니다.
+    """
+
+    def __init__(self, config_path: str | Path, registry: ToolRegistry):
+        self.config_path = Path(config_path)
+        self.registry = registry
+
+    def get_location(self, tool_name: str) -> Location:
+        return "DEVICE"
+
+    def get_location_for_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> Location:
+        return "DEVICE"
+
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        start_time_ns = time.perf_counter_ns()
+        decision_time_ns = time.perf_counter_ns() - start_time_ns
+        return SchedulingResult(
+            location="DEVICE",
+            reason="all_device_policy",
+            constraints_checked=[],
+            available_locations=["DEVICE"],
+            decision_time_ns=decision_time_ns,
+        )
+
+    def select_runtime(self, tool_name: str, location: Location) -> Runtime:
+        return "WASI"
+
+    def __repr__(self) -> str:
+        return "AllDeviceScheduler()"
+
+
+class AllEdgeScheduler(BaseScheduler):
+    """
+    Baseline: 모든 Tool → EDGE
+
+    비교 실험을 위한 baseline 스케줄러.
+    모든 tool을 EDGE에서 실행합니다.
+    """
+
+    def __init__(self, config_path: str | Path, registry: ToolRegistry):
+        self.config_path = Path(config_path)
+        self.registry = registry
+
+    def get_location(self, tool_name: str) -> Location:
+        return "EDGE"
+
+    def get_location_for_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> Location:
+        return "EDGE"
+
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        start_time_ns = time.perf_counter_ns()
+        decision_time_ns = time.perf_counter_ns() - start_time_ns
+        return SchedulingResult(
+            location="EDGE",
+            reason="all_edge_policy",
+            constraints_checked=[],
+            available_locations=["EDGE"],
+            decision_time_ns=decision_time_ns,
+        )
+
+    def select_runtime(self, tool_name: str, location: Location) -> Runtime:
+        profile = self.registry.get_profile(tool_name)
+        if profile and not profile.wasi_compatible:
+            return "CONTAINER"
+        return "WASI"
+
+    def __repr__(self) -> str:
+        return "AllEdgeScheduler()"
+
+
+class AllCloudScheduler(BaseScheduler):
+    """
+    Baseline: 모든 Tool → CLOUD
+
+    비교 실험을 위한 baseline 스케줄러.
+    모든 tool을 CLOUD에서 실행합니다.
+    """
+
+    def __init__(self, config_path: str | Path, registry: ToolRegistry):
+        self.config_path = Path(config_path)
+        self.registry = registry
+
+    def get_location(self, tool_name: str) -> Location:
+        return "CLOUD"
+
+    def get_location_for_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> Location:
+        return "CLOUD"
+
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        start_time_ns = time.perf_counter_ns()
+        decision_time_ns = time.perf_counter_ns() - start_time_ns
+        return SchedulingResult(
+            location="CLOUD",
+            reason="all_cloud_policy",
+            constraints_checked=[],
+            available_locations=["CLOUD"],
+            decision_time_ns=decision_time_ns,
+        )
+
+    def select_runtime(self, tool_name: str, location: Location) -> Runtime:
+        profile = self.registry.get_profile(tool_name)
+        if profile and not profile.wasi_compatible:
+            return "CONTAINER"
+        return "WASI"
+
+    def __repr__(self) -> str:
+        return "AllCloudScheduler()"
+
+
+# ============================================================================
+# Heuristic Scheduler (Profile 기반)
+# ============================================================================
+
+class HeuristicScheduler(BaseScheduler):
+    """
+    Profile 기반 휴리스틱 스케줄러
+
+    Tool의 Profile 정보를 활용하여 최적의 location을 결정합니다.
+
+    결정 규칙:
+    1. requires_cloud_api = True → CLOUD
+    2. privacy_sensitive = True → DEVICE (CLOUD 제외)
+    3. data_affinity 사용
+    4. 기본값: EDGE
+    """
+
+    def __init__(self, config_path: str | Path, registry: ToolRegistry):
+        self.config_path = Path(config_path)
+        self.registry = registry
+
+    def get_location(self, tool_name: str) -> Location:
+        profile = self.registry.get_profile(tool_name)
+        if not profile:
+            return "EDGE"
+
+        if profile.requires_cloud_api:
+            return "CLOUD"
+
+        if profile.privacy_sensitive:
+            return "DEVICE"
+
+        if profile.data_affinity:
+            return profile.data_affinity
+
+        return "EDGE"
+
+    def get_location_for_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> Location:
+        return self.get_location(tool_name)
+
+    def get_location_for_call_with_reason(
+        self,
+        tool_name: str,
+        args: dict[str, Any] | None = None,
+        context: SchedulingContext | None = None,
+    ) -> SchedulingResult:
+        start_time_ns = time.perf_counter_ns()
+
+        profile = self.registry.get_profile(tool_name)
+        constraints_checked: list[str] = []
+
+        if not profile:
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location="EDGE",
+                reason="default_no_profile",
+                constraints_checked=[],
+                available_locations=list(LOCATIONS),
+                decision_time_ns=decision_time_ns,
+            )
+
+        # Rule 1: Cloud API 필수
+        if profile.requires_cloud_api:
+            constraints_checked.append("requires_cloud_api")
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location="CLOUD",
+                reason="cloud_api_required",
+                constraints_checked=constraints_checked,
+                available_locations=["CLOUD"],
+                decision_time_ns=decision_time_ns,
+            )
+
+        # Rule 2: Privacy 민감
+        if profile.privacy_sensitive:
+            constraints_checked.append("privacy_sensitive")
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location="DEVICE",
+                reason="privacy_constraint",
+                constraints_checked=constraints_checked,
+                available_locations=["DEVICE", "EDGE"],
+                decision_time_ns=decision_time_ns,
+            )
+
+        # Rule 3: Data affinity
+        if profile.data_affinity:
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                location=profile.data_affinity,
+                reason="data_affinity",
+                constraints_checked=constraints_checked,
+                available_locations=list(LOCATIONS),
+                decision_time_ns=decision_time_ns,
+            )
+
+        # Default: EDGE
+        decision_time_ns = time.perf_counter_ns() - start_time_ns
+        return SchedulingResult(
+            location="EDGE",
+            reason="default",
+            constraints_checked=constraints_checked,
+            available_locations=list(LOCATIONS),
+            decision_time_ns=decision_time_ns,
+        )
+
+    def select_runtime(self, tool_name: str, location: Location) -> Runtime:
+        profile = self.registry.get_profile(tool_name)
+
+        if location == "DEVICE":
+            return "WASI"
+
+        if profile and not profile.wasi_compatible:
+            return "CONTAINER"
+
+        return "WASI"
+
+    def __repr__(self) -> str:
+        return "HeuristicScheduler()"
+
+
+# ============================================================================
+# Scheduler Registry
+# ============================================================================
+
+SCHEDULER_REGISTRY: dict[str, type[BaseScheduler]] = {
+    "static": StaticScheduler,
+    "all_device": AllDeviceScheduler,
+    "all_edge": AllEdgeScheduler,
+    "all_cloud": AllCloudScheduler,
+    "heuristic": HeuristicScheduler,
+}
+
+
+def create_scheduler(
+    name: str,
+    config_path: str | Path,
+    registry: ToolRegistry,
+) -> BaseScheduler:
+    """
+    이름으로 Scheduler 생성
+
+    Args:
+        name: Scheduler 이름 (static, all_device, all_edge, all_cloud, heuristic)
+        config_path: YAML 설정 파일 경로
+        registry: ToolRegistry 인스턴스
+
+    Returns:
+        생성된 Scheduler 인스턴스
+
+    Raises:
+        ValueError: 알 수 없는 Scheduler 이름
+    """
+    if name not in SCHEDULER_REGISTRY:
+        available = list(SCHEDULER_REGISTRY.keys())
+        raise ValueError(f"Unknown scheduler: '{name}'. Available: {available}")
+
+    scheduler_class = SCHEDULER_REGISTRY[name]
+    return scheduler_class(config_path, registry)
