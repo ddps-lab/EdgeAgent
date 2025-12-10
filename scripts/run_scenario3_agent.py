@@ -28,6 +28,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from agent_utils import run_agent_with_logging
 
 
 # Default URLs (fallback if S2ORC not available)
@@ -39,6 +40,9 @@ DEFAULT_RESEARCH_URLS = [
 
 def load_s2orc_urls(max_urls: int = 3) -> tuple[list[str], str]:
     """Load research URLs from S2ORC dataset.
+
+    Note: Semantic Scholar paper URLs are automatically converted to API calls
+    by the fetch server, avoiding the HTTP 202 issue.
 
     Returns:
         Tuple of (urls, data_source_description)
@@ -163,10 +167,8 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent
-        result = await agent.ainvoke({
-            "messages": [("user", self.user_request)]
-        })
+        # Execute agent with logging
+        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
 
         # Extract final response
         final_message = result["messages"][-1].content

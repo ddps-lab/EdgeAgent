@@ -29,6 +29,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from agent_utils import run_agent_with_logging
 
 
 def load_image_source() -> tuple[Path, str]:
@@ -173,10 +174,8 @@ class AgentImageProcessingScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent
-        result = await agent.ainvoke({
-            "messages": [("user", self.user_request)]
-        })
+        # Execute agent with logging
+        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
 
         # Extract final response
         final_message = result["messages"][-1].content

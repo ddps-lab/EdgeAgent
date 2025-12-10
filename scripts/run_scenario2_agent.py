@@ -28,6 +28,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from agent_utils import run_agent_with_logging
 
 
 def load_log_source() -> tuple[Path, str]:
@@ -41,8 +42,8 @@ def load_log_source() -> tuple[Path, str]:
     sample_log = data_dir / "server.log"
 
     if loghub_dir.exists():
-        # Priority: medium_python > small_python > any .log file
-        for log_name in ["medium_python.log", "small_python.log"]:
+        # Priority: small_python for agent (faster), medium for script version
+        for log_name in ["small_python.log", "medium_python.log"]:
             candidate = loghub_dir / log_name
             if candidate.exists():
                 return candidate, f"LogHub ({log_name})"
@@ -68,28 +69,30 @@ LOG_SOURCE, DATA_SOURCE = load_log_source()
 LOG_ANALYSIS_SYSTEM_PROMPT = f"""You are a log analysis assistant. Your task is to analyze server logs and generate a comprehensive error report.
 
 You have access to the following tools:
-- read_file: Read file contents
-- parse_logs: Parse log file content into structured entries
-- filter_entries: Filter log entries by severity level
-- compute_log_statistics: Compute statistics on log entries
-- aggregate_list: Group and aggregate data
+- read_text_file: Read file contents
+- parse_logs: Parse log file content into structured entries (returns "entries" array)
+- filter_entries: Filter log entries by severity level (requires "entries" array)
+- compute_log_statistics: Compute statistics on log entries (requires "entries" array)
 - write_file: Write files to the filesystem
 
 The log file is located at /tmp/edgeagent_device/server.log
 
-When conducting log analysis, follow this workflow:
-1. Read the log file using read_file
-2. Parse the logs using parse_logs (format_type="python")
-3. Filter for warnings and errors using filter_entries (min_level="warning")
-4. Compute statistics using compute_log_statistics
-5. Aggregate by severity level using aggregate_list (group_by="_level")
-6. Write a comprehensive log analysis report to /tmp/edgeagent_device/agent_log_report.md
+IMPORTANT - Data Flow:
+- parse_logs returns {{"entries": [...]}} - you MUST pass this "entries" array to other tools
+- filter_entries(entries=<parsed_result>["entries"], min_level="warning")
+- compute_log_statistics(entries=<parsed_result>["entries"])
+
+Example workflow:
+1. log_content = read_text_file("/tmp/edgeagent_device/server.log")
+2. parsed = parse_logs(log_content=log_content, format_type="python")
+3. stats = compute_log_statistics(entries=parsed["entries"])
+4. filtered = filter_entries(entries=parsed["entries"], min_level="warning")
+5. write_file(path="/tmp/edgeagent_device/agent_log_report.md", content=report_markdown)
 
 Include in your report:
 - Total entries analyzed
 - Breakdown by severity level
-- Critical issues that need attention
-- Recommendations for addressing errors
+- Error details and recommendations
 """
 
 
@@ -124,9 +127,11 @@ class AgentLogAnalysisScenario(ScenarioRunner):
     def user_request(self) -> str:
         return (
             "Analyze the server log file at /tmp/edgeagent_device/server.log. "
-            "Parse the logs, filter for warnings and errors, compute statistics, "
-            "and generate a comprehensive log analysis report to "
-            "/tmp/edgeagent_device/agent_log_report.md"
+            "Follow these steps: "
+            "1) Read the log file with read_text_file, "
+            "2) Parse using parse_logs with format_type='python' to get entries array, "
+            "3) Compute statistics using compute_log_statistics with the entries array, "
+            "4) Write a comprehensive analysis report to /tmp/edgeagent_device/agent_log_report.md"
         )
 
     async def execute(
@@ -168,10 +173,8 @@ class AgentLogAnalysisScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent
-        result = await agent.ainvoke({
-            "messages": [("user", self.user_request)]
-        })
+        # Execute agent with logging
+        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
 
         # Extract final response
         final_message = result["messages"][-1].content

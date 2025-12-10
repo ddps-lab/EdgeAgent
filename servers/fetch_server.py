@@ -3,14 +3,85 @@
 Simple Fetch Server - httpx 0.28+ compatible replacement for mcp-server-fetch
 
 Fetches web pages and converts HTML to markdown.
+Handles Semantic Scholar URLs by converting them to API calls.
 """
 
+import re
+import json
 import httpx
 from mcp.server.fastmcp import FastMCP
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 
 mcp = FastMCP("fetch")
+
+
+def _extract_s2_paper_id(url: str) -> str | None:
+    """Extract Semantic Scholar paper ID from URL.
+
+    Supports:
+    - https://www.semanticscholar.org/paper/TITLE/PAPER_ID
+    - https://www.semanticscholar.org/paper/PAPER_ID
+    """
+    # Pattern: /paper/optional-title/40-char-hex-id or just /paper/40-char-hex-id
+    match = re.search(r'/paper/(?:[^/]+/)?([a-f0-9]{40})/?$', url, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
+
+
+async def _fetch_s2_paper_via_api(paper_id: str, max_length: int) -> str:
+    """Fetch Semantic Scholar paper details via their REST API.
+
+    API docs: https://api.semanticscholar.org/api-docs/
+    """
+    api_url = f"https://api.semanticscholar.org/graph/v1/paper/{paper_id}"
+    fields = "title,abstract,year,authors,venue,citationCount,influentialCitationCount,tldr"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            api_url,
+            params={"fields": fields},
+            headers={"Accept": "application/json"}
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    # Format as readable markdown
+    lines = []
+    lines.append(f"# {data.get('title', 'Unknown Title')}")
+    lines.append("")
+
+    if data.get('year'):
+        lines.append(f"**Year:** {data['year']}")
+
+    if data.get('venue'):
+        lines.append(f"**Venue:** {data['venue']}")
+
+    if data.get('authors'):
+        author_names = [a.get('name', '') for a in data['authors'][:10]]
+        lines.append(f"**Authors:** {', '.join(author_names)}")
+        if len(data['authors']) > 10:
+            lines.append(f"  _(and {len(data['authors']) - 10} more)_")
+
+    if data.get('citationCount'):
+        lines.append(f"**Citations:** {data['citationCount']}")
+
+    lines.append("")
+
+    # TL;DR summary if available
+    if data.get('tldr') and data['tldr'].get('text'):
+        lines.append("## TL;DR")
+        lines.append(data['tldr']['text'])
+        lines.append("")
+
+    # Abstract
+    if data.get('abstract'):
+        lines.append("## Abstract")
+        lines.append(data['abstract'])
+
+    result = "\n".join(lines)
+    return result[:max_length]
 
 
 @mcp.tool()
@@ -26,6 +97,11 @@ async def fetch(url: str, max_length: int = 50000) -> str:
         The page content converted to markdown
     """
     try:
+        # Check if this is a Semantic Scholar paper URL - use API instead
+        s2_paper_id = _extract_s2_paper_id(url)
+        if s2_paper_id:
+            return await _fetch_s2_paper_via_api(s2_paper_id, max_length)
+
         async with httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
@@ -38,6 +114,11 @@ async def fetch(url: str, max_length: int = 50000) -> str:
             }
         ) as client:
             response = await client.get(url)
+
+            # Handle HTTP 202 (Accepted but not ready) - common with Semantic Scholar
+            if response.status_code == 202:
+                return f"Error: HTTP 202 Accepted - Content not ready. This URL ({url}) requires server-side processing. Try a different URL or wait and retry later."
+
             response.raise_for_status()
 
             content_type = response.headers.get("content-type", "")

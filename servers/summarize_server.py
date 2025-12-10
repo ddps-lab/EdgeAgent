@@ -101,6 +101,27 @@ def _summarize_upstage(text: str, max_length: int, style: str) -> str:
     return response.json()["choices"][0]["message"]["content"]
 
 
+def _summarize_text_impl(
+    text: str,
+    max_length: int = 150,
+    style: Literal["concise", "detailed", "bullet"] = "concise",
+) -> str:
+    """Internal implementation of summarize_text."""
+    if not text or not text.strip():
+        return "Error: Empty text provided"
+
+    if len(text) < 100:
+        return text  # Text too short to summarize
+
+    try:
+        if PROVIDER == "upstage":
+            return _summarize_upstage(text, max_length, style)
+        else:
+            return _summarize_openai(text, max_length, style)
+    except Exception as e:
+        return f"Error summarizing text: {str(e)}"
+
+
 @mcp.tool()
 def summarize_text(
     text: str,
@@ -118,19 +139,7 @@ def summarize_text(
     Returns:
         Summarized text
     """
-    if not text or not text.strip():
-        return "Error: Empty text provided"
-
-    if len(text) < 100:
-        return text  # Text too short to summarize
-
-    try:
-        if PROVIDER == "upstage":
-            return _summarize_upstage(text, max_length, style)
-        else:
-            return _summarize_openai(text, max_length, style)
-    except Exception as e:
-        return f"Error summarizing text: {str(e)}"
+    return _summarize_text_impl(text, max_length, style)
 
 
 @mcp.tool()
@@ -150,7 +159,7 @@ def summarize_documents(
     Returns:
         List of summarized documents
     """
-    return [summarize_text(doc, max_length_per_doc, style) for doc in documents]
+    return [_summarize_text_impl(doc, max_length_per_doc, style) for doc in documents]
 
 
 @mcp.tool()
