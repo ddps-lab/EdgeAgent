@@ -114,7 +114,7 @@ class LogAnalysisScenario(ScenarioRunner):
         print(f"Log file size: {log_file.stat().st_size:,} bytes")
 
         device_log = Path("/tmp/edgeagent_device/server.log")
-        device_log.parent.mkdir(exist_ok=True)
+        device_log.parent.mkdir(parents=True, exist_ok=True)
         device_log.write_text(log_file.read_text())
 
         # Store input path for validation

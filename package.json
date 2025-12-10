@@ -1,0 +1,21 @@
+{
+  "name": "edgeagent-mcp-servers",
+  "version": "0.1.0",
+  "description": "MCP server dependencies for EdgeAgent",
+  "private": true,
+  "scripts": {
+    "install:global": "npm install -g @modelcontextprotocol/server-filesystem@2025.11.25"
+  },
+  "devDependencies": {},
+  "dependencies": {},
+  "peerDependencies": {
+    "@modelcontextprotocol/server-filesystem": "2025.11.25"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "comments": {
+    "server-filesystem": "Version 2025.11.25 required. Note: directory_tree tool returns array (incompatible with some LLM tool schemas), use list_directory instead."
+  },
+  "readme": "This package.json is for documentation purposes. MCP servers should be installed globally."
+}

@@ -61,13 +61,16 @@ def load_repo_source() -> tuple[Path, str]:
 CODE_REVIEW_SYSTEM_PROMPT = """You are a code review assistant. Your task is to analyze a Git repository and generate a comprehensive code review report.
 
 You have access to the following tools:
-- list_directory: List files in a directory
+- list_directory: List files in a directory (use this, NOT directory_tree)
+- read_file: Read file contents
 - git_status: Get Git repository status
 - git_log: Get commit history
 - git_diff: Get code differences
 - summarize_text: Summarize text content
 - aggregate_list: Group and aggregate data
 - write_file: Write files to the filesystem
+
+IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
 
 The repository is located at /tmp/edgeagent_device/repo
 
@@ -108,6 +111,18 @@ class AgentCodeReviewScenario(ScenarioRunner):
         self._repo_source = None
         self._data_source = None
 
+        # Pre-initialize device repo directory for MCP git server
+        # (git server validates repo path on startup)
+        repo_source, data_source = load_repo_source()
+        self._repo_source = repo_source
+        self._data_source = data_source
+
+        device_repo = Path("/tmp/edgeagent_device/repo")
+        device_repo.parent.mkdir(parents=True, exist_ok=True)
+        if device_repo.exists():
+            shutil.rmtree(device_repo)
+        shutil.copytree(repo_source, device_repo)
+
     @property
     def name(self) -> str:
         return "code_review_agent"
@@ -131,23 +146,12 @@ class AgentCodeReviewScenario(ScenarioRunner):
     ) -> Any:
         """Execute code review using LLM Agent"""
 
-        # Prepare repository
-        repo_source, data_source = load_repo_source()
-        self._repo_source = repo_source
-        self._data_source = data_source
-
         device_repo = Path("/tmp/edgeagent_device/repo")
-        if device_repo.exists():
-            shutil.rmtree(device_repo)
-        shutil.copytree(repo_source, device_repo)
-
-        # Ensure output directory exists
-        Path("/tmp/edgeagent_device").mkdir(parents=True, exist_ok=True)
 
         print("-" * 70)
         print("LLM Agent Code Review")
         print("-" * 70)
-        print(f"Data Source: {data_source}")
+        print(f"Data Source: {self._data_source}")
         print(f"Repository: {device_repo}")
         print(f"Model: {self.model}")
         print(f"Temperature: {self.temperature}")
@@ -192,7 +196,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
                 tool_counts[tool] = tool_counts.get(tool, 0) + 1
 
             client.metrics_collector.add_custom_metric("agent_model", self.model)
-            client.metrics_collector.add_custom_metric("data_source", data_source)
+            client.metrics_collector.add_custom_metric("data_source", self._data_source)
             client.metrics_collector.add_custom_metric("tool_call_counts", tool_counts)
             client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
 

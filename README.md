@@ -8,6 +8,7 @@ LangChain에서 MCP Tool 호출 시 동적으로 실행 위치(DEVICE/EDGE/CLOUD
 - **Constraint-based Routing**: `requires_cloud_api`, `privacy_sensitive` 등 제약 기반 자동 라우팅
 - **Args-based Dynamic Routing**: path, key 패턴으로 동적 위치 결정
 - **LangChain Integration**: LangChain/LangGraph agent와 seamless 통합
+- **Sub-Agent Orchestration**: Location별 Sub-Agent로 분산 실행 지원
 
 ## 프로젝트 구조
 
@@ -19,8 +20,13 @@ edgeagent/
 │   ├── registry.py         # Multi-endpoint registry
 │   ├── scheduler.py        # BaseScheduler, StaticScheduler
 │   ├── proxy_tool.py       # LocationAwareProxyTool
-│   └── middleware.py       # EdgeAgentMCPClient
-├── config/tools.yaml       # Tool configurations
+│   ├── middleware.py       # EdgeAgentMCPClient
+│   ├── planner.py          # Tool sequence planning by location
+│   ├── subagent.py         # Sub-Agent HTTP server
+│   └── orchestrator.py     # Sub-Agent orchestration
+├── config/
+│   ├── tools.yaml          # Tool configurations
+│   └── subagent_test.yaml  # Sub-Agent test configuration
 ├── scripts/
 │   └── mock_mcp_server.py  # FastMCP mock servers
 ├── examples/
@@ -33,13 +39,25 @@ edgeagent/
 
 ## 설치
 
-```bash
-# Python dependencies
-pip install -r requirements.txt
+### Python Dependencies
 
-# MCP filesystem server (for testing)
-npm install -g @modelcontextprotocol/server-filesystem
+```bash
+pip install -r requirements.txt
 ```
+
+### MCP Servers (Global Installation Required)
+
+MCP 서버들은 **반드시 전역으로 설치**해야 합니다:
+
+```bash
+# MCP filesystem server (필수)
+npm install -g @modelcontextprotocol/server-filesystem
+
+# Node.js 18+ 필요
+node --version  # v18.0.0 이상 확인
+```
+
+**참고**: MCP 서버는 stdio transport로 subprocess로 실행되므로 전역 설치가 필요합니다.
 
 ## 환경 변수
 

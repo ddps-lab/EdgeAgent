@@ -49,8 +49,11 @@ class CodeReviewScenario(ScenarioRunner):
         super().__init__(*args, **kwargs)
         self._repo_path = "/tmp/edgeagent_device/repo"
         self._report_path = "/tmp/edgeagent_device/code_review_report.md"
-        # Ensure device directory exists
-        Path("/tmp/edgeagent_device").mkdir(parents=True, exist_ok=True)
+        self._data_source = None
+
+        # Pre-initialize device repo directory for MCP git server
+        # (git server validates repo path on startup)
+        self._prepare_repo()
 
     @property
     def name(self) -> str:
@@ -71,6 +74,37 @@ class CodeReviewScenario(ScenarioRunner):
             "repo_path": self._repo_path,
         }
 
+    def _prepare_repo(self):
+        """Prepare Git repository - must be called before MCP client starts."""
+        data_dir = Path(__file__).parent.parent / "data" / "scenario1"
+        defects4j_dir = data_dir / "defects4j"
+        sample_repo = data_dir / "sample_repo"
+
+        repo_source = None
+
+        if defects4j_dir.exists():
+            for subdir in defects4j_dir.iterdir():
+                if subdir.is_dir() and (subdir / ".git").exists():
+                    repo_source = subdir
+                    self._data_source = f"Defects4J ({subdir.name})"
+                    break
+
+        if repo_source is None and sample_repo.exists() and (sample_repo / ".git").exists():
+            repo_source = sample_repo
+            self._data_source = "Generated sample repository"
+
+        if repo_source is None:
+            raise FileNotFoundError(
+                f"No Git repository found in {data_dir}\n"
+                "Run 'python scripts/setup_test_data.py -s 1' for test data"
+            )
+
+        device_repo = Path(self._repo_path)
+        device_repo.parent.mkdir(parents=True, exist_ok=True)
+        if device_repo.exists():
+            shutil.rmtree(device_repo)
+        shutil.copytree(repo_source, device_repo)
+
     async def execute(
         self,
         client: EdgeAgentMCPClient,
@@ -86,42 +120,8 @@ class CodeReviewScenario(ScenarioRunner):
             print(f"  - {name}")
         print()
 
-        # Prepare Git repository - try Defects4J first, then sample_repo
-        data_dir = Path(__file__).parent.parent / "data" / "scenario1"
-        defects4j_dir = data_dir / "defects4j"
-        sample_repo = data_dir / "sample_repo"
-
-        # Check for available data sources
-        # Defects4J: check for subdirectory with .git (e.g., defects4j/lang/)
-        repo_source = None
-        data_source = None
-
-        if defects4j_dir.exists():
-            # Look for git repo in subdirectories (lang, math, etc.)
-            for subdir in defects4j_dir.iterdir():
-                if subdir.is_dir() and (subdir / ".git").exists():
-                    repo_source = subdir
-                    data_source = f"Defects4J ({subdir.name})"
-                    break
-
-        if repo_source is None and sample_repo.exists() and (sample_repo / ".git").exists():
-            repo_source = sample_repo
-            data_source = "Generated sample repository"
-
-        if repo_source is None:
-            raise FileNotFoundError(
-                f"No Git repository found in {data_dir}\n"
-                "Run 'python scripts/download_public_datasets.py -s 1' for Defects4J, or\n"
-                "Run 'python scripts/generate_test_repo.py' for sample repository"
-            )
-
-        print(f"Data Source: {data_source}")
-
         device_repo = Path(self._repo_path)
-        if device_repo.exists():
-            shutil.rmtree(device_repo)
-        shutil.copytree(repo_source, device_repo)
-
+        print(f"Data Source: {self._data_source}")
         print(f"Prepared repository at: {device_repo}")
         print()
 
@@ -142,7 +142,7 @@ class CodeReviewScenario(ScenarioRunner):
         print(f"  Found files in repository")
         if client.metrics_collector:
             client.metrics_collector.add_custom_metric("repo_path", str(device_repo))
-            client.metrics_collector.add_custom_metric("data_source", data_source)
+            client.metrics_collector.add_custom_metric("data_source", self._data_source)
         print()
 
         # Step 2: Get git status (git -> DEVICE)

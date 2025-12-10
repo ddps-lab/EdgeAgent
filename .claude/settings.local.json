@@ -6,7 +6,8 @@
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(python3:*)",
-      "Bash(timeout 180 python:*)"
+      "Bash(timeout 180 python:*)",
+      "Bash(timeout 90 python:*)"
     ],
     "deny": [],
     "ask": []
