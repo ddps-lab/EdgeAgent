@@ -7,7 +7,10 @@
       "Bash(cat:*)",
       "Bash(python3:*)",
       "Bash(timeout 180 python:*)",
-      "Bash(timeout 90 python:*)"
+      "Bash(timeout 90 python:*)",
+      "Bash(done)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

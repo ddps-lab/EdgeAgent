@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-Scenario 2: Log Analysis Pipeline - Orchestration Mode Comparison
+Scenario 3: Research Assistant Pipeline - Orchestration Mode Comparison
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario2_orchestrated.py --mode legacy
-    python scripts/run_scenario2_orchestrated.py --mode subagent
-    python scripts/run_scenario2_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario3_orchestrated.py --mode legacy
+    python scripts/run_scenario3_orchestrated.py --mode subagent
+    python scripts/run_scenario3_orchestrated.py --compare  # Run both and compare
 
 Tool Chain:
-    filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
-    DEVICE            EDGE         EDGE             DEVICE
+    fetch -> summarize -> data_aggregate -> filesystem(write)
+    EDGE    EDGE        EDGE              DEVICE
 """
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 import time
@@ -51,49 +50,52 @@ class ExecutionResult:
     error: str = ""
 
 
-def load_log_source() -> tuple[Path, str]:
-    """Load log file source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
-    loghub_dir = data_dir / "loghub_samples"
-    sample_log = data_dir / "server.log"
+def load_research_urls() -> tuple[list[str], str]:
+    """Load research URLs from S2ORC data or use defaults"""
+    data_dir = Path(__file__).parent.parent / "data" / "scenario3"
+    s2orc_file = data_dir / "s2orc_papers.json"
 
-    if loghub_dir.exists():
-        for log_name in ["small_python.log", "medium_python.log"]:
-            candidate = loghub_dir / log_name
-            if candidate.exists():
-                return candidate, f"LogHub ({log_name})"
+    # Check for S2ORC papers
+    if s2orc_file.exists():
+        import json
+        try:
+            with open(s2orc_file) as f:
+                papers = json.load(f)
+            urls = []
+            for paper in papers[:3]:  # Use first 3 papers
+                if paper.get("url"):
+                    urls.append(paper["url"])
+            if urls:
+                return urls, "S2ORC papers"
+        except Exception:
+            pass
 
-    if sample_log.exists():
-        return sample_log, "Sample server.log"
-
-    # Create minimal test log if nothing exists
-    test_log = Path("/tmp/edgeagent_device/server.log")
-    test_log.parent.mkdir(parents=True, exist_ok=True)
-    test_log.write_text("""2024-01-01 10:00:00,000 - root - INFO - Application started
-2024-01-01 10:00:01,000 - root - WARNING - High memory usage detected
-2024-01-01 10:00:02,000 - root - ERROR - Connection timeout to database
-2024-01-01 10:00:03,000 - root - INFO - Retry attempt 1
-2024-01-01 10:00:04,000 - root - ERROR - Connection failed after retry
-2024-01-01 10:00:05,000 - root - INFO - Graceful shutdown initiated
-""")
-    return test_log, "Generated test log"
-
-
-LOG_SOURCE, DATA_SOURCE = load_log_source()
+    # Default Wikipedia URLs (reliable and fast)
+    default_urls = [
+        "https://en.wikipedia.org/wiki/Intelligent_agent",
+        "https://en.wikipedia.org/wiki/Large_language_model",
+    ]
+    return default_urls, "Default Wikipedia URLs"
 
 
-USER_REQUEST = """
-Analyze the server log file at /tmp/edgeagent_device/server.log.
-1. Read the log file using read_text_file
-2. Parse the logs using parse_logs with format_type='python' to get entries
-3. Compute statistics using compute_log_statistics with the entries
-4. Write a summary report to /tmp/edgeagent_device/log_report.md
+RESEARCH_URLS, DATA_SOURCE = load_research_urls()
 
-Return the analysis summary.
+
+USER_REQUEST = f"""
+Research the topic of AI agents using these URLs:
+{chr(10).join(f'- {url}' for url in RESEARCH_URLS)}
+
+Please:
+1. Fetch content from each URL using the fetch tool
+2. Summarize the content from each page using summarize_text
+3. Aggregate the summaries into a cohesive research summary
+4. Write a research report to /tmp/edgeagent_device/research_report.md
+
+Return a summary of the research findings.
 """
 
 # Tool sequence for Sub-Agent mode (order matters)
-TOOL_SEQUENCE = ["filesystem", "log_parser", "data_aggregate", "filesystem"]
+TOOL_SEQUENCE = ["fetch", "summarize", "data_aggregate", "filesystem"]
 
 
 async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
@@ -119,7 +121,7 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
             print("Running agent...", flush=True)
             result_content = ""
-            seen_tool_ids = set()  # 중복 방지용
+            seen_tool_ids = set()
 
             async for chunk in agent.astream(
                 {"messages": [("user", USER_REQUEST)]},
@@ -151,12 +153,13 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
+        import traceback
         return ExecutionResult(
             mode="legacy",
             success=False,
             total_time_ms=elapsed,
             tool_calls=tool_calls,
-            error=str(e),
+            error=f"{e}\n{traceback.format_exc()}",
         )
 
 
@@ -174,7 +177,7 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             subagent_endpoints={},  # Local execution
             model=model,
             temperature=0,
-            max_iterations=10,
+            max_iterations=15,  # More iterations for multiple URLs
         )
 
         orchestrator = SubAgentOrchestrator(config_path, config)
@@ -269,7 +272,7 @@ def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
 async def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Run Scenario 2 with different orchestration modes"
+        description="Run Scenario 3 with different orchestration modes"
     )
     parser.add_argument(
         "--mode",
@@ -296,20 +299,19 @@ async def main():
         print("[ERROR] OPENAI_API_KEY not set")
         return False
 
+    # Ensure output directory exists
+    Path("/tmp/edgeagent_device").mkdir(parents=True, exist_ok=True)
+
     print("=" * 70)
-    print("Scenario 2: Log Analysis Pipeline")
+    print("Scenario 3: Research Assistant Pipeline")
     print("=" * 70)
     print(f"Data Source: {DATA_SOURCE}")
-    print(f"Log file: {LOG_SOURCE}")
+    print(f"URLs to research: {len(RESEARCH_URLS)}")
+    for url in RESEARCH_URLS:
+        print(f"  - {url}")
     print(f"Model: {args.model}")
 
-    # Prepare log file
-    device_log = Path("/tmp/edgeagent_device/server.log")
-    device_log.parent.mkdir(parents=True, exist_ok=True)
-    device_log.write_text(LOG_SOURCE.read_text())
-    print(f"Prepared: {device_log} ({device_log.stat().st_size} bytes)")
-
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario3.yaml"
 
     if args.compare:
         # Run both modes

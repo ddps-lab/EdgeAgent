@@ -29,7 +29,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
-from agent_utils import run_agent_with_logging
+from scripts.agent_utils import run_agent_with_logging
 
 
 def load_image_source() -> tuple[Path, str]:
@@ -129,6 +129,10 @@ class AgentImageProcessingScenario(ScenarioRunner):
     ) -> Any:
         """Execute image processing using LLM Agent"""
 
+        # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
+        excluded_tools = {"directory_tree"}
+        tools = [t for t in tools if t.name not in excluded_tools]
+
         # Prepare image directory
         image_source, data_source = load_image_source()
         self._image_source = image_source
@@ -157,11 +161,11 @@ class AgentImageProcessingScenario(ScenarioRunner):
         print(f"Available tools: {len(tools)}")
         print()
 
-        # Initialize LLM
-        llm = ChatOpenAI(
-            model=self.model,
-            temperature=self.temperature,
-        )
+        # Initialize LLM (gpt-4o-mini doesn't support temperature=0)
+        llm_kwargs = {"model": self.model}
+        if "gpt-5" not in self.model:
+            llm_kwargs["temperature"] = self.temperature
+        llm = ChatOpenAI(**llm_kwargs)
 
         # Create agent
         agent = create_agent(llm, tools)

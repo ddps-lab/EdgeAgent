@@ -325,12 +325,12 @@ def download_defects4j(output_dir: Path, size: str = "small") -> Path:
         sample_repo = defects4j_dir / "lang"
         try:
             subprocess.run(
-                ["git", "clone", "--depth", "10",
+                ["git", "clone", "--depth", "100",
                  "https://github.com/apache/commons-lang.git", str(sample_repo)],
                 capture_output=True,
                 timeout=180,
             )
-            print("    Cloned apache/commons-lang")
+            print("    Cloned apache/commons-lang (depth=100)")
         except Exception as e:
             print(f"    [ERROR] Clone failed: {e}")
 

@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-Scenario 2: Log Analysis Pipeline - Orchestration Mode Comparison
+Scenario 4: Image Processing Pipeline - Orchestration Mode Comparison
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario2_orchestrated.py --mode legacy
-    python scripts/run_scenario2_orchestrated.py --mode subagent
-    python scripts/run_scenario2_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario4_orchestrated.py --mode legacy
+    python scripts/run_scenario4_orchestrated.py --mode subagent
+    python scripts/run_scenario4_orchestrated.py --compare  # Run both and compare
 
 Tool Chain:
-    filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
-    DEVICE            EDGE         EDGE             DEVICE
+    filesystem(scan) -> image_resize(hash,batch) -> data_aggregate -> filesystem(write)
+    DEVICE            EDGE                         EDGE              DEVICE
 """
 
 import argparse
 import asyncio
-import json
 import os
+import shutil
 import sys
 import time
 from dataclasses import dataclass, field
@@ -51,49 +51,70 @@ class ExecutionResult:
     error: str = ""
 
 
-def load_log_source() -> tuple[Path, str]:
-    """Load log file source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
-    loghub_dir = data_dir / "loghub_samples"
-    sample_log = data_dir / "server.log"
+def load_image_source() -> tuple[Path, str]:
+    """Load image source directory"""
+    data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+    coco_images = data_dir / "coco" / "images"
+    sample_images = data_dir / "sample_images"
 
-    if loghub_dir.exists():
-        for log_name in ["small_python.log", "medium_python.log"]:
-            candidate = loghub_dir / log_name
-            if candidate.exists():
-                return candidate, f"LogHub ({log_name})"
+    if coco_images.exists() and len(list(coco_images.glob("*.jpg"))) > 0:
+        return coco_images, "COCO 2017"
 
-    if sample_log.exists():
-        return sample_log, "Sample server.log"
+    if sample_images.exists() and len(list(sample_images.glob("*"))) > 0:
+        return sample_images, "Generated test images"
 
-    # Create minimal test log if nothing exists
-    test_log = Path("/tmp/edgeagent_device/server.log")
-    test_log.parent.mkdir(parents=True, exist_ok=True)
-    test_log.write_text("""2024-01-01 10:00:00,000 - root - INFO - Application started
-2024-01-01 10:00:01,000 - root - WARNING - High memory usage detected
-2024-01-01 10:00:02,000 - root - ERROR - Connection timeout to database
-2024-01-01 10:00:03,000 - root - INFO - Retry attempt 1
-2024-01-01 10:00:04,000 - root - ERROR - Connection failed after retry
-2024-01-01 10:00:05,000 - root - INFO - Graceful shutdown initiated
-""")
-    return test_log, "Generated test log"
+    raise FileNotFoundError(
+        f"No image directory found in {data_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 4' for test data"
+    )
 
 
-LOG_SOURCE, DATA_SOURCE = load_log_source()
+def prepare_images() -> tuple[Path, str, int]:
+    """Prepare images at device location"""
+    image_source, data_source = load_image_source()
+
+    device_images = Path("/tmp/edgeagent_device/images")
+    device_images.mkdir(parents=True, exist_ok=True)
+
+    # Clear existing images
+    for f in device_images.glob("*"):
+        f.unlink()
+
+    # Copy images
+    count = 0
+    for img in image_source.glob("*"):
+        if img.is_file():
+            shutil.copy(img, device_images / img.name)
+            count += 1
+
+    return device_images, data_source, count
+
+
+# Prepare images at module load time
+IMAGE_PATH, DATA_SOURCE, IMAGE_COUNT = prepare_images()
 
 
 USER_REQUEST = """
-Analyze the server log file at /tmp/edgeagent_device/server.log.
-1. Read the log file using read_text_file
-2. Parse the logs using parse_logs with format_type='python' to get entries
-3. Compute statistics using compute_log_statistics with the entries
-4. Write a summary report to /tmp/edgeagent_device/log_report.md
+Process images at /tmp/edgeagent_device/images.
 
-Return the analysis summary.
+Please:
+1. List the directory contents using list_directory to find image files
+2. For each image, compute a perceptual hash using compute_image_hash (hash_type="phash")
+3. Find duplicate images using compare_hashes with threshold=5
+4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
+5. Write an image processing report to /tmp/edgeagent_device/image_report.md
+
+The report should include:
+- Number of images found
+- Number of duplicates detected
+- Number of thumbnails created
+- Size reduction achieved
+
+Return a summary of the image processing results.
 """
 
 # Tool sequence for Sub-Agent mode (order matters)
-TOOL_SEQUENCE = ["filesystem", "log_parser", "data_aggregate", "filesystem"]
+TOOL_SEQUENCE = ["filesystem", "image_resize", "data_aggregate", "filesystem"]
 
 
 async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
@@ -119,7 +140,7 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
             print("Running agent...", flush=True)
             result_content = ""
-            seen_tool_ids = set()  # 중복 방지용
+            seen_tool_ids = set()
 
             async for chunk in agent.astream(
                 {"messages": [("user", USER_REQUEST)]},
@@ -151,12 +172,13 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
+        import traceback
         return ExecutionResult(
             mode="legacy",
             success=False,
             total_time_ms=elapsed,
             tool_calls=tool_calls,
-            error=str(e),
+            error=f"{e}\n{traceback.format_exc()}",
         )
 
 
@@ -174,7 +196,7 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             subagent_endpoints={},  # Local execution
             model=model,
             temperature=0,
-            max_iterations=10,
+            max_iterations=15,  # More iterations for multiple images
         )
 
         orchestrator = SubAgentOrchestrator(config_path, config)
@@ -269,7 +291,7 @@ def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
 async def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Run Scenario 2 with different orchestration modes"
+        description="Run Scenario 4 with different orchestration modes"
     )
     parser.add_argument(
         "--mode",
@@ -297,24 +319,21 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 2: Log Analysis Pipeline")
+    print("Scenario 4: Image Processing Pipeline")
     print("=" * 70)
     print(f"Data Source: {DATA_SOURCE}")
-    print(f"Log file: {LOG_SOURCE}")
+    print(f"Images: {IMAGE_COUNT} at {IMAGE_PATH}")
     print(f"Model: {args.model}")
 
-    # Prepare log file
-    device_log = Path("/tmp/edgeagent_device/server.log")
-    device_log.parent.mkdir(parents=True, exist_ok=True)
-    device_log.write_text(LOG_SOURCE.read_text())
-    print(f"Prepared: {device_log} ({device_log.stat().st_size} bytes)")
-
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario4.yaml"
 
     if args.compare:
         # Run both modes
         legacy_result = await run_legacy_mode(config_path, args.model)
         print_result(legacy_result)
+
+        # Re-prepare images for subagent mode
+        prepare_images()
 
         subagent_result = await run_subagent_mode(config_path, args.model)
         print_result(subagent_result)

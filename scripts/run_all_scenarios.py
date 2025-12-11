@@ -2,20 +2,29 @@
 """
 Run All EdgeAgent Scenarios
 
-Unified experiment runner that executes all scenarios (Script + Agent versions)
+Unified experiment runner that executes all scenarios across different execution modes
 and generates a comprehensive comparison report.
 
+Execution Modes:
+- script: Hardcoded sequential tool calls (baseline orchestration)
+- agent: LLM Agent autonomously selects tools (single agent with all tools)
+- subagent: Location-aware partitioned execution (Sub-Agent orchestration)
+- subagent_legacy: Single agent baseline for SubAgent comparison
+
 Scenarios:
-1. Code Review Pipeline (S1) - Script + Agent
-2. Log Analysis Pipeline (S2) - Script + Agent
-3. Research Assistant Pipeline (S3) - Script + Agent
-4. Image Processing Pipeline (S4) - Script + Agent
+1. Code Review Pipeline (S1)
+2. Log Analysis Pipeline (S2)
+3. Research Assistant Pipeline (S3)
+4. Image Processing Pipeline (S4)
 
 Usage:
     python scripts/run_all_scenarios.py                    # Run all (script only)
     python scripts/run_all_scenarios.py --include-agent    # Run script + agent versions
+    python scripts/run_all_scenarios.py --include-subagent # Run script + subagent versions
     python scripts/run_all_scenarios.py --scenarios 1,2    # Run specific scenarios
     python scripts/run_all_scenarios.py --agent-only       # Run agent versions only
+    python scripts/run_all_scenarios.py --subagent-only    # Run subagent versions only
+    python scripts/run_all_scenarios.py --all-modes        # Run all modes (script, agent, subagent)
 """
 
 import argparse
@@ -292,6 +301,153 @@ async def run_scenario4_agent() -> ScenarioSummary:
 
 
 # =============================================================================
+# SubAgent Version Runners
+# =============================================================================
+
+async def run_scenario1_subagent() -> ScenarioSummary:
+    """Run Scenario 1: Code Review Pipeline (SubAgent Version)"""
+    from run_scenario_subagent import run_scenario_subagent, SubAgentScenarioResult
+
+    result = await run_scenario_subagent(
+        scenario_num=1,
+        mode="subagent",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S1: Code Review", "subagent")
+
+
+async def run_scenario1_subagent_legacy() -> ScenarioSummary:
+    """Run Scenario 1: Code Review Pipeline (SubAgent Legacy Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=1,
+        mode="subagent_legacy",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S1: Code Review", "subagent_legacy")
+
+
+async def run_scenario2_subagent() -> ScenarioSummary:
+    """Run Scenario 2: Log Analysis Pipeline (SubAgent Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=2,
+        mode="subagent",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S2: Log Analysis", "subagent")
+
+
+async def run_scenario2_subagent_legacy() -> ScenarioSummary:
+    """Run Scenario 2: Log Analysis Pipeline (SubAgent Legacy Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=2,
+        mode="subagent_legacy",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S2: Log Analysis", "subagent_legacy")
+
+
+async def run_scenario3_subagent() -> ScenarioSummary:
+    """Run Scenario 3: Research Assistant Pipeline (SubAgent Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=3,
+        mode="subagent",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S3: Research Assistant", "subagent")
+
+
+async def run_scenario3_subagent_legacy() -> ScenarioSummary:
+    """Run Scenario 3: Research Assistant Pipeline (SubAgent Legacy Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=3,
+        mode="subagent_legacy",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S3: Research Assistant", "subagent_legacy")
+
+
+async def run_scenario4_subagent() -> ScenarioSummary:
+    """Run Scenario 4: Image Processing Pipeline (SubAgent Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=4,
+        mode="subagent",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S4: Image Processing", "subagent")
+
+
+async def run_scenario4_subagent_legacy() -> ScenarioSummary:
+    """Run Scenario 4: Image Processing Pipeline (SubAgent Legacy Version)"""
+    from run_scenario_subagent import run_scenario_subagent
+
+    result = await run_scenario_subagent(
+        scenario_num=4,
+        mode="subagent_legacy",
+        save_results=True,
+        print_summary=False,
+    )
+
+    return _subagent_result_to_summary(result, "S4: Image Processing", "subagent_legacy")
+
+
+def _subagent_result_to_summary(result, scenario_name: str, version: str) -> ScenarioSummary:
+    """Convert SubAgentScenarioResult to ScenarioSummary"""
+    # Get detailed metrics - 새로운 통일된 형식
+    detailed = result.get_detailed_metrics()
+    summary = detailed.get("summary", {})
+    data_flow = summary.get("data_flow", {})
+
+    # 새 형식: cumulative_input_bytes (Script와 동일)
+    input_bytes = data_flow.get("cumulative_input_bytes", 0)
+    output_bytes = data_flow.get("cumulative_output_bytes", 0)
+    reduction_ratio = data_flow.get("overall_reduction_ratio", 0)
+
+    # Location 분포
+    location_dist = summary.get("location_distribution", {}).get("call_count_by_location", {})
+
+    return ScenarioSummary(
+        scenario_name=scenario_name,
+        version=version,
+        description=f"{scenario_name} with SubAgent Orchestration",
+        success=result.success,
+        total_latency_ms=result.total_latency_ms,
+        tool_calls=result.tool_calls,
+        input_bytes=input_bytes,
+        output_bytes=output_bytes,
+        reduction_ratio=reduction_ratio,
+        locations={**location_dist, "partitions": result.partitions_executed},
+        data_source=result.data_source,
+        error=result.error,
+    )
+
+
+# =============================================================================
 # Comparison and Reporting
 # =============================================================================
 
@@ -318,6 +474,8 @@ def print_comparison_table(summaries: list[ScenarioSummary]):
     # Totals by version
     script_summaries = [s for s in summaries if s.version == "script"]
     agent_summaries = [s for s in summaries if s.version == "agent"]
+    subagent_summaries = [s for s in summaries if s.version == "subagent"]
+    subagent_legacy_summaries = [s for s in summaries if s.version == "subagent_legacy"]
 
     if script_summaries:
         script_latency = sum(s.total_latency_ms for s in script_summaries)
@@ -330,6 +488,26 @@ def print_comparison_table(summaries: list[ScenarioSummary]):
         agent_calls = sum(s.tool_calls for s in agent_summaries)
         agent_success = sum(1 for s in agent_summaries if s.success)
         print(f"{'AGENT TOTAL':<25} {'':<8} {agent_success}/{len(agent_summaries):<6} {agent_latency:>10.1f}ms {agent_calls:>8}")
+
+    if subagent_summaries:
+        subagent_latency = sum(s.total_latency_ms for s in subagent_summaries)
+        subagent_calls = sum(s.tool_calls for s in subagent_summaries)
+        subagent_success = sum(1 for s in subagent_summaries if s.success)
+        print(f"{'SUBAGENT TOTAL':<25} {'':<8} {subagent_success}/{len(subagent_summaries):<6} {subagent_latency:>10.1f}ms {subagent_calls:>8}")
+
+    if subagent_legacy_summaries:
+        legacy_latency = sum(s.total_latency_ms for s in subagent_legacy_summaries)
+        legacy_calls = sum(s.tool_calls for s in subagent_legacy_summaries)
+        legacy_success = sum(1 for s in subagent_legacy_summaries if s.success)
+        print(f"{'SUBAGENT_LEGACY TOTAL':<25} {'':<8} {legacy_success}/{len(subagent_legacy_summaries):<6} {legacy_latency:>10.1f}ms {legacy_calls:>8}")
+
+    # SubAgent speedup comparison
+    if subagent_summaries and subagent_legacy_summaries:
+        subagent_total = sum(s.total_latency_ms for s in subagent_summaries)
+        legacy_total = sum(s.total_latency_ms for s in subagent_legacy_summaries)
+        if subagent_total > 0:
+            speedup = legacy_total / subagent_total
+            print(f"\nSubAgent Speedup: {speedup:.2f}x")
 
     print()
 
@@ -373,6 +551,8 @@ def save_results(summaries: list[ScenarioSummary], output_dir: Path):
             "successful": sum(1 for s in summaries if s.success),
             "script_runs": len([s for s in summaries if s.version == "script"]),
             "agent_runs": len([s for s in summaries if s.version == "agent"]),
+            "subagent_runs": len([s for s in summaries if s.version == "subagent"]),
+            "subagent_legacy_runs": len([s for s in summaries if s.version == "subagent_legacy"]),
             "total_latency_ms": sum(s.total_latency_ms for s in summaries),
             "total_tool_calls": sum(s.tool_calls for s in summaries),
         }
@@ -404,6 +584,26 @@ async def main():
         help="Run only LLM agent versions (requires OPENAI_API_KEY)",
     )
     parser.add_argument(
+        "--include-subagent",
+        action="store_true",
+        help="Include SubAgent versions (requires OPENAI_API_KEY)",
+    )
+    parser.add_argument(
+        "--subagent-only",
+        action="store_true",
+        help="Run only SubAgent versions (requires OPENAI_API_KEY)",
+    )
+    parser.add_argument(
+        "--subagent-compare",
+        action="store_true",
+        help="Run SubAgent and SubAgent-Legacy for comparison (requires OPENAI_API_KEY)",
+    )
+    parser.add_argument(
+        "--all-modes",
+        action="store_true",
+        help="Run all modes: script, agent, subagent, subagent_legacy",
+    )
+    parser.add_argument(
         "--skip-failing",
         action="store_true",
         help="Continue even if a scenario fails",
@@ -412,12 +612,18 @@ async def main():
 
     scenarios_to_run = [int(s.strip()) for s in args.scenarios.split(",")]
 
+    # Determine which modes to run
+    run_script = not (args.agent_only or args.subagent_only or args.subagent_compare)
+    run_agent = args.include_agent or args.agent_only or args.all_modes
+    run_subagent = args.include_subagent or args.subagent_only or args.subagent_compare or args.all_modes
+    run_subagent_legacy = args.subagent_compare or args.all_modes
+
     print("=" * 120)
     print("EdgeAgent: Run All Scenarios")
     print("=" * 120)
     print()
     print(f"Scenarios to run: {scenarios_to_run}")
-    print(f"Include agent versions: {args.include_agent or args.agent_only}")
+    print(f"Modes: script={run_script}, agent={run_agent}, subagent={run_subagent}, subagent_legacy={run_subagent_legacy}")
     print()
 
     # Define scenario runners
@@ -435,10 +641,24 @@ async def main():
         4: ("S4: Image Processing (Agent)", run_scenario4_agent),
     }
 
+    subagent_runners = {
+        1: ("S1: Code Review (SubAgent)", run_scenario1_subagent),
+        2: ("S2: Log Analysis (SubAgent)", run_scenario2_subagent),
+        3: ("S3: Research Assistant (SubAgent)", run_scenario3_subagent),
+        4: ("S4: Image Processing (SubAgent)", run_scenario4_subagent),
+    }
+
+    subagent_legacy_runners = {
+        1: ("S1: Code Review (SubAgent-Legacy)", run_scenario1_subagent_legacy),
+        2: ("S2: Log Analysis (SubAgent-Legacy)", run_scenario2_subagent_legacy),
+        3: ("S3: Research Assistant (SubAgent-Legacy)", run_scenario3_subagent_legacy),
+        4: ("S4: Image Processing (SubAgent-Legacy)", run_scenario4_subagent_legacy),
+    }
+
     summaries = []
 
-    # Run script versions (unless agent-only)
-    if not args.agent_only:
+    # Run script versions
+    if run_script:
         for num in scenarios_to_run:
             if num not in script_runners:
                 print(f"[WARN] Unknown scenario: {num}")
@@ -480,7 +700,7 @@ async def main():
                     break
 
     # Run agent versions (if requested)
-    if args.include_agent or args.agent_only:
+    if run_agent:
         import os
         if not os.getenv("OPENAI_API_KEY"):
             print("\n[ERROR] OPENAI_API_KEY not set. Agent versions require OpenAI API key.")
@@ -511,6 +731,96 @@ async def main():
                     summaries.append(ScenarioSummary(
                         scenario_name=name.split(" (")[0],
                         version="agent",
+                        description="",
+                        success=False,
+                        total_latency_ms=0,
+                        tool_calls=0,
+                        input_bytes=0,
+                        output_bytes=0,
+                        reduction_ratio=0,
+                        locations={},
+                        error=str(e),
+                    ))
+                    if not args.skip_failing:
+                        break
+
+    # Run subagent_legacy versions (if requested - run before subagent for fair comparison)
+    if run_subagent_legacy:
+        import os
+        if not os.getenv("OPENAI_API_KEY"):
+            print("\n[ERROR] OPENAI_API_KEY not set. SubAgent versions require OpenAI API key.")
+            print("Set OPENAI_API_KEY environment variable or add to .env file.")
+        else:
+            for num in scenarios_to_run:
+                if num not in subagent_legacy_runners:
+                    continue
+
+                name, runner = subagent_legacy_runners[num]
+                print("=" * 120)
+                print(f"Running {name}")
+                print("=" * 120)
+
+                try:
+                    summary = await runner()
+                    summaries.append(summary)
+
+                    if summary.success:
+                        print(f"  [PASS] {summary.total_latency_ms:.1f}ms, {summary.tool_calls} calls")
+                    else:
+                        print(f"  [FAIL] {summary.error}")
+                        if not args.skip_failing:
+                            break
+
+                except Exception as e:
+                    print(f"  [ERROR] {e}")
+                    summaries.append(ScenarioSummary(
+                        scenario_name=name.split(" (")[0],
+                        version="subagent_legacy",
+                        description="",
+                        success=False,
+                        total_latency_ms=0,
+                        tool_calls=0,
+                        input_bytes=0,
+                        output_bytes=0,
+                        reduction_ratio=0,
+                        locations={},
+                        error=str(e),
+                    ))
+                    if not args.skip_failing:
+                        break
+
+    # Run subagent versions (if requested)
+    if run_subagent:
+        import os
+        if not os.getenv("OPENAI_API_KEY"):
+            print("\n[ERROR] OPENAI_API_KEY not set. SubAgent versions require OpenAI API key.")
+            print("Set OPENAI_API_KEY environment variable or add to .env file.")
+        else:
+            for num in scenarios_to_run:
+                if num not in subagent_runners:
+                    continue
+
+                name, runner = subagent_runners[num]
+                print("=" * 120)
+                print(f"Running {name}")
+                print("=" * 120)
+
+                try:
+                    summary = await runner()
+                    summaries.append(summary)
+
+                    if summary.success:
+                        print(f"  [PASS] {summary.total_latency_ms:.1f}ms, {summary.tool_calls} calls, {summary.locations.get('partitions', 0)} partitions")
+                    else:
+                        print(f"  [FAIL] {summary.error}")
+                        if not args.skip_failing:
+                            break
+
+                except Exception as e:
+                    print(f"  [ERROR] {e}")
+                    summaries.append(ScenarioSummary(
+                        scenario_name=name.split(" (")[0],
+                        version="subagent",
                         description="",
                         success=False,
                         total_latency_ms=0,
