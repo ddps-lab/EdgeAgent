@@ -1,0 +1,20 @@
+[package]
+name = "mcp-server-fetch"
+version = "0.1.0"
+edition = "2021"
+description = "MCP Fetch Server - WASM implementation with wasi:http"
+
+[lib]
+name = "mcp_server_fetch"
+crate-type = ["cdylib"]
+
+[dependencies]
+tokio = { workspace = true }
+rmcp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+anyhow = { workspace = true }
+wasi = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }
+url = "2.5"

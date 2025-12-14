@@ -1,0 +1,41 @@
+[workspace]
+members = [
+    "servers/filesystem",
+    "servers/filesystem-http",
+    "servers/time",
+    "servers/time-http",
+    "servers/log-parser",
+    "servers/log-parser-http",
+    "servers/data-aggregate",
+    "servers/data-aggregate-http",
+    "servers/sequential-thinking",
+    "servers/sequential-thinking-http",
+    "servers/git",
+    "servers/git-http",
+    "servers/fetch",
+    "servers/fetch-http",
+    "servers/summarize",
+    "servers/summarize-http",
+    "servers/image-resize",
+    "servers/image-resize-http",
+    "shared",
+    "wasmmcp",
+    "wasmmcp-macros"
+]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "io-util", "sync", "macros", "time"] }
+rmcp = { version = "0.10", default-features = false, features = ["server", "macros", "base64"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+schemars = "0.8"
+wasi = "0.14"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

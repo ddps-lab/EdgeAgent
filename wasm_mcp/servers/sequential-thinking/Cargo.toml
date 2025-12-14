@@ -1,0 +1,20 @@
+[package]
+name = "mcp-server-sequential-thinking"
+version = "0.1.0"
+edition = "2021"
+description = "Sequential Thinking MCP Server - structured thinking process for problem-solving"
+
+[lib]
+name = "mcp_server_sequential_thinking"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+rmcp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+anyhow = { workspace = true }
+wasi = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }

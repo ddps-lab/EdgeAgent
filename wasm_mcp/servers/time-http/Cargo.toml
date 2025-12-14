@@ -1,0 +1,16 @@
+[package]
+name = "mcp-server-time-http"
+version = "0.1.0"
+edition = "2021"
+description = "Time MCP Server with HTTP transport (wasi:http/proxy)"
+
+[lib]
+name = "mcp_server_time_http"
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasi = { workspace = true }
+chrono = "0.4"
+chrono-tz = "0.10"

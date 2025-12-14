@@ -1,0 +1,14 @@
+[package]
+name = "mcp-server-filesystem-http"
+version = "0.1.0"
+edition = "2021"
+description = "Filesystem MCP Server with HTTP transport (wasi:http/proxy)"
+
+[lib]
+name = "mcp_server_filesystem_http"
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasi = { workspace = true }

@@ -1,0 +1,14 @@
+[package]
+name = "mcp-server-sequential-thinking-http"
+version = "0.1.0"
+edition = "2021"
+description = "Sequential Thinking MCP Server with HTTP transport (wasi:http/proxy)"
+
+[lib]
+name = "mcp_server_sequential_thinking_http"
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasi = { workspace = true }

@@ -35,6 +35,13 @@ htmlcov/
 # MacOS
 .DS_Store
 
+# Rust/WASM build artifacts
+wasm_mcp/target/
+wasm_mcp/.claude/
+wasm_mcp/tests/reports/
+wasm_mcp/tests/__pycache__/
+wasm_mcp/docs/
+
 # Documentation (internal only)
 docs/
 

@@ -1,0 +1,15 @@
+[package]
+name = "mcp-server-fetch-http"
+version = "0.1.0"
+edition = "2021"
+description = "MCP Fetch Server - HTTP transport (WASM)"
+
+[lib]
+name = "mcp_server_fetch_http"
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasi = { workspace = true }
+url = "2.5"
