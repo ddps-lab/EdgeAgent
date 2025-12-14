@@ -1,0 +1,49 @@
+# EdgeAgent Tool Configuration - Scenario 2: Log Analysis (EDGE WASM)
+#
+# Tool Chain: filesystem → log_parser → data_aggregate → filesystem
+# Locations:  DEVICE     → EDGE(WASM) → EDGE(WASM)    → DEVICE
+
+tools:
+  filesystem:
+    profile:
+      description: "Read, write, and search files on the filesystem"
+      data_affinity: DEVICE
+      compute_intensity: LOW
+      data_flow: EXPANSION
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: mcp-server-filesystem
+        args:
+          - "/tmp/edgeagent_device"
+          - "/home/mhsong/edgeagent/data/scenario2"
+
+  log_parser:
+    profile:
+      description: "Parse various log formats and extract structured data"
+      data_affinity: EDGE
+      compute_intensity: MEDIUM
+      data_flow: REDUCTION
+      reduction_ratio: 0.01
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud"
+
+  data_aggregate:
+    profile:
+      description: "Aggregate, merge, and summarize structured data"
+      data_affinity: EDGE
+      compute_intensity: LOW
+      data_flow: REDUCTION
+      reduction_ratio: 0.01
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+
+
+static_mapping:
+  filesystem: DEVICE
+  log_parser: EDGE
+  data_aggregate: EDGE

@@ -1,0 +1,51 @@
+# EdgeAgent Tool Configuration - Scenario 3: Research Assistant (EDGE WASM)
+#
+# Tool Chain: fetch → data_aggregate → filesystem
+# Locations:  EDGE(WASM) → EDGE(WASM) → DEVICE
+#
+# Note: summarize excluded (requires Cloud API key)
+
+tools:
+  filesystem:
+    profile:
+      description: "Read, write, and search files on the filesystem"
+      data_affinity: DEVICE
+      compute_intensity: LOW
+      data_flow: EXPANSION
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: mcp-server-filesystem
+        args:
+          - "/tmp/edgeagent_device"
+          - "/home/mhsong/edgeagent/data/scenario3"
+
+  fetch:
+    profile:
+      description: "Fetch URL content and convert to markdown"
+      data_affinity: EDGE
+      compute_intensity: LOW
+      data_flow: TRANSFORM
+      reduction_ratio: 1.0
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-fetch.edgeagent.edge.edgeagent.ddps.cloud"
+
+  data_aggregate:
+    profile:
+      description: "Aggregate, merge, and summarize structured data"
+      data_affinity: EDGE
+      compute_intensity: LOW
+      data_flow: REDUCTION
+      reduction_ratio: 0.01
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+
+
+static_mapping:
+  filesystem: DEVICE
+  fetch: EDGE
+  data_aggregate: EDGE

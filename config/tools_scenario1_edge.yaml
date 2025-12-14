@@ -1,0 +1,51 @@
+# EdgeAgent Tool Configuration - Scenario 1: Code Review (EDGE WASM)
+#
+# Tool Chain: filesystem → git → data_aggregate → filesystem
+# Locations:  DEVICE     → EDGE(WASM) → EDGE(WASM) → DEVICE
+#
+# Note: summarize excluded (requires Cloud API key)
+
+tools:
+  filesystem:
+    profile:
+      description: "Read, write, and search files on the filesystem"
+      data_affinity: DEVICE
+      compute_intensity: LOW
+      data_flow: EXPANSION
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: mcp-server-filesystem
+        args:
+          - "/tmp/edgeagent_device"
+          - "/home/mhsong/edgeagent/data/scenario1"
+
+  git:
+    profile:
+      description: "Git repository operations - diff, log, status, blame"
+      data_affinity: EDGE
+      compute_intensity: LOW
+      data_flow: REDUCTION
+      reduction_ratio: 0.1
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-git.edgeagent.edge.edgeagent.ddps.cloud"
+
+  data_aggregate:
+    profile:
+      description: "Aggregate, merge, and summarize structured data"
+      data_affinity: EDGE
+      compute_intensity: LOW
+      data_flow: REDUCTION
+      reduction_ratio: 0.01
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+
+
+static_mapping:
+  filesystem: DEVICE
+  git: EDGE
+  data_aggregate: EDGE

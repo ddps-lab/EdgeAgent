@@ -47,7 +47,8 @@
       "Bash(KUBECONFIG=~/.kube/k3s kubectl patch:*)",
       "Bash(KUBECONFIG=~/.kube/k3s kubectl exec:*)",
       "Bash(KUBECONFIG=~/.kube/k3s kubectl run debug-shell --rm -it --image=ubuntu --overrides='{\"\"spec\"\":{\"\"nodeName\"\":\"\"edge-nuc\"\",\"\"hostPID\"\":true,\"\"containers\"\":[{\"\"name\"\":\"\"debug\"\",\"\"image\"\":\"\"ubuntu\"\",\"\"command\"\":[\"\"bash\"\",\"\"-c\"\",\"\"ls -la /proc/1/root/usr/bin/containerd-shim-* 2>/dev/null; echo ---; ls -la /proc/1/root/var/lib/rancher/k3s/data/*/bin/containerd-shim-* 2>/dev/null; echo ---; cat /proc/1/root/var/lib/rancher/k3s/agent/etc/containerd/config.toml 2>/dev/null | grep -A5 wasmtime\"\"],\"\"stdin\"\":true,\"\"tty\"\":true,\"\"securityContext\"\":{\"\"privileged\"\":true}}]}}' --restart=Never)",
-      "Bash(KUBECONFIG=~/.kube/k3s kubectl run:*)"
+      "Bash(KUBECONFIG=~/.kube/k3s kubectl run:*)",
+      "Bash(cargo build:*)"
     ],
     "deny": [],
     "ask": []
