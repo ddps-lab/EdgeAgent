@@ -27,8 +27,8 @@ spec:
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: api-keys
-                  key: OPENAI_API_KEY
+                  name: openai-secret
+                  key: api-key
           resources:
             requests:
               cpu: "10m"
