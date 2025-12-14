@@ -1,0 +1,38 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mcp-summarize
+  namespace: edgeagent
+  labels:
+    app: mcp-summarize
+    component: mcp-server-wasm
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "5"
+    spec:
+      runtimeClassName: wasmtime
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+        - name: mcp-server
+          image: srv2.ddps.cloud/wasm-mcp/summarize:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: OPENAI_API_KEY
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "10Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"

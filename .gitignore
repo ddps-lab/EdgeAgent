@@ -14,6 +14,10 @@ build/
 # Environment variables
 .env
 
+# Kubernetes secrets (local files with actual keys)
+k8s/secrets.local.yaml
+k8s/*.local.yaml
+
 # IDEs
 .vscode/
 .idea/

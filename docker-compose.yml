@@ -1,0 +1,202 @@
+# EdgeAgent Docker Compose Configuration
+# Local testing environment for MCP servers and SubAgents
+#
+# Usage:
+#   docker-compose build
+#   docker-compose up -d
+#   docker-compose logs -f
+#
+# Test endpoints:
+#   MCP Servers:  http://localhost:8010-8014/mcp
+#   SubAgents:    http://localhost:8002-8003/health
+
+version: "3.9"
+
+services:
+  # ============================================
+  # MCP Tool Servers (HTTP transport)
+  # ============================================
+
+  mcp-fetch:
+    build:
+      context: .
+      dockerfile: docker/mcp-servers/Dockerfile.fetch
+    ports:
+      - "8010:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/mcp')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-log-parser:
+    build:
+      context: .
+      dockerfile: docker/mcp-servers/Dockerfile.log-parser
+    ports:
+      - "8011:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/mcp')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-summarize:
+    build:
+      context: .
+      dockerfile: docker/mcp-servers/Dockerfile.summarize
+    ports:
+      - "8012:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/mcp')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-data-aggregate:
+    build:
+      context: .
+      dockerfile: docker/mcp-servers/Dockerfile.data-aggregate
+    ports:
+      - "8013:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/mcp')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-image-resize:
+    build:
+      context: .
+      dockerfile: docker/mcp-servers/Dockerfile.image-resize
+    ports:
+      - "8014:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/mcp')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # Official MCP Servers (via mcp-proxy)
+  # ============================================
+
+  mcp-filesystem:
+    build:
+      context: .
+      dockerfile: docker/mcp-official/Dockerfile.filesystem
+    ports:
+      - "8015:8080"
+    environment:
+      - MCP_PORT=8080
+      - ALLOWED_PATH=/data
+    volumes:
+      - ./data:/data  # Mount local data directory
+    restart: unless-stopped
+
+  mcp-time:
+    build:
+      context: .
+      dockerfile: docker/mcp-official/Dockerfile.time
+    ports:
+      - "8016:8080"
+    environment:
+      - MCP_PORT=8080
+    restart: unless-stopped
+
+  mcp-sequentialthinking:
+    build:
+      context: .
+      dockerfile: docker/mcp-official/Dockerfile.sequentialthinking
+    ports:
+      - "8017:8080"
+    environment:
+      - MCP_PORT=8080
+    restart: unless-stopped
+
+  mcp-git:
+    build:
+      context: .
+      dockerfile: docker/mcp-official/Dockerfile.git
+    ports:
+      - "8018:8080"
+    environment:
+      - MCP_PORT=8080
+    volumes:
+      - ./:/repo  # Mount project directory for git operations
+    restart: unless-stopped
+
+  # ============================================
+  # SubAgent Services (EDGE and CLOUD)
+  # Same image, different LOCATION env var
+  # ============================================
+
+  edge-subagent:
+    image: edgeagent-subagent:latest
+    build:
+      context: .
+      dockerfile: docker/subagent/Dockerfile
+    ports:
+      - "8002:8080"
+    environment:
+      - LOCATION=EDGE
+      - PORT=8080
+      - CONFIG_PATH=/app/config/tools_docker.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mcp-fetch
+      - mcp-log-parser
+      - mcp-summarize
+      - mcp-data-aggregate
+      - mcp-image-resize
+      - mcp-filesystem
+      - mcp-time
+      - mcp-sequentialthinking
+    restart: unless-stopped
+
+  cloud-subagent:
+    image: edgeagent-subagent:latest
+    build:
+      context: .
+      dockerfile: docker/subagent/Dockerfile
+    ports:
+      - "8003:8080"
+    environment:
+      - LOCATION=CLOUD
+      - PORT=8080
+      - CONFIG_PATH=/app/config/tools_docker.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mcp-summarize
+      - mcp-data-aggregate
+    restart: unless-stopped
+
+networks:
+  default:
+    name: edgeagent-net

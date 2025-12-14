@@ -44,14 +44,20 @@ class EdgeAgentMCPClient:
         config_path: str | Path,
         metrics_config: Optional[MetricsConfig] = None,
         collect_metrics: bool = True,
+        filter_tools: Optional[list[str]] = None,
+        filter_location: Optional[Location] = None,
     ):
         """
         Args:
             config_path: YAML 설정 파일 경로
             metrics_config: 메트릭 수집 설정 (None이면 기본값 사용)
             collect_metrics: 메트릭 수집 활성화 여부 (기본: True)
+            filter_tools: 연결할 tool 목록 (None이면 모든 tool 연결)
+            filter_location: 특정 location의 endpoint만 사용 (None이면 모든 location)
         """
         self.config_path = Path(config_path)
+        self.filter_tools = filter_tools
+        self.filter_location = filter_location
 
         # Registry 및 Scheduler 초기화
         self.registry = ToolRegistry.from_yaml(config_path)
@@ -94,9 +100,66 @@ class EdgeAgentMCPClient:
 
     async def initialize(self):
         """
-        모든 location의 MCP client 초기화
+        MCP client 초기화
 
-        각 location별로 MultiServerMCPClient를 생성하고 연결합니다.
+        filter_tools와 filter_location이 설정된 경우 해당 tool/location만 연결합니다.
+
+        클라이언트 생성 전략:
+        - filter_location이 설정된 경우 (EDGE/CLOUD SubAgent):
+          Tool별로 개별 MultiServerMCPClient 생성 (동적 연결 지원)
+        - filter_location이 없는 경우 (DEVICE 또는 Orchestrator):
+          Location별로 MultiServerMCPClient 그룹화 (기존 방식)
+        """
+        # 연결할 tool 목록 결정
+        tools_to_connect = self.filter_tools or self.registry.list_tools()
+
+        if self.filter_location:
+            # EDGE/CLOUD SubAgent: Tool별 개별 클라이언트 생성
+            # 각 tool이 독립적인 MCP 서버에 연결되므로 개별 클라이언트 필요
+            await self._initialize_per_tool_clients(tools_to_connect)
+        else:
+            # DEVICE/Orchestrator: Location별 클라이언트 그룹화
+            # 여러 tool이 같은 location에서 실행되므로 그룹화 효율적
+            await self._initialize_per_location_clients(tools_to_connect)
+
+    async def _initialize_per_tool_clients(self, tools_to_connect: list[str]):
+        """
+        Tool별 개별 MultiServerMCPClient 생성
+
+        EDGE/CLOUD SubAgent에서 사용. 각 tool이 독립적인 Knative 서비스로
+        배포되어 있으므로 개별 클라이언트가 필요합니다.
+        """
+        for tool_name in tools_to_connect:
+            if self.filter_tools and tool_name not in self.filter_tools:
+                continue
+
+            tool_config = self.registry.get_tool(tool_name)
+            if not tool_config:
+                continue
+
+            # filter_location에 해당하는 endpoint만 확인
+            if self.filter_location not in tool_config.available_locations():
+                continue
+
+            endpoint = tool_config.get_endpoint(self.filter_location)
+            if not endpoint:
+                continue
+
+            # Server 이름: tool_name_LOCATION
+            server_name = f"{tool_name}_{self.filter_location}"
+
+            # Tool별 개별 클라이언트 생성
+            mcp_config = endpoint.to_mcp_config()
+            self.clients[server_name] = MultiServerMCPClient({
+                server_name: mcp_config
+            })
+
+    async def _initialize_per_location_clients(self, tools_to_connect: list[str]):
+        """
+        Location별 MultiServerMCPClient 그룹화
+
+        DEVICE 환경 또는 Orchestrator에서 사용. 같은 location의 tool들을
+        하나의 클라이언트로 그룹화하여 효율성 향상.
         """
         # Location별 server 설정 그룹화
         servers_by_location: dict[Location, dict] = {
@@ -105,7 +168,10 @@ class EdgeAgentMCPClient:
             "CLOUD": {},
         }
 
-        for tool_name in self.registry.list_tools():
+        for tool_name in tools_to_connect:
+            if self.filter_tools and tool_name not in self.filter_tools:
+                continue
+
             tool_config = self.registry.get_tool(tool_name)
             if not tool_config:
                 continue
@@ -152,24 +218,39 @@ class EdgeAgentMCPClient:
         # MCP tool name → {location → backend tool}
         backend_tools_map: dict[str, dict[str, any]] = {}
 
-        for tool_name in self.registry.list_tools():
+        # filter_location이 설정된 경우와 아닌 경우 다르게 처리
+        tools_to_load = self.filter_tools or self.registry.list_tools()
+
+        for tool_name in tools_to_load:
             tool_config = self.registry.get_tool(tool_name)
             if not tool_config:
                 continue
 
+            # 로드할 location 결정
+            if self.filter_location:
+                # EDGE/CLOUD SubAgent: 해당 location만
+                locations_to_load = [self.filter_location] if self.filter_location in tool_config.available_locations() else []
+            else:
+                # DEVICE/Orchestrator: 모든 available locations
+                locations_to_load = tool_config.available_locations()
+
             # 각 location별로 backend tool 로드
-            for location in tool_config.available_locations():
-                # 해당 location의 client 가져오기
-                client = self.clients.get(location)
+            for location in locations_to_load:
+                # 클라이언트 키 결정 (filter_location 여부에 따라 다름)
+                server_name = f"{tool_name}_{location}"
+                if self.filter_location:
+                    # Tool별 개별 클라이언트: 키가 server_name
+                    client = self.clients.get(server_name)
+                else:
+                    # Location별 그룹 클라이언트: 키가 location
+                    client = self.clients.get(location)
+
                 if not client:
                     print(
-                        f"Warning: No client for location '{location}' "
+                        f"Warning: No client for '{server_name}' "
                         f"when loading tool '{tool_name}'"
                     )
                     continue
-
-                # Server 이름: tool_name_LOCATION
-                server_name = f"{tool_name}_{location}"
 
                 # MCP session을 통해 tools 로드
                 try:

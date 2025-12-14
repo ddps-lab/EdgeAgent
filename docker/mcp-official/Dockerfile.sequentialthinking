@@ -1,0 +1,23 @@
+# MCP Sequential Thinking Server with mcp-proxy (stateless HTTP mode)
+#
+# Uses mcp-proxy to expose stdio-based MCP server over HTTP
+#
+# Usage:
+#   docker build -f Dockerfile.sequentialthinking -t edgeagent-mcp-sequentialthinking .
+#   docker run -p 8080:8080 edgeagent-mcp-sequentialthinking
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install mcp-proxy and sequential-thinking server
+RUN npm install -g mcp-proxy @modelcontextprotocol/server-sequential-thinking
+
+# Environment variables
+ENV MCP_PORT=8080
+
+# Expose HTTP port
+EXPOSE 8080
+
+# Run mcp-proxy in stateless mode
+CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-sequential-thinking"]

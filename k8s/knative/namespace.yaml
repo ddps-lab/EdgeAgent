@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edgeagent
+  labels:
+    app.kubernetes.io/name: edgeagent
+---
+# Secret for OpenAI API Key
+# Create with: kubectl create secret generic openai-secret -n edgeagent --from-literal=api-key=<your-key>
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openai-secret
+  namespace: edgeagent
+type: Opaque
+stringData:
+  api-key: "${OPENAI_API_KEY}"  # Replace or use kubectl create secret
+---
+# Optional: ECR Pull Secret (if using ECR)
+# Create with:
+# kubectl create secret docker-registry ecr-secret -n edgeagent \
+#   --docker-server=786382940258.dkr.ecr.ap-northeast-2.amazonaws.com \
+#   --docker-username=AWS \
+#   --docker-password=$(aws ecr get-login-password --region ap-northeast-2)

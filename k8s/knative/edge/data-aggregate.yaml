@@ -1,0 +1,40 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mcp-data-aggregate
+  namespace: edgeagent
+  labels:
+    app: mcp-data-aggregate
+    component: mcp-server
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "5"
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+        - name: mcp-data-aggregate
+          image: srv2.ddps.cloud/edgeagent/mcp-data-aggregate:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: MCP_TRANSPORT
+              value: "http"
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_PORT
+              value: "8080"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

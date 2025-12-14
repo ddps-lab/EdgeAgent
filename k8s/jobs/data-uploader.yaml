@@ -1,0 +1,339 @@
+# Job to upload test data to EFS/NFS storage
+#
+# This job runs setup_test_data.py to populate the shared storage
+# with test data for all scenarios.
+#
+# Usage:
+#   # For CLOUD (EKS with EFS)
+#   kubectl apply -f data-uploader.yaml
+#
+#   # For EDGE (K3s with NFS)
+#   KUBECONFIG=~/.kube/k3s kubectl apply -f data-uploader.yaml
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: edgeagent-data-uploader
+  namespace: edgeagent
+spec:
+  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
+  template:
+    spec:
+      containers:
+      - name: uploader
+        image: python:3.11-slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "=== EdgeAgent Data Uploader ==="
+
+          # Install dependencies
+          apt-get update && apt-get install -y git > /dev/null 2>&1
+          pip install pillow requests > /dev/null 2>&1
+
+          # Clean up existing data and create base directory structure
+          echo "Cleaning up existing data..."
+          rm -rf /edgeagent/data /edgeagent/repos /edgeagent/results
+          mkdir -p /edgeagent/repos /edgeagent/results
+
+          # Run the full setup_test_data.py script
+          cat > /tmp/setup_test_data.py << 'PYSCRIPT'
+          #!/usr/bin/env python3
+          """Setup Test Data for EdgeAgent - Embedded version for K8s Job"""
+          import hashlib
+          import json
+          import os
+          import random
+          import shutil
+          import subprocess
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timedelta
+          from pathlib import Path
+
+          try:
+              from PIL import Image, ImageDraw
+              HAS_PIL = True
+          except ImportError:
+              HAS_PIL = False
+
+          # =============================================================================
+          # Scenario 1: Git Repository (Download mode - clone commons-lang)
+          # =============================================================================
+          def run_git(repo_path, *args):
+              return subprocess.run(["git"] + list(args), cwd=repo_path, capture_output=True, text=True)
+
+          def generate_test_repo(output_dir):
+              """Generate a simple test repo as fallback."""
+              print("  Generating test Git repository...")
+              if output_dir.exists():
+                  shutil.rmtree(output_dir)
+              output_dir.mkdir(parents=True, exist_ok=True)
+
+              run_git(output_dir, "init")
+              run_git(output_dir, "config", "user.email", "test@example.com")
+              run_git(output_dir, "config", "user.name", "Test User")
+
+              (output_dir / "README.md").write_text("""# Sample Project
+          A sample Python project for testing EdgeAgent code review.
+          """)
+              (output_dir / "app").mkdir(exist_ok=True)
+              (output_dir / "app" / "__init__.py").write_text("")
+              (output_dir / "app" / "data.py").write_text('''def process_data(items): return sum(items) if items else 0''')
+
+              run_git(output_dir, "add", ".")
+              run_git(output_dir, "commit", "-m", "Initial commit")
+              return output_dir
+
+          def download_defects4j(output_dir):
+              """Download real Git repository (commons-lang) for code review testing."""
+              print("  Downloading real Git repository...")
+
+              defects4j_dir = output_dir / "defects4j"
+              if defects4j_dir.exists():
+                  shutil.rmtree(defects4j_dir)
+              defects4j_dir.mkdir(parents=True, exist_ok=True)
+
+              # Clone apache/commons-lang (real project for code review)
+              lang_dir = defects4j_dir / "lang"
+              try:
+                  print("    Cloning apache/commons-lang (depth=100)...")
+                  result = subprocess.run(
+                      ["git", "clone", "--depth", "100",
+                       "https://github.com/apache/commons-lang.git", str(lang_dir)],
+                      capture_output=True,
+                      timeout=300,
+                  )
+                  if result.returncode == 0:
+                      print("    Successfully cloned apache/commons-lang")
+                  else:
+                      print(f"    Clone failed: {result.stderr.decode()[:200]}")
+              except Exception as e:
+                  print(f"    [ERROR] Clone failed: {e}")
+
+              # Create sample_repo from cloned project
+              sample_repo = output_dir / "sample_repo"
+              if sample_repo.exists():
+                  shutil.rmtree(sample_repo)
+
+              if lang_dir.exists() and any(lang_dir.iterdir()):
+                  shutil.copytree(lang_dir, sample_repo)
+                  print(f"    Created sample_repo from commons-lang")
+              else:
+                  generate_test_repo(sample_repo)
+
+              return output_dir
+
+          # =============================================================================
+          # Scenario 2: Log Files
+          # =============================================================================
+          LOGGERS = ["app.auth", "app.api", "app.db", "app.cache", "worker.task", "worker.queue", "scheduler"]
+          LEVELS = {"debug": 0.30, "info": 0.40, "warning": 0.15, "error": 0.12, "critical": 0.03}
+          MESSAGES = {
+              "debug": ["Processing request with params: {}", "Cache lookup for key: user_{}", "Database query executed in {} ms"],
+              "info": ["Request processed successfully", "User {} logged in", "Task {} completed", "API response time: {} ms"],
+              "warning": ["Slow query detected: {} ms", "Rate limit approaching for user {}", "Memory usage above threshold: {}%"],
+              "error": ["Database connection failed: timeout", "Authentication failed for user {}", "API request failed with status {}"],
+              "critical": ["Database connection pool exhausted", "Out of memory error", "Service unavailable: {}"],
+          }
+
+          def weighted_choice(weights):
+              total = sum(weights.values())
+              r = random.uniform(0, total)
+              cumulative = 0
+              for key, weight in weights.items():
+                  cumulative += weight
+                  if r <= cumulative:
+                      return key
+              return list(weights.keys())[-1]
+
+          def generate_log_file(output_path, num_lines):
+              start_time = datetime.now() - timedelta(hours=1)
+              lines = []
+              current_time = start_time
+              for _ in range(num_lines):
+                  level = weighted_choice(LEVELS)
+                  logger = random.choice(LOGGERS)
+                  msg_template = random.choice(MESSAGES[level])
+                  placeholders = msg_template.count("{}")
+                  values = [str(random.randint(1, 1000)) for _ in range(placeholders)]
+                  message = msg_template.format(*values) if values else msg_template
+                  line = f"{current_time.strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - {logger} - {level.upper()} - {message}"
+                  lines.append(line)
+                  current_time += timedelta(seconds=random.uniform(0.1, 5))
+              output_path.parent.mkdir(parents=True, exist_ok=True)
+              content = "\n".join(lines)
+              output_path.write_text(content)
+              return {"path": str(output_path), "lines": num_lines, "size_bytes": len(content)}
+
+          # =============================================================================
+          # Scenario 3: Research Papers
+          # =============================================================================
+          def setup_scenario3(output_dir, num_papers=50):
+              print("\n[3/4] Setting up Scenario 3: Research Papers")
+              s2orc_dir = output_dir / "s2orc"
+              s2orc_dir.mkdir(parents=True, exist_ok=True)
+
+              api_base = "https://api.semanticscholar.org/graph/v1"
+              queries = ["large language model agent", "edge computing machine learning", "AI agent tool use"]
+              papers = []
+              papers_per_query = num_papers // len(queries) + 1
+
+              for query in queries:
+                  if len(papers) >= num_papers:
+                      break
+                  try:
+                      url = f"{api_base}/paper/search?query={urllib.parse.quote(query)}&limit={papers_per_query}&fields=paperId,title,abstract,year"
+                      req = urllib.request.Request(url, headers={"User-Agent": "EdgeAgent/1.0"})
+                      with urllib.request.urlopen(req, timeout=30) as response:
+                          result = json.loads(response.read().decode())
+                          if "data" in result:
+                              for paper in result["data"]:
+                                  if paper.get("abstract") and len(paper["abstract"]) > 100:
+                                      papers.append({"id": paper["paperId"], "title": paper["title"], "abstract": paper["abstract"], "year": paper.get("year")})
+                              print(f"    Query '{query[:25]}...': {len(result['data'])} papers")
+                  except Exception as e:
+                      print(f"    [WARN] Query failed: {e}")
+
+              papers = papers[:num_papers]
+              (s2orc_dir / "papers.json").write_text(json.dumps(papers, indent=2))
+              (s2orc_dir / "paper_urls.txt").write_text("\n".join([f"https://www.semanticscholar.org/paper/{p['id']}" for p in papers]))
+              print(f"    Saved {len(papers)} papers")
+
+          # =============================================================================
+          # Scenario 4: Images (Download mode - COCO images)
+          # =============================================================================
+          # COCO val2017 sample image IDs
+          COCO_SAMPLE_IDS = [
+              139, 285, 632, 724, 776, 785, 802, 872, 885, 1000,
+              1268, 1296, 1353, 1425, 1503, 1532, 1584, 1761, 1818, 1993,
+              2006, 2149, 2153, 2157, 2261, 2299, 2431, 2473, 2532, 2587,
+              2685, 2867, 3156, 3501, 3553, 3934, 4134, 4495, 4765, 5037,
+              5193, 5503, 5529, 5586, 5992, 6040, 6471, 6723, 6894, 7278,
+              7386, 7816, 7977, 8021, 8211, 8532, 8690, 8844, 9378, 9448,
+          ]
+
+          def download_coco_images(output_dir, count=30):
+              """Download real COCO images for image processing testing."""
+              output_dir.mkdir(parents=True, exist_ok=True)
+
+              downloaded = 0
+              for img_id in COCO_SAMPLE_IDS[:count]:
+                  img_url = f"http://images.cocodataset.org/val2017/{img_id:012d}.jpg"
+                  img_path = output_dir / f"{img_id:012d}.jpg"
+
+                  try:
+                      urllib.request.urlretrieve(img_url, img_path)
+                      downloaded += 1
+                      if downloaded % 10 == 0:
+                          print(f"    Downloaded {downloaded} images...")
+                  except Exception:
+                      pass
+
+              print(f"    Downloaded {downloaded} COCO images")
+              return downloaded
+
+          def create_duplicate_variants(images_dir, num_duplicates=10):
+              """Create duplicate variants for testing duplicate detection."""
+              if not HAS_PIL:
+                  return 0
+              images = list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png"))
+              if not images:
+                  return 0
+              random.seed(42)
+              source_images = random.sample(images, min(num_duplicates, len(images)))
+              created = 0
+              for img_path in source_images:
+                  try:
+                      img = Image.open(img_path)
+                      new_size = (int(img.width * 0.95), int(img.height * 0.95))
+                      resized = img.resize(new_size, Image.Resampling.LANCZOS)
+                      dup_path = images_dir / f"dup_{img_path.stem}.jpg"
+                      resized.save(dup_path, "JPEG", quality=85)
+                      created += 1
+                  except Exception:
+                      pass
+              random.seed()
+              return created
+
+          # =============================================================================
+          # Main (Download mode - real data)
+          # =============================================================================
+          def main():
+              data_dir = Path("/edgeagent/data")
+              print("=" * 60)
+              print("EdgeAgent Test Data Setup (Download Mode)")
+              print("=" * 60)
+              print(f"Data directory: {data_dir}")
+
+              # Scenario 1: Git Repository (clone commons-lang)
+              print("\n[1/4] Setting up Scenario 1: Git Repository")
+              download_defects4j(data_dir / "scenario1")
+
+              # Scenario 2: Log Files
+              print("\n[2/4] Setting up Scenario 2: Log Files")
+              output_dir = data_dir / "scenario2"
+              loghub_dir = output_dir / "loghub_samples"
+              loghub_dir.mkdir(parents=True, exist_ok=True)
+              for name, lines in [("small_python.log", 100), ("medium_python.log", 1000), ("large_python.log", 10000)]:
+                  result = generate_log_file(loghub_dir / name, lines)
+                  print(f"    {name}: {lines:,} lines, {result['size_bytes']:,} bytes")
+              default_log = output_dir / "server.log"
+              default_log.write_text((loghub_dir / "medium_python.log").read_text())
+
+              # Scenario 3: Research Papers
+              setup_scenario3(data_dir / "scenario3", num_papers=50)
+
+              # Scenario 4: Images (download 30 COCO + 10 duplicates = 40 total)
+              print("\n[4/4] Setting up Scenario 4: Images")
+              sample_images = data_dir / "scenario4" / "sample_images"
+              if sample_images.exists():
+                  shutil.rmtree(sample_images)
+              print("  Downloading 30 COCO images...")
+              download_coco_images(sample_images, count=30)
+              print("  Creating 10 duplicate variants...")
+              created_dups = create_duplicate_variants(sample_images, num_duplicates=10)
+              print(f"    Created {created_dups} duplicate variants")
+              final_count = len(list(sample_images.glob("*")))
+              final_size = sum(f.stat().st_size for f in sample_images.glob("*") if f.is_file())
+              print(f"  Total: {final_count} images ({final_size:,} bytes)")
+
+              print("\n" + "=" * 60)
+              print("Setup complete!")
+              print("=" * 60)
+
+          if __name__ == "__main__":
+              main()
+          PYSCRIPT
+
+          python3 /tmp/setup_test_data.py
+
+          # Summary
+          echo ""
+          echo "=== Final Summary ==="
+          echo "Directory structure:"
+          find /edgeagent -type f | wc -l
+          echo "files total"
+          echo ""
+          echo "Sizes:"
+          du -sh /edgeagent/*
+          du -sh /edgeagent/data/*
+        volumeMounts:
+        - name: edgeagent-storage
+          mountPath: /edgeagent
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: edgeagent-storage
+        persistentVolumeClaim:
+          claimName: edgeagent-data-pvc
+      restartPolicy: Never
+  backoffLimit: 2

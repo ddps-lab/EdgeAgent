@@ -647,6 +647,7 @@ class CallContext:
         self.scheduling_reason: str = ""
         self.constraints_checked: list[str] = []
         self.available_locations: list[str] = []
+        self.fallback_occurred: bool = False
 
         # Data flow info
         self.data_flow_type: str = ""
@@ -749,9 +750,10 @@ class CallContext:
         """Set the result for size calculation"""
         self.result = result
 
-    def set_actual_location(self, location: str):
+    def set_actual_location(self, location: str, fallback: bool = False):
         """Update actual location if different from scheduled"""
         self.actual_location = location
+        self.fallback_occurred = fallback
 
     def add_scheduling_info(
         self,

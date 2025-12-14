@@ -185,10 +185,10 @@ class EndpointConfig:
                 "env": self.env,
             }
         else:  # streamable_http
+            # Note: langchain-mcp-adapters doesn't support 'env' for streamable_http
             return {
                 "transport": "streamable_http",
                 "url": self.url,
-                "env": self.env,
             }
 
 

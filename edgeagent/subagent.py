@@ -244,7 +244,13 @@ class SubAgent:
 
         try:
             await exit_stack.__aenter__()
-            client = EdgeAgentMCPClient(self.config_path, collect_metrics=self.collect_metrics)
+            # 요청된 tools만 필터링하여 연결 (동적 연결)
+            client = EdgeAgentMCPClient(
+                self.config_path,
+                collect_metrics=self.collect_metrics,
+                filter_tools=[tool_name],  # 단일 tool만 연결
+                filter_location=self.location,  # 현재 location의 endpoint만 사용
+            )
             await exit_stack.enter_async_context(client)
 
             all_tools = await client.get_tools()
@@ -436,9 +442,14 @@ class SubAgent:
         llm = ChatOpenAI(**llm_kwargs)
         metrics_entries = []
 
-        # EdgeAgentMCPClient를 사용하여 tools 로드
-        async with EdgeAgentMCPClient(self.config_path, collect_metrics=self.collect_metrics) as client:
-            # 모든 tools 가져오기
+        # EdgeAgentMCPClient를 사용하여 tools 로드 (요청된 tools만 동적 연결)
+        async with EdgeAgentMCPClient(
+            self.config_path,
+            collect_metrics=self.collect_metrics,
+            filter_tools=valid_tools,  # 요청된 tool만 연결
+            filter_location=self.location,  # 현재 location의 endpoint만 사용
+        ) as client:
+            # 필터링된 tools 가져오기
             all_tools = await client.get_tools()
 
             # 요청된 tool만 필터링 (엄격하게)

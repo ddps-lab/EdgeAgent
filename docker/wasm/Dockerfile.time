@@ -1,0 +1,3 @@
+FROM scratch
+COPY mcp_server_time_http.wasm /mcp_server.wasm
+ENTRYPOINT ["/mcp_server.wasm"]

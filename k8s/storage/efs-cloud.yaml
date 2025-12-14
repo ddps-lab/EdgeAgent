@@ -1,0 +1,79 @@
+# EFS Storage Configuration for CLOUD (AWS EKS)
+#
+# Prerequisites:
+#   1. EFS file system created in AWS (same VPC as EKS)
+#   2. EFS CSI Driver installed:
+#      kubectl apply -k "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.7"
+#   3. Security group allows NFS (port 2049) from EKS nodes
+#
+# Directory structure (same as EDGE):
+#   /edgeagent/
+#   ├── data/
+#   │   ├── logs/
+#   │   ├── images/
+#   │   ├── documents/
+#   │   └── temp/
+#   ├── repos/
+#   └── results/
+#
+# Usage:
+#   1. Create EFS: aws efs create-file-system --region ap-northeast-2 --performance-mode generalPurpose
+#   2. Update EFS_FILE_SYSTEM_ID below
+#   3. kubectl apply -f efs-cloud.yaml
+
+---
+# StorageClass for EFS
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-cloud
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: "fs-0afc1a5670fb7ee48"
+  directoryPerms: "755"
+  basePath: "/edgeagent"
+  subPathPattern: ""
+  ensureUniqueDirectory: "false"
+mountOptions:
+  - tls
+  - iam
+
+---
+# PersistentVolume - EFS backed storage (without Access Point)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: edgeagent-efs-pv
+  labels:
+    type: efs
+    location: cloud
+spec:
+  capacity:
+    storage: 100Gi  # EFS is elastic, this is just for quota
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-cloud
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: "fs-0afc1a5670fb7ee48"
+
+---
+# PersistentVolumeClaim - Claim the EFS storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: edgeagent-data-pvc
+  namespace: edgeagent
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-cloud
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      type: efs
+      location: cloud

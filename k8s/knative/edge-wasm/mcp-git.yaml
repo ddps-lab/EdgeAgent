@@ -1,0 +1,40 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mcp-git
+  namespace: edgeagent
+  labels:
+    app: mcp-git
+    component: mcp-server-wasm
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "5"
+    spec:
+      runtimeClassName: wasmtime
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+        - name: mcp-server
+          image: srv2.ddps.cloud/wasm-mcp/git:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "10Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          volumeMounts:
+            - name: edgeagent-data
+              mountPath: /edgeagent
+              subPath: repos
+      volumes:
+        - name: edgeagent-data
+          persistentVolumeClaim:
+            claimName: edgeagent-data-pvc

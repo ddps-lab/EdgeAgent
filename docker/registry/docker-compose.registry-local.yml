@@ -1,0 +1,45 @@
+# Local Docker Registry (HTTP, no TLS)
+#
+# For local development only. Not secure for production!
+#
+# Usage:
+#   docker-compose -f docker-compose.registry-local.yml up -d
+#
+# IMPORTANT: Configure Docker daemon to allow insecure registry
+#   Add to /etc/docker/daemon.json:
+#   {
+#     "insecure-registries": ["localhost:5000", "YOUR_IP:5000"]
+#   }
+#   Then restart Docker: sudo systemctl restart docker
+
+version: "3.9"
+
+services:
+  registry:
+    image: registry:2
+    container_name: docker-registry-local
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+
+  # Optional: Registry UI for browsing images
+  registry-ui:
+    image: joxit/docker-registry-ui:latest
+    container_name: docker-registry-ui
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - SINGLE_REGISTRY=true
+      - REGISTRY_TITLE=EdgeAgent Registry
+      - REGISTRY_URL=http://registry:5000
+      - DELETE_IMAGES=true
+    depends_on:
+      - registry
+
+volumes:
+  registry-data:

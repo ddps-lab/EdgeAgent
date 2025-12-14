@@ -99,28 +99,37 @@ class LocationAwareProxyTool(BaseTool):
         Async execution with location-aware routing
 
         1. Scheduler가 location 결정 (with reason)
-        2. 해당 location의 backend tool 선택
+        2. 해당 location의 backend tool 선택 (fallback 지원)
         3. Trace 기록 및 메트릭 수집
         4. 실제 tool 호출
         """
         # 1. Scheduler가 location 결정 (상세 정보 포함)
         scheduling_result = self._get_location_with_reason(kwargs)
         location = scheduling_result.location
+        fallback_occurred = False
 
-        # 2. 해당 location의 backend tool 선택
+        # 2. 해당 location의 backend tool 선택 (fallback 지원)
         backend_tool = self.backend_tools.get(location)
         if not backend_tool:
+            # Scheduler가 결정한 location에 backend이 없으면 fallback
+            # SubAgent가 특정 location만 지원하는 경우 발생
             available = list(self.backend_tools.keys())
-            raise ValueError(
-                f"No backend tool for location '{location}'. "
-                f"Available locations: {available}"
-            )
+            if available:
+                location = available[0]  # 첫 번째 available location 사용
+                backend_tool = self.backend_tools[location]
+                fallback_occurred = True
+            else:
+                raise ValueError(
+                    f"No backend tool available for '{self.name}'. "
+                    f"Scheduled location: {scheduling_result.location}"
+                )
 
         # 3. Trace 기록 (backward compatibility)
         self.execution_trace.append({
             "tool": self.name,
             "parent_tool": self.parent_tool_name,
             "location": location,
+            "fallback": fallback_occurred,
             "args_keys": list(kwargs.keys()),
         })
 
@@ -143,7 +152,7 @@ class LocationAwareProxyTool(BaseTool):
                 try:
                     result = await backend_tool.ainvoke(kwargs)
                     ctx.set_result(result)
-                    ctx.set_actual_location(location)
+                    ctx.set_actual_location(location, fallback=fallback_occurred)
                     return result
                 except Exception as e:
                     ctx.set_error(e)

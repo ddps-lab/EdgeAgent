@@ -1,0 +1,66 @@
+# Self-hosted Docker Registry with HTTPS (Let's Encrypt)
+#
+# Prerequisites:
+#   - Domain name pointing to this server
+#   - Ports 80, 443, 5000 open
+#
+# Usage:
+#   1. Update REGISTRY_DOMAIN below
+#   2. docker-compose -f docker-compose.registry.yml up -d
+#   3. Wait for certificate generation
+#   4. docker login registry.yourdomain.com
+#
+# For local development without HTTPS, use docker-compose.registry-local.yml
+
+version: "3.9"
+
+services:
+  # ============================================
+  # Docker Registry with TLS
+  # ============================================
+  registry:
+    image: registry:2
+    container_name: docker-registry
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/fullchain.pem
+      REGISTRY_HTTP_TLS_KEY: /certs/privkey.pem
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./certs:/certs:ro
+
+  # ============================================
+  # Nginx Reverse Proxy with Let's Encrypt
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: registry-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      - registry
+
+  # ============================================
+  # Certbot for Let's Encrypt certificates
+  # ============================================
+  certbot:
+    image: certbot/certbot
+    container_name: registry-certbot
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h; done"
+
+volumes:
+  registry-data:
+  certbot-webroot:

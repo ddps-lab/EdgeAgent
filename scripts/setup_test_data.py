@@ -839,14 +839,28 @@ Examples:
         default="small",
         help="Dataset size (default: small)",
     )
+    parser.add_argument(
+        "--data-dir", "-d",
+        type=str,
+        help="Custom data directory (default: ./data, or EDGEAGENT_DATA_DIR env var)",
+    )
     args = parser.parse_args()
 
     # Default is download (not generate)
     download = not args.generate
 
-    # Project paths
+    # Project paths - support custom data directory via --data-dir or environment variable
     script_dir = Path(__file__).parent
-    data_dir = script_dir.parent / "data"
+    default_data_dir = script_dir.parent / "data"
+
+    # Check for EDGEAGENT_DATA_DIR environment variable (for Knative deployment)
+    env_data_dir = os.environ.get("EDGEAGENT_DATA_DIR")
+    if env_data_dir:
+        data_dir = Path(env_data_dir)
+    elif hasattr(args, 'data_dir') and args.data_dir:
+        data_dir = Path(args.data_dir)
+    else:
+        data_dir = default_data_dir
 
     print()
     print("=" * 60)

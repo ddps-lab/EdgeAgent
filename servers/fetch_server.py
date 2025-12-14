@@ -9,7 +9,7 @@ Handles Semantic Scholar URLs by converting them to API calls.
 import re
 import json
 import httpx
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 
@@ -163,4 +163,13 @@ async def fetch(url: str, max_length: int = 50000) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+
+    if transport == "http":
+        host = os.getenv("MCP_HOST", "0.0.0.0")
+        port = int(os.getenv("MCP_PORT", "8080"))
+        mcp.run(transport="http", host=host, port=port, path="/mcp")
+    else:
+        mcp.run()
