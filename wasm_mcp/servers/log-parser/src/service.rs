@@ -221,12 +221,13 @@ pub struct ExtractTimeRangeParams {
 // Tool implementations
 #[tool_router]
 impl LogParserService {
-    // profiling: T_compute 측정
+    // profiling: T_compute, T_serialize 측정
     #[tool(description = "Parse raw log content into structured entries. Returns entries with _level field added.")]
     fn parse_logs(&self, Parameters(params): Parameters<ParseLogsParams>) -> Result<String, String> {
         let compute_start = Instant::now();
 
         let lines: Vec<&str> = params.log_content.lines().collect();
+        let total_lines = lines.len();
 
         // Auto-detect format if needed
         let format = if params.format_type == "auto" {
@@ -251,15 +252,21 @@ impl LogParserService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
-        Ok(json!({
+        // profiling: T_serialize 측정
+        let serialize_start = Instant::now();
+        let result = json!({
             "format_detected": format,
-            "total_lines": lines.len(),
+            "total_lines": total_lines,
             "parsed_count": entries.len(),
             "error_count": errors,
             "entries": entries
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+
+        Ok(result)
     }
 
     #[tool(description = "Filter log entries by severity level. Pass entries from parse_logs result.")]
