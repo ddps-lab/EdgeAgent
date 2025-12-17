@@ -8,20 +8,111 @@ LangChain MCP Adapters를 확장하여 location-aware tool routing을 제공
 - Middleware/Scheduler가 "어디서 실행할지" 결정
 - ProxyTool 패턴으로 호출 시점에 적절한 backend tool로 routing
 - 통합 메트릭 수집 지원
+
+실행 모드:
+- agent 모드: get_tools() -> ProxyTool 반환, 스케줄러가 런타임에 location 결정
+- with_metrics 모드: get_backend_tools(placement_map) -> MetricsWrappedTool 반환,
+                     placement_map 기반으로 필요한 서버만 연결
 """
 
+import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from contextlib import asynccontextmanager, AsyncExitStack
 
+from pydantic import Field, ConfigDict
+from langchain_core.tools import BaseTool
+from langchain_core.callbacks import (
+    AsyncCallbackManagerForToolRun,
+    CallbackManagerForToolRun,
+)
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from .types import Location
 from .registry import ToolRegistry
-from .scheduler import StaticScheduler
-from .proxy_tool import LocationAwareProxyTool
+from .scheduler import BaseScheduler, BruteForceChainScheduler
+from .proxy_tool import (
+    LocationAwareProxyTool,
+    EDGE_CAMELCASE_SERVERS,
+    convert_args_to_camelcase,
+)
 from .metrics import MetricsCollector, MetricsConfig
+
+
+class MetricsWrappedTool(BaseTool):
+    """
+    Backend tool을 감싸서 메트릭만 수집하는 가벼운 래퍼
+
+    with_metrics 모드에서 사용:
+    - schedule_chain()으로 placement가 이미 결정됨
+    - ProxyTool의 스케줄링 로직 불필요
+    - 메트릭 수집만 수행
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = Field(description="Tool name")
+    description: str = Field(default="", description="Tool description")
+
+    backend_tool: BaseTool = Field(description="Actual backend tool to wrap")
+    location: str = Field(description="Location where this tool is placed")
+    parent_tool_name: str = Field(default="", description="Parent MCP server name")
+    metrics_collector: Optional[Any] = Field(default=None)
+
+    def _run(
+        self,
+        *args: Any,
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+        **kwargs: Any,
+    ) -> Any:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(
+            self._arun(*args, run_manager=run_manager, **kwargs)
+        )
+
+    async def _arun(
+        self,
+        *args: Any,
+        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """메트릭 수집과 함께 backend tool 호출 (스케줄링 없음)"""
+        # EDGE camelCase 서버용 파라미터 변환
+        invoke_kwargs = kwargs
+        if self.location == "EDGE" and self.parent_tool_name in EDGE_CAMELCASE_SERVERS:
+            invoke_kwargs = convert_args_to_camelcase(kwargs)
+
+        if self.metrics_collector is not None:
+            async with self.metrics_collector.start_call(
+                tool_name=self.name,
+                parent_tool_name=self.parent_tool_name,
+                location=self.location,
+                args=kwargs,  # 원본 args 기록 (snake_case)
+            ) as ctx:
+                ctx.add_scheduling_info(
+                    reason="placement_map_static",
+                    constraints=[],
+                    available=[self.location],
+                    decision_time_ns=0,
+                    score=0.0,
+                    exec_cost=0.0,
+                    trans_cost=0.0,
+                    fixed=True,
+                )
+                try:
+                    result = await self.backend_tool.ainvoke(invoke_kwargs)
+                    ctx.set_result(result)
+                    ctx.set_actual_location(self.location, fallback=False)
+                    return result
+                except Exception as e:
+                    ctx.set_error(e)
+                    raise
+        else:
+            return await self.backend_tool.ainvoke(invoke_kwargs)
+
+    def __repr__(self) -> str:
+        return f"MetricsWrappedTool({self.name}, location={self.location})"
 
 
 class EdgeAgentMCPClient:
@@ -46,6 +137,8 @@ class EdgeAgentMCPClient:
         collect_metrics: bool = True,
         filter_tools: Optional[list[str]] = None,
         filter_location: Optional[Location] = None,
+        scheduler: Optional[BaseScheduler] = None,
+        system_config_path: Optional[str | Path] = None,
     ):
         """
         Args:
@@ -54,6 +147,8 @@ class EdgeAgentMCPClient:
             collect_metrics: 메트릭 수집 활성화 여부 (기본: True)
             filter_tools: 연결할 tool 목록 (None이면 모든 tool 연결)
             filter_location: 특정 location의 endpoint만 사용 (None이면 모든 location)
+            scheduler: 외부에서 생성한 Scheduler (None이면 BruteForceChainScheduler 사용)
+            system_config_path: System 설정 YAML 경로 (BruteForceChainScheduler 사용 시)
         """
         self.config_path = Path(config_path)
         self.filter_tools = filter_tools
@@ -61,7 +156,13 @@ class EdgeAgentMCPClient:
 
         # Registry 및 Scheduler 초기화
         self.registry = ToolRegistry.from_yaml(config_path)
-        self.scheduler = StaticScheduler(config_path, self.registry)
+        if scheduler:
+            self.scheduler = scheduler
+        else:
+            sys_config = system_config_path or (Path(config_path).parent / "system.yaml")
+            self.scheduler = BruteForceChainScheduler(
+                config_path, sys_config, self.registry, subagent_mode=False
+            )
 
         # Location별 MCP client 저장
         self.clients: dict[Location, MultiServerMCPClient] = {}
@@ -84,19 +185,107 @@ class EdgeAgentMCPClient:
         self._exit_stack: Optional[AsyncExitStack] = None
         self._active_sessions: dict[str, any] = {}
 
+        # Lazy loading을 위한 connection queue (메인 task에서 세션 생성)
+        self._connection_queue: Optional[asyncio.Queue] = None
+        self._processor_task: Optional[asyncio.Task] = None
+
     async def __aenter__(self):
-        """Context manager entry - session lifecycle 관리"""
+        """Context manager entry - DEVICE 초기화, 나머지는 스케줄러 선택 시 연결"""
         self._exit_stack = AsyncExitStack()
         await self._exit_stack.__aenter__()
-        await self.initialize()
+
+        # Lazy loading을 위한 connection processor 시작 (메인 task에서 실행)
+        self._connection_queue = asyncio.Queue()
+        self._processor_task = asyncio.create_task(self._connection_processor())
+
+        # get_tools()에서 DEVICE 연결, 이후 스케줄러 선택에 따라 EDGE/CLOUD 연결
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - 모든 session 정리"""
+        # Connection processor 종료
+        if self._connection_queue and self._processor_task:
+            await self._connection_queue.put(None)  # 종료 신호
+            await self._processor_task  # processor 완료 대기
+            self._processor_task = None
+            self._connection_queue = None
+
+        # 모든 세션이 메인 task에서 열렸으므로 정상 cleanup
         if self._exit_stack:
             await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)
             self._exit_stack = None
         self._active_sessions.clear()
+
+    async def _connection_processor(self):
+        """
+        Lazy loading 연결 요청을 처리하는 background processor
+
+        Processor task가 자신만의 exit_stack을 소유하여
+        자신이 열은 세션을 자신이 정리 (cancel scope 문제 해결).
+        """
+        # Processor task 전용 exit_stack (이 task에서 열고 이 task에서 닫음)
+        lazy_exit_stack = AsyncExitStack()
+        await lazy_exit_stack.__aenter__()
+
+        try:
+            while True:
+                request = await self._connection_queue.get()
+
+                # 종료 신호
+                if request is None:
+                    break
+
+                server_session_name, tool_config, location, response_queue = request
+
+                try:
+                    # 이미 연결되어 있으면 기존 세션 사용
+                    if server_session_name in self._active_sessions:
+                        session = self._active_sessions[server_session_name]
+                        mcp_tools = await load_mcp_tools(session)
+                        await response_queue.put({
+                            "success": True,
+                            "tools": {t.name: t for t in mcp_tools}
+                        })
+                        continue
+
+                    # 새 연결 생성
+                    endpoint = tool_config.get_endpoint(location)
+                    if not endpoint:
+                        await response_queue.put({
+                            "success": False,
+                            "error": ValueError(f"No endpoint for location '{location}'")
+                        })
+                        continue
+
+                    # 클라이언트 생성 또는 재사용
+                    if server_session_name not in self.clients:
+                        mcp_config = endpoint.to_mcp_config()
+                        self.clients[server_session_name] = MultiServerMCPClient(
+                            {server_session_name: mcp_config}
+                        )
+
+                    # Processor task의 exit_stack에 등록 (같은 task에서 열고 닫음)
+                    client = self.clients[server_session_name]
+                    session = await lazy_exit_stack.enter_async_context(
+                        client.session(server_session_name)
+                    )
+                    self._active_sessions[server_session_name] = session
+
+                    # tool 로드하여 반환
+                    mcp_tools = await load_mcp_tools(session)
+                    await response_queue.put({
+                        "success": True,
+                        "tools": {t.name: t for t in mcp_tools}
+                    })
+
+                except Exception as e:
+                    await response_queue.put({
+                        "success": False,
+                        "error": e
+                    })
+        finally:
+            # Processor task가 자신이 열은 세션을 직접 정리
+            await lazy_exit_stack.__aexit__(None, None, None)
 
     async def initialize(self):
         """
@@ -128,12 +317,27 @@ class EdgeAgentMCPClient:
 
         EDGE/CLOUD SubAgent에서 사용. 각 tool이 독립적인 Knative 서비스로
         배포되어 있으므로 개별 클라이언트가 필요합니다.
+
+        주의: 개별 tool 이름이 전달되어도 부모 MCP 서버 단위로 클라이언트 생성.
+        get_tools()에서 서버 이름으로 클라이언트를 조회하므로 일관성 유지.
         """
+        # 이미 생성된 서버 추적 (중복 방지)
+        created_servers: set[str] = set()
+
         for tool_name in tools_to_connect:
             if self.filter_tools and tool_name not in self.filter_tools:
                 continue
 
-            tool_config = self.registry.get_tool(tool_name)
+            # 개별 tool이면 부모 MCP 서버 이름으로 변환
+            parent_server = self.registry.get_server_for_tool(tool_name)
+            mcp_server_name = parent_server if parent_server else tool_name
+
+            # 이미 생성된 서버면 스킵
+            server_key = f"{mcp_server_name}_{self.filter_location}"
+            if server_key in created_servers:
+                continue
+
+            tool_config = self.registry.get_tool(mcp_server_name)
             if not tool_config:
                 continue
 
@@ -145,14 +349,15 @@ class EdgeAgentMCPClient:
             if not endpoint:
                 continue
 
-            # Server 이름: tool_name_LOCATION
-            server_name = f"{tool_name}_{self.filter_location}"
+            # Server 이름: mcp_server_LOCATION (get_tools()와 일치)
+            server_name = f"{mcp_server_name}_{self.filter_location}"
 
-            # Tool별 개별 클라이언트 생성
+            # 서버별 클라이언트 생성
             mcp_config = endpoint.to_mcp_config()
             self.clients[server_name] = MultiServerMCPClient({
                 server_name: mcp_config
             })
+            created_servers.add(server_key)
 
     async def _initialize_per_location_clients(self, tools_to_connect: list[str]):
         """
@@ -160,36 +365,55 @@ class EdgeAgentMCPClient:
 
         DEVICE 환경 또는 Orchestrator에서 사용. 같은 location의 tool들을
         하나의 클라이언트로 그룹화하여 효율성 향상.
+
+        주의: MCP 서버 단위로 클라이언트를 생성합니다.
+        개별 tool이 아닌 서버만 연결하여 중복 세션 방지.
+        스케줄러의 get_required_locations()에 포함된 location만 초기화.
         """
+        # 스케줄러가 사용하는 location만 초기화
+        required_locations = self.scheduler.get_required_locations()
+
         # Location별 server 설정 그룹화
         servers_by_location: dict[Location, dict] = {
-            "DEVICE": {},
-            "EDGE": {},
-            "CLOUD": {},
+            loc: {} for loc in required_locations
         }
 
-        for tool_name in tools_to_connect:
-            if self.filter_tools and tool_name not in self.filter_tools:
-                continue
+        # MCP 서버만 순회 (개별 tool은 같은 서버 공유)
+        for server_name in self.registry.list_servers():
+            # filter_tools가 설정된 경우, 해당 서버의 tool이 포함되어 있는지 확인
+            if self.filter_tools:
+                # 서버에 속한 tool 중 하나라도 filter_tools에 있으면 연결
+                server_tools = [
+                    t for t in self.registry.list_individual_tools()
+                    if self.registry.get_server_for_tool(t) == server_name
+                ]
+                if not any(t in self.filter_tools for t in server_tools):
+                    # 서버 자체가 filter_tools에 있는지도 확인
+                    if server_name not in self.filter_tools:
+                        continue
 
-            tool_config = self.registry.get_tool(tool_name)
+            tool_config = self.registry.get_tool(server_name)
             if not tool_config:
                 continue
 
             for location in tool_config.available_locations():
+                # 스케줄러가 사용하지 않는 location은 스킵
+                if location not in required_locations:
+                    continue
+
                 endpoint = tool_config.get_endpoint(location)
                 if not endpoint:
                     continue
 
-                # Server 이름: tool_name_LOCATION
-                server_name = f"{tool_name}_{location}"
+                # Server 이름: server_name_LOCATION
+                mcp_server_name = f"{server_name}_{location}"
 
                 # MCP config 생성
                 mcp_config = endpoint.to_mcp_config()
-                servers_by_location[location][server_name] = mcp_config
+                servers_by_location[location][mcp_server_name] = mcp_config
 
         # Location별 MultiServerMCPClient 생성
-        for location in ["DEVICE", "EDGE", "CLOUD"]:
+        for location in required_locations:
             if servers_by_location[location]:
                 self.clients[location] = MultiServerMCPClient(
                     servers_by_location[location]
@@ -199,12 +423,7 @@ class EdgeAgentMCPClient:
         """
         LangChain-compatible tools 로드
 
-        ProxyTool 패턴을 사용하여:
-        - LLM에는 location suffix 없는 tool 노출 (예: read_file)
-        - 각 proxy tool이 내부적으로 여러 location의 backend tool 보유
-        - 호출 시점에 Scheduler가 location 결정
-
-        Context manager 내에서 호출해야 합니다.
+        DEVICE만 초기 연결하여 schema 획득, 이후 스케줄러 선택에 따라 EDGE/CLOUD 연결
 
         Returns:
             LangChain tool 목록 (ProxyTool 인스턴스들)
@@ -218,96 +437,266 @@ class EdgeAgentMCPClient:
         # MCP tool name → {location → backend tool}
         backend_tools_map: dict[str, dict[str, any]] = {}
 
-        # filter_location이 설정된 경우와 아닌 경우 다르게 처리
-        tools_to_load = self.filter_tools or self.registry.list_tools()
+        # MCP 서버 단위로 세션 생성
+        for mcp_server in self.registry.list_servers():
+            # filter_tools 체크
+            if self.filter_tools:
+                server_tools = [
+                    t for t in self.registry.list_individual_tools()
+                    if self.registry.get_server_for_tool(t) == mcp_server
+                ]
+                if not any(t in self.filter_tools for t in server_tools):
+                    if mcp_server not in self.filter_tools:
+                        continue
 
-        for tool_name in tools_to_load:
-            tool_config = self.registry.get_tool(tool_name)
+            tool_config = self.registry.get_tool(mcp_server)
             if not tool_config:
                 continue
 
-            # 로드할 location 결정
+            available_locations = tool_config.available_locations()
+
+            # 초기 연결할 location 결정
             if self.filter_location:
-                # EDGE/CLOUD SubAgent: 해당 location만
-                locations_to_load = [self.filter_location] if self.filter_location in tool_config.available_locations() else []
-            else:
-                # DEVICE/Orchestrator: 모든 available locations
-                locations_to_load = tool_config.available_locations()
-
-            # 각 location별로 backend tool 로드
-            for location in locations_to_load:
-                # 클라이언트 키 결정 (filter_location 여부에 따라 다름)
-                server_name = f"{tool_name}_{location}"
-                if self.filter_location:
-                    # Tool별 개별 클라이언트: 키가 server_name
-                    client = self.clients.get(server_name)
+                # SubAgent: filter_location 사용
+                if self.filter_location in available_locations:
+                    initial_location = self.filter_location
                 else:
-                    # Location별 그룹 클라이언트: 키가 location
-                    client = self.clients.get(location)
-
-                if not client:
-                    print(
-                        f"Warning: No client for '{server_name}' "
-                        f"when loading tool '{tool_name}'"
-                    )
                     continue
+            else:
+                # Orchestrator: required_locations 중 사용 가능한 첫 번째 location
+                required_locations = self.scheduler.get_required_locations()
+                initial_location = None
+                for loc in required_locations:
+                    if loc in available_locations:
+                        initial_location = loc
+                        break
 
-                # MCP session을 통해 tools 로드
-                try:
-                    session = await self._exit_stack.enter_async_context(
-                        client.session(server_name)
-                    )
-                    self._active_sessions[server_name] = session
+            if not initial_location:
+                continue
 
-                    mcp_tools = await load_mcp_tools(session)
+            # 초기 location만 연결 (schema용)
+            await self._connect_and_load_tools(
+                mcp_server, initial_location, tool_config, backend_tools_map
+            )
 
-                    # 각 MCP tool을 backend_tools_map에 저장
-                    for mcp_tool in mcp_tools:
-                        if mcp_tool.name not in backend_tools_map:
-                            backend_tools_map[mcp_tool.name] = {
-                                "_first_tool": mcp_tool,
-                                "_parent_tool": tool_name,
-                            }
-                        backend_tools_map[mcp_tool.name][location] = mcp_tool
-
-                except Exception as e:
-                    print(
-                        f"Error loading tools from '{server_name}' "
-                        f"at {location}: {e}"
-                    )
-                    continue
-
-            # Tool placement 저장 (기본 location)
-            default_location = self.scheduler.get_location(tool_name)
-            self.tool_placement[tool_name] = default_location
+            # Tool placement 저장
+            default_location = self.scheduler.get_location(mcp_server)
+            self.tool_placement[mcp_server] = default_location
 
         # ProxyTool 생성
         proxy_tools = []
         for mcp_tool_name, tool_data in backend_tools_map.items():
             first_tool = tool_data.pop("_first_tool")
             parent_tool = tool_data.pop("_parent_tool")
+            available_locs = tool_data.pop("_available_locations")
 
-            # location → backend tool 매핑만 남김
+            # location → backend tool 매핑
             location_map = tool_data
 
             proxy_tool = LocationAwareProxyTool(
-                name=mcp_tool_name,  # "read_file" (suffix 없음!)
+                name=mcp_tool_name,
                 description=first_tool.description,
                 backend_tools=location_map,
                 scheduler=self.scheduler,
                 parent_tool_name=parent_tool,
-                execution_trace=[],  # 임시 빈 리스트로 초기화
-                metrics_collector=self.metrics_collector,  # 메트릭 수집기 전달
+                execution_trace=[],
+                metrics_collector=self.metrics_collector,
+                client=self,  # lazy loading용
+                config_locations=available_locs,
             )
-            # execution_trace 리스트 참조 공유 (Pydantic model 생성 후)
             object.__setattr__(proxy_tool, 'execution_trace', self.execution_trace)
-            # args_schema는 BaseTool에서 별도로 처리 필요
-            # first_tool에서 직접 복사
             if hasattr(first_tool, 'args_schema') and first_tool.args_schema:
                 proxy_tool.args_schema = first_tool.args_schema
             proxy_tools.append(proxy_tool)
 
         return proxy_tools
+
+    async def get_backend_tools(
+        self,
+        placement_map: dict[str, str],
+    ) -> dict[str, BaseTool]:
+        """
+        placement_map 기반으로 필요한 서버만 연결하고 MetricsWrappedTool 반환
+
+        with_metrics 모드용:
+        - schedule_chain() 결과인 placement_map을 받아서
+        - 필요한 server-location 쌍만 연결
+        - ProxyTool 대신 MetricsWrappedTool 반환 (스케줄링 없음)
+
+        Args:
+            placement_map: {tool_name -> location} 매핑
+
+        Returns:
+            {tool_name -> MetricsWrappedTool} 매핑
+        """
+        if self._exit_stack is None:
+            raise RuntimeError(
+                "EdgeAgentMCPClient must be used as async context manager"
+            )
+
+        # 1. placement_map에서 필요한 server-location 쌍 도출
+        server_location_tools: dict[str, list[str]] = {}
+        for tool_name, location in placement_map.items():
+            parent_server = self.registry.get_server_for_tool(tool_name)
+            if not parent_server:
+                parent_server = tool_name
+            server_location = f"{parent_server}_{location}"
+            if server_location not in server_location_tools:
+                server_location_tools[server_location] = []
+            server_location_tools[server_location].append(tool_name)
+
+        # 2. 필요한 server-location 쌍만 연결
+        backend_tools: dict[str, BaseTool] = {}
+        tool_metadata: dict[str, tuple[str, str]] = {}  # tool_name -> (parent_server, location)
+
+        for server_location, tool_names in server_location_tools.items():
+            parts = server_location.rsplit("_", 1)
+            if len(parts) != 2:
+                continue
+            server_name, location = parts
+
+            tool_config = self.registry.get_tool(server_name)
+            if not tool_config:
+                continue
+
+            endpoint = tool_config.get_endpoint(location)
+            if not endpoint:
+                continue
+
+            # 세션이 없으면 연결
+            if server_location not in self._active_sessions:
+                if server_location not in self.clients:
+                    mcp_config = endpoint.to_mcp_config()
+                    self.clients[server_location] = MultiServerMCPClient({
+                        server_location: mcp_config
+                    })
+
+                client = self.clients[server_location]
+                session = await self._exit_stack.enter_async_context(
+                    client.session(server_location)
+                )
+                self._active_sessions[server_location] = session
+
+            # tool 로드
+            session = self._active_sessions[server_location]
+            mcp_tools = await load_mcp_tools(session)
+
+            for mcp_tool in mcp_tools:
+                # placement_map의 location과 현재 location이 일치하는 경우만 추가
+                if mcp_tool.name in placement_map and placement_map[mcp_tool.name] == location:
+                    backend_tools[mcp_tool.name] = mcp_tool
+                    tool_metadata[mcp_tool.name] = (server_name, location)
+
+        # 3. MetricsWrappedTool로 감싸서 반환
+        wrapped_tools: dict[str, BaseTool] = {}
+        for tool_name, backend_tool in backend_tools.items():
+            parent_server, location = tool_metadata[tool_name]
+            wrapped_tool = MetricsWrappedTool(
+                name=tool_name,
+                description=backend_tool.description,
+                backend_tool=backend_tool,
+                location=location,
+                parent_tool_name=parent_server,
+                metrics_collector=self.metrics_collector,
+            )
+            if hasattr(backend_tool, 'args_schema') and backend_tool.args_schema:
+                wrapped_tool.args_schema = backend_tool.args_schema
+            wrapped_tools[tool_name] = wrapped_tool
+
+        return wrapped_tools
+
+    async def _connect_and_load_tools(
+        self,
+        mcp_server: str,
+        location: str,
+        tool_config,
+        backend_tools_map: dict,
+    ):
+        """특정 location의 MCP 서버 연결 및 tool 로드"""
+        server_session_name = f"{mcp_server}_{location}"
+
+        # 이미 세션이 있으면 스킵
+        if server_session_name in self._active_sessions:
+            return
+
+        # MultiServerMCPClient 생성 - 키를 server_session_name으로 사용 (클라이언트 교체 방지)
+        if server_session_name not in self.clients:
+            endpoint = tool_config.get_endpoint(location)
+            if not endpoint:
+                return
+            mcp_config = endpoint.to_mcp_config()
+            self.clients[server_session_name] = MultiServerMCPClient({
+                server_session_name: mcp_config
+            })
+
+        client = self.clients.get(server_session_name)
+        if not client:
+            return
+
+        try:
+            session = await self._exit_stack.enter_async_context(
+                client.session(server_session_name)
+            )
+            self._active_sessions[server_session_name] = session
+
+            mcp_tools = await load_mcp_tools(session)
+
+            # backend_tools_map에 저장
+            available_locs = tool_config.available_locations()
+            for mcp_tool in mcp_tools:
+                if mcp_tool.name not in backend_tools_map:
+                    backend_tools_map[mcp_tool.name] = {
+                        "_first_tool": mcp_tool,
+                        "_parent_tool": mcp_server,
+                        "_available_locations": available_locs,
+                    }
+                backend_tools_map[mcp_tool.name][location] = mcp_tool
+
+        except Exception as e:
+            print(f"Error loading tools from '{server_session_name}': {e}")
+
+    async def ensure_location_connected(self, tool_name: str, location: str):
+        """
+        스케줄러 선택에 따라 해당 location의 서버 lazy 연결
+
+        Queue를 통해 메인 task에서 연결을 처리하여 cancel scope 문제 해결.
+
+        Returns:
+            dict[str, BaseTool]: tool_name -> MCP tool 매핑
+        """
+        # parent server 찾기
+        parent_server = self.registry.get_server_for_tool(tool_name)
+        if not parent_server:
+            parent_server = tool_name
+
+        server_session_name = f"{parent_server}_{location}"
+
+        # 이미 연결되어 있으면 세션에서 tool 로드하여 반환
+        if server_session_name in self._active_sessions:
+            session = self._active_sessions[server_session_name]
+            mcp_tools = await load_mcp_tools(session)
+            return {t.name: t for t in mcp_tools}
+
+        tool_config = self.registry.get_tool(parent_server)
+        if not tool_config:
+            raise ValueError(f"Tool config not found for '{parent_server}'")
+
+        if location not in tool_config.available_locations():
+            raise ValueError(f"Location '{location}' not available for '{parent_server}'")
+
+        # Queue를 통해 메인 task에 연결 요청
+        response_queue = asyncio.Queue()
+        await self._connection_queue.put(
+            (server_session_name, tool_config, location, response_queue)
+        )
+
+        # 메인 task의 응답 대기
+        result = await response_queue.get()
+
+        if result["success"]:
+            return result["tools"]
+        else:
+            raise result["error"]
 
     @asynccontextmanager
     async def session(self, tool_name: str):
@@ -325,21 +714,26 @@ class EdgeAgentMCPClient:
         # Location 결정
         location = self.scheduler.get_location(tool_name)
 
-        # Client 가져오기
-        client = self.clients.get(location)
-        if not client:
-            raise ValueError(f"No client available for location: {location}")
+        # Parent server 찾기 (tool이 MCP 서버의 개별 tool일 수 있음)
+        parent_server = self.registry.get_server_for_tool(tool_name)
+        if not parent_server:
+            parent_server = tool_name
 
-        # Server 이름
-        server_name = f"{tool_name}_{location}"
+        # Server session 이름
+        server_session_name = f"{parent_server}_{location}"
+
+        # Client 가져오기 - server_session_name 키로 조회
+        client = self.clients.get(server_session_name)
+        if not client:
+            raise ValueError(f"No client available for session: {server_session_name}")
 
         # Session 제공
-        async with client.session(server_name) as session:
+        async with client.session(server_session_name) as session:
             # Trace 기록
             self.execution_trace.append({
                 "tool": tool_name,
                 "location": location,
-                "server": server_name,
+                "server": server_session_name,
             })
 
             yield session

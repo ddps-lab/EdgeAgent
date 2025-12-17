@@ -95,7 +95,7 @@ async def test_device_only() -> TestResult:
     print("=" * 70)
 
     # 테스트 파일 생성
-    test_dir = Path("/tmp/edgeagent_device")
+    test_dir = Path("/tmp/edgeagent_device_hy")
     test_dir.mkdir(parents=True, exist_ok=True)
     test_file = test_dir / "test_device.txt"
     test_file.write_text("Hello from DEVICE tier!\nThis is a test file.")
@@ -209,7 +209,7 @@ async def test_device_to_edge() -> TestResult:
     print("=" * 70)
 
     # 테스트 로그 파일 생성
-    test_dir = Path("/tmp/edgeagent_device")
+    test_dir = Path("/tmp/edgeagent_device_hy")
     test_dir.mkdir(parents=True, exist_ok=True)
     log_file = test_dir / "server.log"
     log_file.write_text("""2025-01-01 10:00:00 INFO Application started
@@ -254,7 +254,7 @@ async def test_device_to_cloud() -> TestResult:
     print("=" * 70)
 
     # 테스트 문서 파일 생성
-    test_dir = Path("/tmp/edgeagent_device")
+    test_dir = Path("/tmp/edgeagent_device_hy")
     test_dir.mkdir(parents=True, exist_ok=True)
     doc_file = test_dir / "document.txt"
     doc_file.write_text("""EdgeAgent Research Summary
@@ -341,7 +341,7 @@ async def test_device_edge_cloud() -> TestResult:
     print("=" * 70)
 
     # 테스트 로그 파일 생성
-    test_dir = Path("/tmp/edgeagent_device")
+    test_dir = Path("/tmp/edgeagent_device_hy")
     test_dir.mkdir(parents=True, exist_ok=True)
     log_file = test_dir / "app.log"
     log_file.write_text("""2025-01-01 10:00:00 INFO Application started successfully

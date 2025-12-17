@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Scenario 3: Research Assistant Pipeline - LLM Agent Version
+Scenario 03: Research Assistant Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
 to complete the research task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
-
-Comparison with run_scenario3_with_metrics.py:
-- Script version: Hardcoded sequential tool calls (orchestration)
-- Agent version: LLM autonomously selects tools (autonomous agent)
 
 Tool Chain (expected, but LLM decides):
     fetch -> summarize -> aggregate -> filesystem(write)
     EDGE    EDGE        EDGE        DEVICE
 """
 
+import argparse
 import asyncio
 import os
 from pathlib import Path
@@ -28,6 +25,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from edgeagent.registry import ToolRegistry
+from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
 from scripts.agent_utils import run_agent_with_logging
 
 
@@ -47,7 +46,7 @@ def load_s2orc_urls(max_urls: int = 3) -> tuple[list[str], str]:
     Returns:
         Tuple of (urls, data_source_description)
     """
-    s2orc_dir = Path(__file__).parent.parent / "data" / "scenario3" / "s2orc"
+    s2orc_dir = Path(__file__).parent.parent / "data" / "scenario03" / "s2orc"
     paper_urls_file = s2orc_dir / "paper_urls.txt"
 
     if paper_urls_file.exists():
@@ -82,7 +81,7 @@ When conducting research, follow this workflow:
 3. Aggregate the summaries using aggregate_list or combine_research_results
 4. Write a comprehensive research report using write_file
 
-Write the final report to /tmp/edgeagent_device/agent_research_report.md
+Write the final report to /tmp/edgeagent_device_hy/agent_research_report.md
 
 Include in your report:
 - Overview of the research topic
@@ -103,11 +102,12 @@ class AgentResearchAssistantScenario(ScenarioRunner):
     def __init__(
         self,
         config_path: str | Path,
-        output_dir: str | Path = "results/scenario3_agent",
+        output_dir: str | Path = "results/scenario03_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
+        scheduler=None,
     ):
-        super().__init__(config_path, output_dir)
+        super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
 
@@ -125,7 +125,7 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         return (
             f"Research the topic of AI agents by fetching and analyzing these URLs: {urls_str}. "
             "Summarize each source, synthesize the findings, and write a comprehensive "
-            "research report to /tmp/edgeagent_device/agent_research_report.md"
+            "research report to /tmp/edgeagent_device_hy/agent_research_report.md"
         )
 
     async def execute(
@@ -140,7 +140,7 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         tools = [t for t in tools if t.name not in excluded_tools]
 
         # Ensure output directory exists
-        Path("/tmp/edgeagent_device").mkdir(parents=True, exist_ok=True)
+        Path("/tmp/edgeagent_device_hy").mkdir(parents=True, exist_ok=True)
 
         print("-" * 70)
         print("LLM Agent Research Assistant")
@@ -198,7 +198,7 @@ class AgentResearchAssistantScenario(ScenarioRunner):
             client.metrics_collector.add_custom_metric("urls_researched", len(RESEARCH_URLS))
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device/agent_research_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/agent_research_report.md")
         if report_path.exists():
             report_content = report_path.read_text()
             print(f"Report written to: {report_path}")
@@ -212,6 +212,15 @@ class AgentResearchAssistantScenario(ScenarioRunner):
 async def main():
     """Run the LLM Agent-based Research Assistant scenario"""
 
+    parser = argparse.ArgumentParser(description="Run Scenario 03 with LLM Agent")
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
+    args = parser.parse_args()
+
     # Load environment variables
     load_dotenv()
 
@@ -221,20 +230,30 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 3: Research Assistant Pipeline (LLM Agent Version)")
+    print("Scenario 03: Research Assistant Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
     print("which tools to call and in what order.")
+    print(f"Scheduler: {args.scheduler}")
     print()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario3.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario03.yaml"
+    system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+
+    # Create scheduler
+    registry = ToolRegistry.from_yaml(config_path)
+    if args.scheduler == "brute_force":
+        scheduler = BruteForceChainScheduler(config_path, system_config_path, registry)
+    else:
+        scheduler = create_scheduler(args.scheduler, config_path, registry)
 
     scenario = AgentResearchAssistantScenario(
         config_path=config_path,
-        output_dir="results/scenario3_agent",
+        output_dir="results/scenario03_agent",
         model="gpt-4o-mini",
         temperature=0,
+        scheduler=scheduler,
     )
 
     result = await scenario.run(
@@ -243,16 +262,24 @@ async def main():
     )
 
     # Additional analysis
-    if result.metrics:
+    if result.execution_trace:
         print()
         print("=" * 70)
-        print("Agent Execution Trace")
+        print("Agent Execution Trace (Scheduler Results)")
         print("=" * 70)
-        for i, trace in enumerate(result.metrics.to_execution_trace(), 1):
-            print(f"  {i}. {trace['tool']} -> {trace['location']}")
+        for i, trace in enumerate(result.execution_trace, 1):
+            fixed_mark = "[FIXED]" if trace.get('fixed') else ""
+            if args.scheduler == "brute_force":
+                cost = trace.get('cost', 0)
+                comp = trace.get('comp', 0)
+                comm = trace.get('comm', 0)
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+            else:
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} {fixed_mark}")
 
+    if result.metrics:
         # Export metrics
-        csv_path = result.metrics.save_csv("results/scenario3_agent/metrics.csv")
+        csv_path = result.metrics.save_csv("results/scenario03_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")
 
     return result.success

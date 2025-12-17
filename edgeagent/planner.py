@@ -15,12 +15,15 @@ Usage:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from pathlib import Path
 
 from .types import Location, LOCATIONS
 from .scheduler import BaseScheduler
 from .registry import ToolRegistry
+
+if TYPE_CHECKING:
+    from .types import ChainSchedulingResult
 
 
 @dataclass
@@ -52,6 +55,7 @@ class ExecutionPlan:
     partitions: list[Partition] = field(default_factory=list)
     tool_sequence: list[str] = field(default_factory=list)
     total_tools: int = 0
+    chain_scheduling_result: Optional["ChainSchedulingResult"] = None
 
     def add_partition(self, partition: Partition):
         """Partition 추가"""
@@ -218,6 +222,81 @@ class ToolSequencePlanner:
                             }
                         partition.add_tool(tool_name, tool_config)
                     plan.add_partition(partition)
+
+        return plan
+
+    def create_execution_plan_with_chain_scheduler(
+        self,
+        tool_names: list[str],
+        chain_scheduler: "BruteForceChainScheduler",
+        tool_args: Optional[list[dict]] = None,
+    ) -> ExecutionPlan:
+        """
+        BruteForceChainScheduler를 사용한 실행 계획 생성
+
+        전체 tool chain을 한 번에 최적화하여 각 tool의 실행 위치를 결정합니다.
+        StaticScheduler와 달리 chain 전체의 비용을 고려하여 최적 배치를 찾습니다.
+
+        Args:
+            tool_names: Tool 이름 목록 (실행 순서대로)
+            chain_scheduler: BruteForceChainScheduler 인스턴스
+            tool_args: 각 Tool의 인자 리스트 (optional, local_data 처리용)
+
+        Returns:
+            ExecutionPlan: 최적화된 실행 계획
+
+        Example:
+            tool_names = ["filesystem", "image_resize", "data_aggregate", "filesystem"]
+
+            BruteForceChainScheduler가 전체 chain 비용을 최소화하는 배치 결정:
+                filesystem → DEVICE (local_data로 고정)
+                image_resize → EDGE (Score 기반 최적화)
+                data_aggregate → EDGE (Score 기반 최적화)
+                filesystem → DEVICE (local_data로 고정)
+        """
+        plan = ExecutionPlan(tool_sequence=tool_names)
+
+        if not tool_names:
+            return plan
+
+        # 전체 chain 최적화
+        chain_result = chain_scheduler.schedule_chain(tool_names, tool_args)
+
+        # ChainSchedulingResult → Partition 변환
+        current_partition: Optional[Partition] = None
+
+        for placement in chain_result.placements:
+            tool_name = placement.tool_name
+            location = placement.location
+
+            endpoint = self.registry.get_endpoint(tool_name, location)
+            tool_config = {}
+            if endpoint:
+                tool_config = {
+                    "transport": endpoint.transport,
+                    "command": endpoint.command,
+                    "args": endpoint.args,
+                }
+
+            if current_partition is None:
+                # 첫 번째 partition 시작
+                current_partition = Partition(location=location)
+                current_partition.add_tool(tool_name, tool_config)
+            elif current_partition.location == location:
+                # 같은 location이면 현재 partition에 추가
+                current_partition.add_tool(tool_name, tool_config)
+            else:
+                # 다른 location이면 새 partition 시작
+                plan.add_partition(current_partition)
+                current_partition = Partition(location=location)
+                current_partition.add_tool(tool_name, tool_config)
+
+        # 마지막 partition 추가
+        if current_partition:
+            plan.add_partition(current_partition)
+
+        # Chain scheduling 결과 저장
+        plan.chain_scheduling_result = chain_result
 
         return plan
 

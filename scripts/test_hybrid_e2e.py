@@ -67,7 +67,7 @@ async def test_s2_log_analysis():
     orchestrator = SubAgentOrchestrator(config_path, orch_config)
 
     # 테스트용 로그 파일 생성
-    log_dir = Path("/tmp/edgeagent_device")
+    log_dir = Path("/tmp/edgeagent_device_hy")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "server.log"
     log_file.write_text("""2025-01-01 10:00:00 INFO Application started
@@ -82,7 +82,7 @@ async def test_s2_log_analysis():
 """)
 
     user_request = """
-    Analyze the server log file at /tmp/edgeagent_device/server.log.
+    Analyze the server log file at /tmp/edgeagent_device_hy/server.log.
     1. Read the log file
     2. Summarize the errors and warnings found
 
@@ -225,7 +225,7 @@ async def test_device_only():
 
     orchestrator = SubAgentOrchestrator(config_path, orch_config)
 
-    user_request = "List the files in /tmp/edgeagent_device/ directory"
+    user_request = "List the files in /tmp/edgeagent_device_hy/ directory"
     tool_sequence = ["filesystem"]
 
     print(f"\nUser Request: {user_request}")

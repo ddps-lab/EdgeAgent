@@ -4,6 +4,7 @@ EdgeAgent Type Definitions
 기본 타입 및 상수 정의
 """
 
+from dataclasses import dataclass, field
 from typing import Literal
 
 # ============================================================================
@@ -89,3 +90,73 @@ MCP 서버 연결 방식
 - stdio: 로컬 프로세스 (stdin/stdout)
 - streamable_http: HTTP/SSE 기반 원격 연결
 """
+
+
+# ============================================================================
+# Data Locality Types (Score-based Scheduling)
+# ============================================================================
+
+DataLocality = Literal["args_only", "external_data", "local_data"]
+"""
+Tool의 데이터 접근 유형
+
+- args_only (Type A): 데이터가 args로 전달됨 → Score 기반 노드 선택
+- external_data (Type B): 외부 API 접근 → Score 기반 + β 패널티
+- local_data (Type C): 로컬 파일 접근 → 경로 기반 노드 결정 (Score 무시)
+"""
+
+
+# ============================================================================
+# Chain Scheduling Types
+# ============================================================================
+
+@dataclass
+class ToolPlacement:
+    """
+    단일 Tool의 배치 정보
+
+    Score(i, u, v) = α * { ExecCost(i, u) + β } + (1-α) * TransCost(v → u)
+    """
+    tool_name: str
+    location: Location
+    score: float
+    exec_cost: float
+    trans_cost: float
+    fixed: bool = False  # Type C (local_data)로 고정된 경우
+
+
+@dataclass
+class ChainSchedulingResult:
+    """
+    Tool Chain 전체의 스케줄링 결과
+
+    Brute-force 완전 탐색으로 최적 노드 배치 조합을 찾은 결과
+    """
+    placements: list[ToolPlacement]
+    total_score: float
+    search_space_size: int
+    valid_combinations: int
+    optimization_method: str  # "brute_force"
+    decision_time_ns: int
+
+    def get_location(self, tool_name: str) -> Location:
+        """특정 Tool의 배치된 노드 반환"""
+        for p in self.placements:
+            if p.tool_name == tool_name:
+                return p.location
+        raise KeyError(f"Tool not found: {tool_name}")
+
+    def print_chain(self):
+        """Chain 배치 출력 (* = 고정 노드)"""
+        parts = []
+        for p in self.placements:
+            prefix = "*" if p.fixed else ""
+            parts.append(f"{prefix}{p.location[0]}")
+        print(" → ".join(parts))
+
+    def print_details(self):
+        """상세 배치 출력"""
+        for p in self.placements:
+            fixed_mark = " [fixed]" if p.fixed else ""
+            print(f"  {p.tool_name} @ {p.location} "
+                  f"(score: {p.score:.2f}, exec: {p.exec_cost:.2f}, trans: {p.trans_cost:.2f}){fixed_mark}")

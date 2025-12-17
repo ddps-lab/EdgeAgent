@@ -27,9 +27,9 @@ from edgeagent.middleware import EdgeAgentMCPClient
 
 async def setup_test_environment():
     """테스트용 파일 생성"""
-    device_dir = Path("/tmp/edgeagent_device")
-    edge_dir = Path("/tmp/edgeagent_edge")
-    cloud_dir = Path("/tmp/edgeagent_cloud")
+    device_dir = Path("/tmp/edgeagent_device_hy")
+    edge_dir = Path("/tmp/edgeagent_edge_hy")
+    cloud_dir = Path("/tmp/edgeagent_cloud_hy")
 
     for dir_path in [device_dir, edge_dir, cloud_dir]:
         dir_path.mkdir(exist_ok=True)
@@ -71,7 +71,7 @@ async def test_single_file_read(agent, client):
     print("Test 1: 단일 파일 읽기 (DEVICE routing)")
     print("=" * 70)
 
-    prompt = "Read the file at /tmp/edgeagent_device/user_config.txt and tell me what's in it."
+    prompt = "Read the file at /tmp/edgeagent_device_hy/user_config.txt and tell me what's in it."
     print(f"\nPrompt: {prompt}\n")
 
     # 이전 trace 개수 기록
@@ -107,8 +107,8 @@ async def test_multi_location_comparison(agent, client):
     print("=" * 70)
 
     prompt = """I need to check two files:
-1. /tmp/edgeagent_device/user_config.txt
-2. /tmp/edgeagent_edge/server_status.txt
+1. /tmp/edgeagent_device_hy/user_config.txt
+2. /tmp/edgeagent_edge_hy/server_status.txt
 
 Please read both files and summarize what you found."""
 
@@ -145,7 +145,7 @@ async def test_cloud_routing(agent, client):
     print("Test 3: CLOUD 파일 읽기")
     print("=" * 70)
 
-    prompt = "Read /tmp/edgeagent_cloud/report.txt and give me the revenue figure."
+    prompt = "Read /tmp/edgeagent_cloud_hy/report.txt and give me the revenue figure."
     print(f"\nPrompt: {prompt}\n")
 
     trace_before = len(client.execution_trace)
@@ -176,7 +176,7 @@ async def test_file_write(agent, client):
     print("Test 4: 파일 쓰기 (EDGE routing)")
     print("=" * 70)
 
-    prompt = "Create a file at /tmp/edgeagent_edge/test_output.txt with the content 'Hello from LLM Agent!'"
+    prompt = "Create a file at /tmp/edgeagent_edge_hy/test_output.txt with the content 'Hello from LLM Agent!'"
     print(f"\nPrompt: {prompt}\n")
 
     trace_before = len(client.execution_trace)
@@ -191,7 +191,7 @@ async def test_file_write(agent, client):
         print(f"Routing: tool={trace['tool']}, location={trace['location']}")
 
         # 파일이 실제로 생성되었는지 확인
-        test_file = Path("/tmp/edgeagent_edge/test_output.txt")
+        test_file = Path("/tmp/edgeagent_edge_hy/test_output.txt")
         if test_file.exists() and trace["location"] == "EDGE":
             print(f"File content: {test_file.read_text()}")
             print("[PASS] EDGE에 파일 생성됨")

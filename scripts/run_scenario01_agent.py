@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Scenario 1: Code Review Pipeline - LLM Agent Version
+Scenario 01: Code Review Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
 to complete the code review task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
-
-Comparison with run_scenario1_with_metrics.py:
-- Script version: Hardcoded sequential tool calls (orchestration)
-- Agent version: LLM autonomously selects tools (autonomous agent)
 
 Tool Chain (expected, but LLM decides):
     filesystem -> git -> summarize -> data_aggregate -> filesystem(write)
     DEVICE       DEVICE  EDGE        EDGE             DEVICE
 """
 
+import argparse
 import asyncio
 import os
 import shutil
@@ -29,6 +26,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from edgeagent.registry import ToolRegistry
+from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
 from scripts.agent_utils import run_agent_with_logging
 
 
@@ -38,7 +37,7 @@ def load_repo_source() -> tuple[Path, str]:
     Returns:
         Tuple of (repo_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario01"
     defects4j_dir = data_dir / "defects4j"
     sample_repo = data_dir / "sample_repo"
 
@@ -72,7 +71,7 @@ You have access to the following tools:
 
 IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
 
-The repository is located at /tmp/edgeagent_device/repo
+The repository is located at /tmp/edgeagent_device_hy/repo
 
 When conducting code review, follow this workflow:
 1. List the repository files to understand the structure
@@ -80,7 +79,7 @@ When conducting code review, follow this workflow:
 3. Get git log to see recent commits (use max_count=5)
 4. Get git diff to see recent code changes
 5. Summarize the changes
-6. Write a comprehensive code review report to /tmp/edgeagent_device/agent_code_review_report.md
+6. Write a comprehensive code review report to /tmp/edgeagent_device_hy/agent_code_review_report.md
 
 Include in your report:
 - Repository overview
@@ -101,11 +100,12 @@ class AgentCodeReviewScenario(ScenarioRunner):
     def __init__(
         self,
         config_path: str | Path,
-        output_dir: str | Path = "results/scenario1_agent",
+        output_dir: str | Path = "results/scenario01_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
+        scheduler=None,
     ):
-        super().__init__(config_path, output_dir)
+        super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
         self._repo_source = None
@@ -117,7 +117,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
         self._repo_source = repo_source
         self._data_source = data_source
 
-        device_repo = Path("/tmp/edgeagent_device/repo")
+        device_repo = Path("/tmp/edgeagent_device_hy/repo")
         device_repo.parent.mkdir(parents=True, exist_ok=True)
         if device_repo.exists():
             shutil.rmtree(device_repo)
@@ -134,9 +134,9 @@ class AgentCodeReviewScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Review the Git repository at /tmp/edgeagent_device/repo. "
+            "Review the Git repository at /tmp/edgeagent_device_hy/repo. "
             "Analyze the commit history, code changes, and generate a comprehensive "
-            "code review report to /tmp/edgeagent_device/agent_code_review_report.md"
+            "code review report to /tmp/edgeagent_device_hy/agent_code_review_report.md"
         )
 
     async def execute(
@@ -146,7 +146,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
     ) -> Any:
         """Execute code review using LLM Agent"""
 
-        device_repo = Path("/tmp/edgeagent_device/repo")
+        device_repo = Path("/tmp/edgeagent_device_hy/repo")
 
         # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
         excluded_tools = {"directory_tree"}
@@ -205,7 +205,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
             client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device/agent_code_review_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/agent_code_review_report.md")
         if report_path.exists():
             report_content = report_path.read_text()
             print(f"Report written to: {report_path}")
@@ -219,6 +219,15 @@ class AgentCodeReviewScenario(ScenarioRunner):
 async def main():
     """Run the LLM Agent-based Code Review scenario"""
 
+    parser = argparse.ArgumentParser(description="Run Scenario 01 with LLM Agent")
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
+    args = parser.parse_args()
+
     # Load environment variables
     load_dotenv()
 
@@ -228,20 +237,30 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 1: Code Review Pipeline (LLM Agent Version)")
+    print("Scenario 01: Code Review Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
     print("which tools to call and in what order.")
+    print(f"Scheduler: {args.scheduler}")
     print()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario01.yaml"
+    system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+
+    # Create scheduler
+    registry = ToolRegistry.from_yaml(config_path)
+    if args.scheduler == "brute_force":
+        scheduler = BruteForceChainScheduler(config_path, system_config_path, registry)
+    else:
+        scheduler = create_scheduler(args.scheduler, config_path, registry)
 
     scenario = AgentCodeReviewScenario(
         config_path=config_path,
-        output_dir="results/scenario1_agent",
+        output_dir="results/scenario01_agent",
         model="gpt-4o-mini",
         temperature=0,
+        scheduler=scheduler,
     )
 
     result = await scenario.run(
@@ -250,16 +269,24 @@ async def main():
     )
 
     # Additional analysis
-    if result.metrics:
+    if result.execution_trace:
         print()
         print("=" * 70)
-        print("Agent Execution Trace")
+        print("Agent Execution Trace (Scheduler Results)")
         print("=" * 70)
-        for i, trace in enumerate(result.metrics.to_execution_trace(), 1):
-            print(f"  {i}. {trace['tool']} -> {trace['location']}")
+        for i, trace in enumerate(result.execution_trace, 1):
+            fixed_mark = "[FIXED]" if trace.get('fixed') else ""
+            if args.scheduler == "brute_force":
+                cost = trace.get('cost', 0)
+                comp = trace.get('comp', 0)
+                comm = trace.get('comm', 0)
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+            else:
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} {fixed_mark}")
 
+    if result.metrics:
         # Export metrics
-        csv_path = result.metrics.save_csv("results/scenario1_agent/metrics.csv")
+        csv_path = result.metrics.save_csv("results/scenario01_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")
 
     return result.success

@@ -7,9 +7,9 @@ This script supports both execution modes:
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario4_orchestrated.py --mode legacy
-    python scripts/run_scenario4_orchestrated.py --mode subagent
-    python scripts/run_scenario4_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario04_orchestrated.py --mode legacy
+    python scripts/run_scenario04_orchestrated.py --mode subagent
+    python scripts/run_scenario04_orchestrated.py --compare  # Run both and compare
 
 Tool Chain:
     filesystem(scan) -> image_resize(hash,batch) -> data_aggregate -> filesystem(write)
@@ -49,6 +49,9 @@ class ExecutionResult:
     partition_times: list[float] = field(default_factory=list)
     final_result: str = ""
     error: str = ""
+    scheduler_type: str = ""
+    metrics_entries: list[dict] = field(default_factory=list)
+    placement_map: dict = field(default_factory=dict)
 
 
 def load_image_source() -> tuple[Path, str]:
@@ -73,7 +76,7 @@ def prepare_images() -> tuple[Path, str, int]:
     """Prepare images at device location"""
     image_source, data_source = load_image_source()
 
-    device_images = Path("/tmp/edgeagent_device/images")
+    device_images = Path("/tmp/edgeagent_device_hy/images")
     device_images.mkdir(parents=True, exist_ok=True)
 
     # Clear existing images
@@ -95,14 +98,14 @@ IMAGE_PATH, DATA_SOURCE, IMAGE_COUNT = prepare_images()
 
 
 USER_REQUEST = """
-Process images at /tmp/edgeagent_device/images.
+Process images at /tmp/edgeagent_device_hy/images.
 
 Please:
 1. List the directory contents using list_directory to find image files
 2. For each image, compute a perceptual hash using compute_image_hash (hash_type="phash")
 3. Find duplicate images using compare_hashes with threshold=5
 4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
-5. Write an image processing report to /tmp/edgeagent_device/image_report.md
+5. Write an image processing report to /tmp/edgeagent_device_hy/image_report.md
 
 The report should include:
 - Number of images found
@@ -114,7 +117,8 @@ Return a summary of the image processing results.
 """
 
 # Tool sequence for Sub-Agent mode (order matters)
-TOOL_SEQUENCE = ["filesystem", "image_resize", "data_aggregate", "filesystem"]
+# 개별 tool 이름 사용 (서버 이름 아님) - Scheduler가 정확한 profile 참조 가능
+TOOL_SEQUENCE = ["list_directory", "scan_directory", "batch_resize", "aggregate_list", "write_file"]
 
 
 async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
@@ -182,10 +186,10 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
         )
 
 
-async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
+async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "brute_force") -> ExecutionResult:
     """Run with Sub-Agent Orchestration mode"""
     print("\n" + "=" * 70)
-    print("SUBAGENT MODE: Location-Aware Orchestration")
+    print(f"SUBAGENT MODE: Location-Aware Orchestration (scheduler={scheduler})")
     print("=" * 70)
 
     start_time = time.time()
@@ -199,7 +203,13 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             max_iterations=15,  # More iterations for multiple images
         )
 
-        orchestrator = SubAgentOrchestrator(config_path, config)
+        system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+        orchestrator = SubAgentOrchestrator(
+            config_path,
+            config,
+            system_config_path=system_config_path,
+            scheduler_type=scheduler,
+        )
 
         # Show execution plan
         print("\nExecution Plan:")
@@ -216,12 +226,25 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
 
         elapsed = (time.time() - start_time) * 1000
 
-        # Extract partition times
+        # Extract partition times and metrics
         partition_times = []
+        metrics_entries = []
         if result.partition_results:
             for pr in result.partition_results:
                 if "execution_time_ms" in pr:
                     partition_times.append(pr["execution_time_ms"])
+                if "metrics_entries" in pr:
+                    metrics_entries.extend(pr["metrics_entries"])
+
+        # Get placement map from execution plan
+        placement_map = {}
+        plan = orchestrator.get_execution_plan(TOOL_SEQUENCE)
+        if plan.chain_scheduling_result:
+            placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
+        else:
+            for partition in plan.partitions:
+                for tool in partition.tools:
+                    placement_map[tool] = partition.location
 
         return ExecutionResult(
             mode="subagent",
@@ -232,6 +255,9 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             partition_times=partition_times,
             final_result=str(result.final_result)[:500] if result.final_result else "",
             error=result.error or "",
+            scheduler_type=scheduler,
+            metrics_entries=metrics_entries,
+            placement_map=placement_map,
         )
 
     except Exception as e:
@@ -249,20 +275,55 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
 def print_result(result: ExecutionResult):
     """Print execution result"""
     print(f"\n--- {result.mode.upper()} Result ---")
+    if result.scheduler_type:
+        print(f"Scheduler: {result.scheduler_type}")
     print(f"Success: {result.success}")
     print(f"Total time: {result.total_time_ms:.0f}ms")
     print(f"Tool calls: {result.tool_calls}")
+    print(f"Metrics entries: {len(result.metrics_entries)}")
 
     if result.partitions > 0:
         print(f"Partitions: {result.partitions}")
         if result.partition_times:
             print(f"Partition times: {[f'{t:.0f}ms' for t in result.partition_times]}")
 
+    if result.placement_map:
+        print(f"\nPlacement Map:")
+        for tool, location in result.placement_map.items():
+            print(f"  {tool:25} -> {location}")
+
     if result.error:
-        print(f"Error: {result.error[:300]}")
+        print(f"\nError: {result.error[:300]}")
 
     if result.final_result:
         print(f"\nResult preview:\n{result.final_result[:300]}...")
+
+
+def save_result(result: ExecutionResult, output_dir: str = "results/scenario04_orchestrated"):
+    """Save execution result to JSON file"""
+    import time as time_module
+    import json
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    result_dict = {
+        "scenario_name": "image_processing",
+        "mode": result.mode,
+        "scheduler_type": result.scheduler_type,
+        "success": result.success,
+        "total_time_ms": result.total_time_ms,
+        "tool_calls": result.tool_calls,
+        "partitions": result.partitions,
+        "partition_times": result.partition_times,
+        "placement_map": result.placement_map,
+        "metrics_entries": result.metrics_entries,
+        "tool_call_count": len(result.metrics_entries),
+        "error": result.error if result.error else None,
+    }
+
+    output_path = Path(output_dir) / f"image_processing_{result.mode}_{int(time_module.time())}.json"
+    with open(output_path, "w") as f:
+        json.dump(result_dict, f, indent=2)
+    print(f"Results saved to: {output_path}")
 
 
 def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
@@ -309,6 +370,12 @@ async def main():
         default="gpt-4o-mini",
         help="LLM model to use (default: gpt-4o-mini)",
     )
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
 
     args = parser.parse_args()
 
@@ -324,19 +391,22 @@ async def main():
     print(f"Data Source: {DATA_SOURCE}")
     print(f"Images: {IMAGE_COUNT} at {IMAGE_PATH}")
     print(f"Model: {args.model}")
+    print(f"Scheduler: {args.scheduler}")
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario4.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario04.yaml"
 
     if args.compare:
         # Run both modes
         legacy_result = await run_legacy_mode(config_path, args.model)
         print_result(legacy_result)
+        save_result(legacy_result)
 
         # Re-prepare images for subagent mode
         prepare_images()
 
-        subagent_result = await run_subagent_mode(config_path, args.model)
+        subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(subagent_result)
+        save_result(subagent_result)
 
         compare_results(legacy_result, subagent_result)
 
@@ -345,11 +415,13 @@ async def main():
     elif args.mode == "legacy":
         result = await run_legacy_mode(config_path, args.model)
         print_result(result)
+        save_result(result)
         return result.success
 
     else:  # subagent
-        result = await run_subagent_mode(config_path, args.model)
+        result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(result)
+        save_result(result)
         return result.success
 
 

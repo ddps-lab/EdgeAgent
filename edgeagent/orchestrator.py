@@ -29,7 +29,7 @@ import yaml
 
 from .types import Location, LOCATIONS
 from .registry import ToolRegistry
-from .scheduler import StaticScheduler
+from .scheduler import StaticScheduler, BruteForceChainScheduler, create_scheduler
 from .planner import ToolSequencePlanner, ExecutionPlan, Partition
 from .subagent import SubAgentRequest, SubAgentResponse
 
@@ -130,18 +130,44 @@ class SubAgentOrchestrator:
         self,
         tools_config_path: str | Path,
         orchestration_config: Optional[OrchestrationConfig] = None,
+        system_config_path: Optional[str | Path] = None,
+        scheduler_type: str = "static",
     ):
         """
         Args:
             tools_config_path: Tool 설정 YAML 경로
             orchestration_config: Orchestration 설정 (None이면 기본값)
+            system_config_path: System 설정 YAML 경로 (BruteForceChainScheduler 사용 시 필요)
+            scheduler_type: 스케줄러 타입
+                - "brute_force": 전체 chain 최적화 (기본값)
+                - "static": YAML static_mapping 기반
+                - "all_device": 모든 tool → DEVICE
+                - "all_edge": 모든 tool → EDGE
+                - "all_cloud": 모든 tool → CLOUD
+                - "heuristic": Profile 기반 휴리스틱
         """
         self.tools_config_path = Path(tools_config_path)
+        self.scheduler_type = scheduler_type
 
         # Tool 관련 초기화
         self.registry = ToolRegistry.from_yaml(tools_config_path)
-        self.scheduler = StaticScheduler(tools_config_path, self.registry)
+
+        # 스케줄러 생성 (brute_force 외에는 BaseScheduler 사용)
+        if scheduler_type == "brute_force":
+            self.scheduler = StaticScheduler(tools_config_path, self.registry)
+        else:
+            self.scheduler = create_scheduler(scheduler_type, tools_config_path, self.registry)
+
         self.planner = ToolSequencePlanner(self.scheduler, self.registry)
+
+        # BruteForceChainScheduler 설정 (brute_force 타입일 때만)
+        self.use_chain_scheduler = (scheduler_type == "brute_force")
+        self.chain_scheduler: Optional[BruteForceChainScheduler] = None
+        if self.use_chain_scheduler:
+            system_config = system_config_path or (Path(tools_config_path).parent / "system.yaml")
+            self.chain_scheduler = BruteForceChainScheduler(
+                tools_config_path, system_config, self.registry
+            )
 
         # Orchestration 설정
         self.config = orchestration_config or OrchestrationConfig()
@@ -220,9 +246,18 @@ class SubAgentOrchestrator:
         각 Sub-Agent에게 순차적으로 작업을 위임합니다.
 
         최적화: 단일 tool partition은 LLM 없이 직접 tool call
+
+        Scheduler 선택:
+        - use_chain_scheduler=True: BruteForceChainScheduler로 전체 chain 최적화
+        - use_chain_scheduler=False: StaticScheduler로 개별 tool location 결정
         """
-        # 실행 계획 생성
-        plan = self.planner.create_execution_plan(tool_sequence, preserve_order=True)
+        # 실행 계획 생성 (Scheduler 종류에 따라 분기)
+        if self.use_chain_scheduler and self.chain_scheduler:
+            plan = self.planner.create_execution_plan_with_chain_scheduler(
+                tool_sequence, self.chain_scheduler
+            )
+        else:
+            plan = self.planner.create_execution_plan(tool_sequence, preserve_order=True)
 
         if not plan.partitions:
             return OrchestrationResult(
@@ -518,6 +553,7 @@ class SubAgentOrchestrator:
             config_path=self.tools_config_path,
             model=self.config.model,
             temperature=self.config.temperature,
+            scheduler=self.scheduler,  # Orchestrator의 scheduler 전달
         )
 
         request = SubAgentRequest(
@@ -677,11 +713,33 @@ class SubAgentOrchestrator:
         Returns:
             ExecutionPlan
         """
-        return self.planner.create_execution_plan(tool_sequence, preserve_order)
+        if self.use_chain_scheduler and self.chain_scheduler:
+            return self.planner.create_execution_plan_with_chain_scheduler(
+                tool_sequence, self.chain_scheduler
+            )
+        else:
+            return self.planner.create_execution_plan(tool_sequence, preserve_order)
 
     def print_execution_plan(self, tool_sequence: list[str]):
         """실행 계획 출력"""
         plan = self.get_execution_plan(tool_sequence)
+
+        # Chain Scheduling 결과 출력 (brute_force 스케줄러인 경우)
+        if plan.chain_scheduling_result:
+            result = plan.chain_scheduling_result
+            print("\n" + "=" * 80)
+            print("Chain Scheduling (BruteForce)")
+            print("=" * 80)
+            print(f"Total Cost: {result.total_score:.4f}")
+            print(f"Search Space: {result.search_space_size}")
+            print(f"Decision Time: {result.decision_time_ns / 1_000_000:.2f} ms")
+            print()
+            print("Optimal Placement:")
+            for p in result.placements:
+                fixed_mark = "[FIXED]" if p.fixed else ""
+                print(f"  {p.tool_name:20} -> {p.location:6} "
+                      f"(cost={p.score:.3f}, comp={p.exec_cost:.3f}, comm={p.trans_cost:.3f}) {fixed_mark}")
+            print()
 
         print("\n" + "=" * 70)
         print("Execution Plan")

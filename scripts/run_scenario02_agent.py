@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Scenario 2: Log Analysis Pipeline - LLM Agent Version
+Scenario 02: Log Analysis Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
 to complete the log analysis task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
-
-Comparison with run_scenario2_with_metrics.py:
-- Script version: Hardcoded sequential tool calls (orchestration)
-- Agent version: LLM autonomously selects tools (autonomous agent)
 
 Tool Chain (expected, but LLM decides):
     filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
     DEVICE            EDGE         EDGE             DEVICE
 """
 
+import argparse
 import asyncio
 import os
 from pathlib import Path
@@ -28,6 +25,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
+from edgeagent.registry import ToolRegistry
+from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
 from scripts.agent_utils import run_agent_with_logging
 
 
@@ -37,7 +36,7 @@ def load_log_source() -> tuple[Path, str]:
     Returns:
         Tuple of (log_file_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario02"
     loghub_dir = data_dir / "loghub_samples"
     sample_log = data_dir / "server.log"
 
@@ -75,7 +74,7 @@ You have access to the following tools:
 - compute_log_statistics: Compute statistics on log entries (requires "entries" array)
 - write_file: Write files to the filesystem
 
-The log file is located at /tmp/edgeagent_device/server.log
+The log file is located at /tmp/edgeagent_device_hy/server.log
 
 IMPORTANT - Data Flow:
 - parse_logs returns {{"entries": [...]}} - you MUST pass this "entries" array to other tools
@@ -83,11 +82,11 @@ IMPORTANT - Data Flow:
 - compute_log_statistics(entries=<parsed_result>["entries"])
 
 Example workflow:
-1. log_content = read_text_file("/tmp/edgeagent_device/server.log")
+1. log_content = read_text_file("/tmp/edgeagent_device_hy/server.log")
 2. parsed = parse_logs(log_content=log_content, format_type="python")
 3. stats = compute_log_statistics(entries=parsed["entries"])
 4. filtered = filter_entries(entries=parsed["entries"], min_level="warning")
-5. write_file(path="/tmp/edgeagent_device/agent_log_report.md", content=report_markdown)
+5. write_file(path="/tmp/edgeagent_device_hy/agent_log_report.md", content=report_markdown)
 
 Include in your report:
 - Total entries analyzed
@@ -107,11 +106,12 @@ class AgentLogAnalysisScenario(ScenarioRunner):
     def __init__(
         self,
         config_path: str | Path,
-        output_dir: str | Path = "results/scenario2_agent",
+        output_dir: str | Path = "results/scenario02_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
+        scheduler=None,
     ):
-        super().__init__(config_path, output_dir)
+        super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
 
@@ -126,12 +126,12 @@ class AgentLogAnalysisScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Analyze the server log file at /tmp/edgeagent_device/server.log. "
+            "Analyze the server log file at /tmp/edgeagent_device_hy/server.log. "
             "Follow these steps: "
             "1) Read the log file with read_text_file, "
             "2) Parse using parse_logs with format_type='python' to get entries array, "
             "3) Compute statistics using compute_log_statistics with the entries array, "
-            "4) Write a comprehensive analysis report to /tmp/edgeagent_device/agent_log_report.md"
+            "4) Write a comprehensive analysis report to /tmp/edgeagent_device_hy/agent_log_report.md"
         )
 
     async def execute(
@@ -146,7 +146,7 @@ class AgentLogAnalysisScenario(ScenarioRunner):
         tools = [t for t in tools if t.name not in excluded_tools]
 
         # Prepare log file
-        device_log = Path("/tmp/edgeagent_device/server.log")
+        device_log = Path("/tmp/edgeagent_device_hy/server.log")
         device_log.parent.mkdir(parents=True, exist_ok=True)
         device_log.write_text(LOG_SOURCE.read_text())
 
@@ -204,7 +204,7 @@ class AgentLogAnalysisScenario(ScenarioRunner):
             client.metrics_collector.add_custom_metric("log_file_size", LOG_SOURCE.stat().st_size)
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device/agent_log_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/agent_log_report.md")
         if report_path.exists():
             report_content = report_path.read_text()
             print(f"Report written to: {report_path}")
@@ -218,6 +218,15 @@ class AgentLogAnalysisScenario(ScenarioRunner):
 async def main():
     """Run the LLM Agent-based Log Analysis scenario"""
 
+    parser = argparse.ArgumentParser(description="Run Scenario 02 with LLM Agent")
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
+    args = parser.parse_args()
+
     # Load environment variables
     load_dotenv()
 
@@ -227,20 +236,30 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 2: Log Analysis Pipeline (LLM Agent Version)")
+    print("Scenario 02: Log Analysis Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
     print("which tools to call and in what order.")
+    print(f"Scheduler: {args.scheduler}")
     print()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario02.yaml"
+    system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+
+    # Create scheduler
+    registry = ToolRegistry.from_yaml(config_path)
+    if args.scheduler == "brute_force":
+        scheduler = BruteForceChainScheduler(config_path, system_config_path, registry)
+    else:
+        scheduler = create_scheduler(args.scheduler, config_path, registry)
 
     scenario = AgentLogAnalysisScenario(
         config_path=config_path,
-        output_dir="results/scenario2_agent",
+        output_dir="results/scenario02_agent",
         model="gpt-4o-mini",
         temperature=0,
+        scheduler=scheduler,
     )
 
     result = await scenario.run(
@@ -249,16 +268,24 @@ async def main():
     )
 
     # Additional analysis
-    if result.metrics:
+    if result.execution_trace:
         print()
         print("=" * 70)
-        print("Agent Execution Trace")
+        print("Agent Execution Trace (Scheduler Results)")
         print("=" * 70)
-        for i, trace in enumerate(result.metrics.to_execution_trace(), 1):
-            print(f"  {i}. {trace['tool']} -> {trace['location']}")
+        for i, trace in enumerate(result.execution_trace, 1):
+            fixed_mark = "[FIXED]" if trace.get('fixed') else ""
+            if args.scheduler == "brute_force":
+                cost = trace.get('cost', 0)
+                comp = trace.get('comp', 0)
+                comm = trace.get('comm', 0)
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+            else:
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} {fixed_mark}")
 
+    if result.metrics:
         # Export metrics
-        csv_path = result.metrics.save_csv("results/scenario2_agent/metrics.csv")
+        csv_path = result.metrics.save_csv("results/scenario02_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")
 
     return result.success

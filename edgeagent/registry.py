@@ -47,6 +47,10 @@ class ToolRegistry:
 
     def __init__(self):
         self.tools: dict[str, ToolConfig] = {}
+        # MCP 서버 이름 목록 (개별 tool과 구분)
+        self.mcp_servers: set[str] = set()
+        # 개별 tool → 부모 MCP 서버 매핑
+        self.tool_to_server: dict[str, str] = {}
 
     @classmethod
     def from_yaml(cls, config_path: str | Path) -> "ToolRegistry":
@@ -128,6 +132,32 @@ class ToolRegistry:
             )
 
             self.tools[tool_name] = tool_config
+            # MCP 서버로 등록
+            self.mcp_servers.add(tool_name)
+
+            # tool_profiles 섹션 파싱 (Score-based Scheduling용)
+            tool_profiles_data = tool_data.get("tool_profiles", {})
+            for individual_tool_name, individual_profile_data in tool_profiles_data.items():
+                individual_profile = ToolProfile(
+                    name=individual_tool_name,
+                    description=individual_profile_data.get("description", ""),
+                )
+
+                # Score-based Scheduling 파라미터
+                individual_profile.data_locality = individual_profile_data.get("data_locality", "args_only")
+                individual_profile.alpha = float(individual_profile_data.get("alpha", 0.5))
+                if "P_comp" in individual_profile_data:
+                    individual_profile.P_comp = [float(x) for x in individual_profile_data["P_comp"]]
+
+                # 개별 Tool 등록 (endpoints는 서버와 공유)
+                individual_tool_config = ToolConfig(
+                    name=individual_tool_name,
+                    profile=individual_profile,
+                    endpoints=endpoints,
+                )
+                self.tools[individual_tool_name] = individual_tool_config
+                # tool → 부모 서버 매핑
+                self.tool_to_server[individual_tool_name] = tool_name
 
     def register_tool(self, tool_config: ToolConfig):
         """Tool 등록"""
@@ -154,8 +184,28 @@ class ToolRegistry:
         return tool.profile
 
     def list_tools(self) -> list[str]:
-        """등록된 모든 tool 이름 목록"""
+        """등록된 모든 tool 이름 목록 (서버 + 개별 tool)"""
         return list(self.tools.keys())
+
+    def list_servers(self) -> list[str]:
+        """MCP 서버 이름만 반환"""
+        return list(self.mcp_servers)
+
+    def list_individual_tools(self) -> list[str]:
+        """개별 tool 이름만 반환 (서버 제외)"""
+        return list(self.tool_to_server.keys())
+
+    def get_server_for_tool(self, tool_name: str) -> Optional[str]:
+        """tool의 부모 MCP 서버 이름 반환"""
+        # 서버 자체인 경우 자신 반환
+        if tool_name in self.mcp_servers:
+            return tool_name
+        # 개별 tool인 경우 부모 서버 반환
+        return self.tool_to_server.get(tool_name)
+
+    def is_server(self, name: str) -> bool:
+        """MCP 서버인지 확인"""
+        return name in self.mcp_servers
 
     def get_tools_by_location(self, location: Location) -> list[str]:
         """특정 location에 배포된 tool 목록"""

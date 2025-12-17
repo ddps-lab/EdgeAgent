@@ -526,7 +526,7 @@ class S1CodeReviewSubAgent(SubAgentScenarioRunner):
 
     def cleanup(self):
         """Clean up previous S1 results"""
-        report_path = Path("/tmp/edgeagent_device/code_review_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/code_review_report.md")
         if report_path.exists():
             report_path.unlink()
 
@@ -552,7 +552,7 @@ class S1CodeReviewSubAgent(SubAgentScenarioRunner):
         if repo_source is None:
             raise FileNotFoundError("No Git repository found")
 
-        device_repo = Path("/tmp/edgeagent_device/repo")
+        device_repo = Path("/tmp/edgeagent_device_hy/repo")
         device_repo.parent.mkdir(parents=True, exist_ok=True)
         if device_repo.exists():
             shutil.rmtree(device_repo)
@@ -573,12 +573,12 @@ class S1CodeReviewSubAgent(SubAgentScenarioRunner):
     @property
     def user_request(self) -> str:
         return """
-Review the Git repository at /tmp/edgeagent_device/repo.
+Review the Git repository at /tmp/edgeagent_device_hy/repo.
 1. List repository files using list_directory to understand the structure
 2. Get git log to see recent commits (max_count=5)
 3. Get git diff to see recent code changes
 4. Summarize the key changes using summarize_text
-5. Write a code review report to /tmp/edgeagent_device/code_review_report.md
+5. Write a code review report to /tmp/edgeagent_device_hy/code_review_report.md
 
 Return a summary of the code review.
 """
@@ -594,7 +594,7 @@ Return a summary of the code review.
         valid = True
 
         # Check 1: 리포트 파일이 생성되었는지
-        report_path = Path("/tmp/edgeagent_device/code_review_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/code_review_report.md")
         report_exists = report_path.exists()
         checks.append({
             "name": "report_file_exists",
@@ -657,7 +657,7 @@ class S2LogAnalysisSubAgent(SubAgentScenarioRunner):
 
     def cleanup(self):
         """Clean up previous S2 results"""
-        report_path = Path("/tmp/edgeagent_device/log_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/log_report.md")
         if report_path.exists():
             report_path.unlink()
 
@@ -683,7 +683,7 @@ class S2LogAnalysisSubAgent(SubAgentScenarioRunner):
 
         if log_source is None:
             # Create minimal test log
-            log_source = Path("/tmp/edgeagent_device/server.log")
+            log_source = Path("/tmp/edgeagent_device_hy/server.log")
             log_source.parent.mkdir(parents=True, exist_ok=True)
             log_source.write_text("""2024-01-01 10:00:00,000 - root - INFO - Application started
 2024-01-01 10:00:01,000 - root - WARNING - High memory usage
@@ -691,7 +691,7 @@ class S2LogAnalysisSubAgent(SubAgentScenarioRunner):
 """)
             self._data_source = "Generated test log"
         else:
-            device_log = Path("/tmp/edgeagent_device/server.log")
+            device_log = Path("/tmp/edgeagent_device_hy/server.log")
             device_log.parent.mkdir(parents=True, exist_ok=True)
             device_log.write_text(log_source.read_text())
 
@@ -710,11 +710,11 @@ class S2LogAnalysisSubAgent(SubAgentScenarioRunner):
     @property
     def user_request(self) -> str:
         return """
-Analyze the server log file at /tmp/edgeagent_device/server.log.
+Analyze the server log file at /tmp/edgeagent_device_hy/server.log.
 1. Read the log file using read_text_file
 2. Parse the logs using parse_logs with format_type='python' to get entries
 3. Compute statistics using compute_log_statistics with the entries
-4. Write a summary report to /tmp/edgeagent_device/log_report.md
+4. Write a summary report to /tmp/edgeagent_device_hy/log_report.md
 
 Return the analysis summary.
 """
@@ -730,7 +730,7 @@ Return the analysis summary.
         valid = True
 
         # Check 1: 리포트 파일이 생성되었는지
-        report_path = Path("/tmp/edgeagent_device/log_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/log_report.md")
         report_exists = report_path.exists()
         checks.append({
             "name": "report_file_exists",
@@ -794,7 +794,7 @@ class S3ResearchSubAgent(SubAgentScenarioRunner):
 
     def cleanup(self):
         """Clean up previous S3 results"""
-        report_path = Path("/tmp/edgeagent_device/research_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/research_report.md")
         if report_path.exists():
             report_path.unlink()
 
@@ -820,7 +820,7 @@ Research the topic of AI agents using these URLs:
 1. Fetch content from each URL using fetch tool
 2. Summarize each fetched content
 3. Aggregate the summaries
-4. Write a research report to /tmp/edgeagent_device/research_report.md
+4. Write a research report to /tmp/edgeagent_device_hy/research_report.md
 
 Return a summary of the research.
 """
@@ -836,7 +836,7 @@ Return a summary of the research.
         valid = True
 
         # Check 1: 리포트 파일이 생성되었는지
-        report_path = Path("/tmp/edgeagent_device/research_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/research_report.md")
         report_exists = report_path.exists()
         checks.append({
             "name": "report_file_exists",
@@ -901,12 +901,12 @@ class S4ImageProcessingSubAgent(SubAgentScenarioRunner):
     def cleanup(self):
         """Clean up previous S4 results"""
         # Remove report file
-        report_path = Path("/tmp/edgeagent_device/image_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/image_report.md")
         if report_path.exists():
             report_path.unlink()
 
         # Remove thumbnails directory
-        thumbnail_dir = Path("/tmp/edgeagent_device/images/thumbnails")
+        thumbnail_dir = Path("/tmp/edgeagent_device_hy/images/thumbnails")
         if thumbnail_dir.exists():
             shutil.rmtree(thumbnail_dir)
 
@@ -927,7 +927,7 @@ class S4ImageProcessingSubAgent(SubAgentScenarioRunner):
         else:
             raise FileNotFoundError("No image directory found")
 
-        device_images = Path("/tmp/edgeagent_device/images")
+        device_images = Path("/tmp/edgeagent_device_hy/images")
         device_images.mkdir(parents=True, exist_ok=True)
 
         # Clear existing images
@@ -958,14 +958,14 @@ class S4ImageProcessingSubAgent(SubAgentScenarioRunner):
     @property
     def user_request(self) -> str:
         return """
-Process images at /tmp/edgeagent_device/images.
+Process images at /tmp/edgeagent_device_hy/images.
 
 Please:
 1. List the directory contents using list_directory to find image files
 2. For each image, compute a perceptual hash using compute_image_hash (hash_type="phash")
 3. Find duplicate images using compare_hashes with threshold=5
 4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
-5. Write an image processing report to /tmp/edgeagent_device/image_report.md
+5. Write an image processing report to /tmp/edgeagent_device_hy/image_report.md
 
 Return a summary of the image processing results.
 """
@@ -981,7 +981,7 @@ Return a summary of the image processing results.
         valid = True
 
         # Check 1: 리포트 파일이 생성되었는지
-        report_path = Path("/tmp/edgeagent_device/image_report.md")
+        report_path = Path("/tmp/edgeagent_device_hy/image_report.md")
         report_exists = report_path.exists()
         checks.append({
             "name": "report_file_exists",
@@ -1018,7 +1018,7 @@ Return a summary of the image processing results.
             valid = False
 
         # Check 4: 썸네일 디렉토리가 생성되었는지 (batch_resize 결과)
-        thumbnail_dir = Path("/tmp/edgeagent_device/images/thumbnails")
+        thumbnail_dir = Path("/tmp/edgeagent_device_hy/images/thumbnails")
         # 또는 이미지 파일들이 처리되었는지 확인
         thumbnails_exist = thumbnail_dir.exists() and len(list(thumbnail_dir.glob("*"))) > 0
         checks.append({
