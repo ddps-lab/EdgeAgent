@@ -203,6 +203,7 @@ impl FetchService {
     /// Output format matches Python fetch_server.py
     #[tool(description = "Fetches a URL from the internet and extracts its contents as markdown")]
     fn fetch(&self, Parameters(params): Parameters<FetchParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let max_length = params.max_length.unwrap_or(50000);
 
@@ -211,6 +212,8 @@ impl FetchService {
             .map_err(|e| format!("Invalid URL: {}", e))?;
 
         if url.scheme() != "http" && url.scheme() != "https" {
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Err(format!("Only http and https URLs are supported, got: {}", url.scheme()));
         }
 
@@ -220,6 +223,8 @@ impl FetchService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         if status >= 400 {
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms, io_ms);
             return Err(format!("HTTP error: status {}", status));
         }
 
@@ -245,7 +250,8 @@ impl FetchService {
         let output = result.clone();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
 
         // Return plain text (matching Python fetch_server output format)
         Ok(output)

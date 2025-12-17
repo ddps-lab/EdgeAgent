@@ -245,15 +245,19 @@ impl SummarizeService {
     /// Summarize a single text - matching Python summarize_server.py
     #[tool(description = "Summarize the given text.")]
     fn summarize_text(&self, Parameters(params): Parameters<SummarizeTextParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         // Match Python: empty text returns error
         if params.text.trim().is_empty() {
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Err("Error: Empty text provided".to_string());
         }
 
         // Match Python: text too short to summarize
         if params.text.len() < 100 {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(params.text);
         }
 
@@ -267,7 +271,8 @@ impl SummarizeService {
         let output = summary.clone();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
 
         // Return plain text (matching Python output format)
         Ok(output)
@@ -276,6 +281,7 @@ impl SummarizeService {
     /// Summarize multiple documents - matching Python summarize_server.py
     #[tool(description = "Summarize multiple documents.")]
     fn summarize_documents(&self, Parameters(params): Parameters<SummarizeDocumentsParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let mut io_ms = 0.0;
 
@@ -302,7 +308,8 @@ impl SummarizeService {
             .map_err(|e| format!("Failed to serialize result: {}", e))?;
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
 
         // Return list of summaries (matching Python output format)
         Ok(output)
@@ -311,6 +318,7 @@ impl SummarizeService {
     /// Get information about the summarization provider - matching Python summarize_server.py
     #[tool(description = "Get information about the current summarization provider.")]
     fn get_provider_info(&self) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let result = ProviderInfo {
             provider: self.provider.clone(),
@@ -329,7 +337,8 @@ impl SummarizeService {
             .map_err(|e| format!("Failed to serialize result: {}", e))?;
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 }

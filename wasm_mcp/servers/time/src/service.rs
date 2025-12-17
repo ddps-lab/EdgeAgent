@@ -98,6 +98,7 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<GetCurrentTimeParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let tz = parse_timezone(&params.timezone)?;
 
@@ -117,7 +118,8 @@ impl TimeService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -128,6 +130,7 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<ConvertTimeParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let source_tz = parse_timezone(&params.source_timezone)?;
         let target_tz = parse_timezone(&params.target_timezone)?;
@@ -164,7 +167,8 @@ impl TimeService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 }

@@ -329,6 +329,7 @@ impl FilesystemService {
     // T_io, T_compute 분리 측정
     #[tool(description = "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.")]
     fn read_file(&self, Parameters(params): Parameters<ReadFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();  // T_io 시작
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
@@ -352,13 +353,15 @@ impl FilesystemService {
         let output = result.clone();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     // 2. read_text_file
     #[tool(description = "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Only works within allowed directories.")]
     fn read_text_file(&self, Parameters(params): Parameters<ReadTextFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
@@ -382,13 +385,15 @@ impl FilesystemService {
         let output = result.clone();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     // 3. read_media_file
     #[tool(description = "Read an image or audio file. Returns the base64 encoded data and MIME type. Only works within allowed directories.")]
     fn read_media_file(&self, Parameters(params): Parameters<ReadMediaFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let data = fs::read(&params.path)
             .map_err(|e| format!("Failed to read media file: {}", e))?;
@@ -403,13 +408,15 @@ impl FilesystemService {
         let result = format!("data:{};base64,{}", mime_type, base64_data);
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 4. read_multiple_files
     #[tool(description = "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.")]
     fn read_multiple_files(&self, Parameters(params): Parameters<ReadMultipleFilesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let results: Vec<String> = params.paths.iter().map(|path| {
             match fs::read_to_string(path) {
@@ -426,25 +433,29 @@ impl FilesystemService {
         let result = results.join("\n---\n");
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 5. write_file
     #[tool(description = "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.")]
     fn write_file(&self, Parameters(params): Parameters<WriteFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         fs::write(&params.path, &params.content)
             .map_err(|e| format!("Failed to write file: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms, io_ms);
         Ok(format!("Successfully wrote to {}", params.path))
     }
 
     // 6. edit_file
     #[tool(description = "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.")]
     fn edit_file(&self, Parameters(params): Parameters<EditFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let original = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
@@ -465,7 +476,8 @@ impl FilesystemService {
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
         if params.dry_run {
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", io_read_ms, compute_ms);
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", fn_total_ms, io_read_ms, compute_ms);
             Ok(format!("Dry run - changes that would be made:\n{}", changes.join("\n")))
         } else {
             let io_write_start = Instant::now();
@@ -473,7 +485,8 @@ impl FilesystemService {
                 .map_err(|e| format!("Failed to write file: {}", e))?;
             let io_write_ms = io_write_start.elapsed().as_secs_f64() * 1000.0;
             let io_ms = io_read_ms + io_write_ms;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", io_ms, compute_ms);
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", fn_total_ms, io_ms, compute_ms);
             Ok(format!("Applied {} edit(s) to {}", params.edits.len(), params.path))
         }
     }
@@ -481,18 +494,21 @@ impl FilesystemService {
     // 7. create_directory
     #[tool(description = "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.")]
     fn create_directory(&self, Parameters(params): Parameters<CreateDirectoryParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         fs::create_dir_all(&params.path)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms, io_ms);
         Ok(format!("Successfully created directory {}", params.path))
     }
 
     // 8. list_directory
     #[tool(description = "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.")]
     fn list_directory(&self, Parameters(params): Parameters<ListDirectoryParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let entries = fs::read_dir(&params.path)
             .map_err(|e| format!("Failed to read directory: {}", e))?;
@@ -521,13 +537,15 @@ impl FilesystemService {
         };
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 9. list_directory_with_sizes
     #[tool(description = "Get a detailed listing of all files and directories in a specified path, including sizes. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is useful for understanding directory structure and finding specific files within a directory. Only works within allowed directories.")]
     fn list_directory_with_sizes(&self, Parameters(params): Parameters<ListDirectoryWithSizesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let entries = fs::read_dir(&params.path)
             .map_err(|e| format!("Failed to read directory: {}", e))?;
@@ -587,13 +605,15 @@ impl FilesystemService {
         let output = result.join("\n");
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     // 10. directory_tree
     #[tool(description = "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.")]
     fn directory_tree(&self, Parameters(params): Parameters<DirectoryTreeParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = Path::new(&params.path);
         let tree = build_directory_tree_json(path, &params.exclude_patterns)?;
@@ -606,25 +626,29 @@ impl FilesystemService {
         let result = serde_json::to_string_pretty(&tree).unwrap_or_else(|_| "[]".to_string());
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 11. move_file
     #[tool(description = "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.")]
     fn move_file(&self, Parameters(params): Parameters<MoveFileParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         fs::rename(&params.source, &params.destination)
             .map_err(|e| format!("Failed to move file: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms, io_ms);
         Ok(format!("Successfully moved {} to {}", params.source, params.destination))
     }
 
     // 12. search_files
     #[tool(description = "Recursively search for files and directories matching a pattern. The patterns should be glob-style patterns that match paths relative to the working directory. Use pattern like '*.ext' to match files in current directory, and '**/*.ext' to match files in all subdirectories. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.")]
     fn search_files(&self, Parameters(params): Parameters<SearchFilesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = Path::new(&params.path);
         let mut results = Vec::new();
@@ -642,13 +666,15 @@ impl FilesystemService {
         };
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     // 13. get_file_info
     #[tool(description = "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.")]
     fn get_file_info(&self, Parameters(params): Parameters<GetFileInfoParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = Path::new(&params.path);
         let metadata = fs::metadata(path)
@@ -684,14 +710,17 @@ impl FilesystemService {
         let result = info.join("\n");
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 14. list_allowed_directories
     #[tool(description = "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.")]
     fn list_allowed_directories(&self) -> String {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+        let fn_start = Instant::now();
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
         "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.".to_string()
     }
 }

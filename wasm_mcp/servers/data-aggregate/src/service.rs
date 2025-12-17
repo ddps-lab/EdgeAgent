@@ -217,9 +217,12 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+
         let items = params.items;
         if items.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
         }
 
@@ -302,7 +305,8 @@ impl DataAggregateService {
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -312,10 +316,13 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<MergeSummariesParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+
         let compute_start = Instant::now();
         let summaries = params.summaries;
         if summaries.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"merged_count": 0}).to_string());
         }
 
@@ -388,7 +395,8 @@ impl DataAggregateService {
         let output = merged.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -398,9 +406,12 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+
         let results = params.results;
         if results.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
         }
 
@@ -464,7 +475,8 @@ impl DataAggregateService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -474,10 +486,13 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<DeduplicateParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+
         let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
         }
 
@@ -525,7 +540,8 @@ impl DataAggregateService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -535,10 +551,13 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<ComputeTrendsParams>,
     ) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+
         let compute_start = Instant::now();
         let time_series = params.time_series;
         if time_series.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
         }
 
@@ -560,7 +579,8 @@ impl DataAggregateService {
         }
 
         if data.len() < 2 {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"data_points": data.len(), "trend": "insufficient_data"}).to_string());
         }
 
@@ -601,7 +621,8 @@ impl DataAggregateService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 }

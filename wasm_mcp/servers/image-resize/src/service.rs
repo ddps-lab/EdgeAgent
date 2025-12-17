@@ -234,6 +234,7 @@ impl ImageResizeService {
     /// Get detailed information about an image
     #[tool(description = "Get detailed information about an image file")]
     fn get_image_info(&self, Parameters(params): Parameters<GetImageInfoParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = &params.image_path;
 
@@ -271,13 +272,15 @@ impl ImageResizeService {
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     /// Resize an image and return as base64
     #[tool(description = "Resize an image and return the result as base64-encoded data")]
     fn resize_image(&self, Parameters(params): Parameters<ResizeImageParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = &params.image_path;
         let quality = params.quality.unwrap_or(85);
@@ -309,6 +312,8 @@ impl ImageResizeService {
             let ratio = h as f64 / orig_height as f64;
             ((orig_width as f64 * ratio) as u32, h)
         } else {
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Err("No resize parameters provided (width, height, or max_size)".to_string());
         };
 
@@ -356,13 +361,15 @@ impl ImageResizeService {
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     /// Scan directory for image files
     #[tool(description = "Scan a directory for image files")]
     fn scan_directory(&self, Parameters(params): Parameters<ScanDirectoryParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let directory = &params.directory;
         let recursive = params.recursive.unwrap_or(true);
@@ -377,6 +384,8 @@ impl ImageResizeService {
 
         let dir_path = Path::new(directory);
         if !dir_path.exists() {
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Err(format!("Directory not found: {}", directory));
         }
 
@@ -446,13 +455,15 @@ impl ImageResizeService {
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     /// Compute perceptual hash of an image
     #[tool(description = "Compute perceptual hash of an image for duplicate detection")]
     fn compute_image_hash(&self, Parameters(params): Parameters<ComputeHashParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let io_start = Instant::now();
         let path = &params.image_path;
         let hash_type = params.hash_type.as_deref().unwrap_or("phash");
@@ -466,7 +477,8 @@ impl ImageResizeService {
                     hash_type: None,
                     error: Some(format!("Cannot open image: {}", e)),
                 };
-                eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+                let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
                 return Ok(serde_json::to_string(&result).unwrap());
             }
         };
@@ -491,13 +503,15 @@ impl ImageResizeService {
         let output = serde_json::to_string(&result).unwrap();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     /// Compare image hashes to find duplicates
     #[tool(description = "Compare image hashes to find duplicates/similar images")]
     fn compare_hashes(&self, Parameters(params): Parameters<CompareHashesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let compute_start = Instant::now();
         let threshold = params.threshold.unwrap_or(5);
 
@@ -512,7 +526,8 @@ impl ImageResizeService {
                 .filter(|h| h.error.is_some())
                 .collect();
 
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(serde_json::json!({
                 "total_compared": valid_hashes.len(),
                 "duplicate_groups": [],
@@ -580,13 +595,15 @@ impl ImageResizeService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     /// Batch resize multiple images
     #[tool(description = "Resize multiple images at once (e.g., create thumbnails)")]
     fn batch_resize(&self, Parameters(params): Parameters<BatchResizeParams>) -> Result<String, String> {
+        let fn_start = Instant::now();
         let mut io_ms = 0.0;
         let mut compute_ms = 0.0;
 
@@ -681,7 +698,8 @@ impl ImageResizeService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 }

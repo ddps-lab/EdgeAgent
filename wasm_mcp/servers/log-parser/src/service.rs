@@ -224,6 +224,7 @@ impl LogParserService {
     // profiling: T_compute, T_serialize 측정
     #[tool(description = "Parse raw log content into structured entries. Returns entries with _level field added.")]
     fn parse_logs(&self, Parameters(params): Parameters<ParseLogsParams>) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
         let compute_start = Instant::now();
 
         let lines: Vec<&str> = params.log_content.lines().collect();
@@ -264,13 +265,15 @@ impl LogParserService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
 
         Ok(result)
     }
 
     #[tool(description = "Filter log entries by severity level. Pass entries from parse_logs result.")]
     fn filter_entries(&self, Parameters(params): Parameters<FilterEntriesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
         let compute_start = Instant::now();
         let mut filtered = Vec::new();
         let mut level_counts: HashMap<String, i32> = HashMap::new();
@@ -305,15 +308,18 @@ impl LogParserService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     #[tool(description = "Compute statistics from parsed log entries.")]
     fn compute_log_statistics(&self, Parameters(params): Parameters<ComputeStatisticsParams>) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
         let compute_start = Instant::now();
         if params.entries.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}", fn_total_ms);
             return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
         }
 
@@ -371,12 +377,14 @@ impl LogParserService {
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     #[tool(description = "Search log entries by regex pattern.")]
     fn search_entries(&self, Parameters(params): Parameters<SearchEntriesParams>) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
         let compute_start = Instant::now();
         let fields = params.fields.unwrap_or_else(|| vec!["message".to_string(), "raw".to_string()]);
 
@@ -416,12 +424,14 @@ impl LogParserService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
     #[tool(description = "Extract time range information from log entries.")]
     fn extract_time_range(&self, Parameters(params): Parameters<ExtractTimeRangeParams>) -> Result<String, String> {
+        let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
         let compute_start = Instant::now();
         let mut times = Vec::new();
 
@@ -434,7 +444,8 @@ impl LogParserService {
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
         if times.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", compute_ms);
+            let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", fn_total_ms, compute_ms);
             return Ok(json!({
                 "has_timestamps": false,
                 "entry_count": params.entries.len()
@@ -451,7 +462,8 @@ impl LogParserService {
         }).to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        let fn_total_ms = fn_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"fn_total_ms\":{:.3},\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", fn_total_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 }
