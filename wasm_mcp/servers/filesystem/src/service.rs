@@ -14,7 +14,7 @@ use rmcp::{
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use std::time::Instant;  // CCGrid-2026: 실행시간 측정용
+use std::time::Instant;  // profiling
 
 /// Filesystem MCP Service
 #[derive(Debug, Clone)]
@@ -326,19 +326,19 @@ fn search_files_recursive(dir: &Path, pattern: &str, exclude_patterns: &[String]
 #[tool_router]
 impl FilesystemService {
     // 1. read_file (deprecated)
-    // CCGrid-2026: T_io, T_compute 분리 측정
+    // T_io, T_compute 분리 측정
     #[tool(description = "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.")]
     fn read_file(&self, Parameters(params): Parameters<ReadFileParams>) -> Result<String, String> {
-        let io_start = Instant::now();  // CCGrid-2026: T_io 시작
+        let io_start = Instant::now();  // T_io 시작
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;  // CCGrid-2026: T_io 종료
+        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;  // T_io 종료
 
         if params.head.is_some() && params.tail.is_some() {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        let compute_start = Instant::now();  // CCGrid-2026: T_compute 시작
+        let compute_start = Instant::now();  // T_compute 시작
         if let Some(n) = params.head {
             let result = head_lines(&content, n);
             let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
@@ -357,19 +357,19 @@ impl FilesystemService {
     }
 
     // 2. read_text_file
-    // CCGrid-2026: T_io, T_compute 분리 측정
+    // T_io, T_compute 분리 측정
     #[tool(description = "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Only works within allowed directories.")]
     fn read_text_file(&self, Parameters(params): Parameters<ReadTextFileParams>) -> Result<String, String> {
-        let io_start = Instant::now();  // CCGrid-2026: T_io 시작
+        let io_start = Instant::now();  // T_io 시작
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;  // CCGrid-2026: T_io 종료
+        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;  // T_io 종료
 
         if params.head.is_some() && params.tail.is_some() {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        let compute_start = Instant::now();  // CCGrid-2026: T_compute 시작
+        let compute_start = Instant::now();  // T_compute 시작
         if let Some(n) = params.head {
             let result = head_lines(&content, n);
             let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;

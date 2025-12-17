@@ -13,6 +13,7 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::time::Instant;  // profiling
 
 /// Log Parser MCP Service
 #[derive(Debug, Clone)]
@@ -220,8 +221,11 @@ pub struct ExtractTimeRangeParams {
 // Tool implementations
 #[tool_router]
 impl LogParserService {
+    // profiling: T_compute 측정
     #[tool(description = "Parse raw log content into structured entries. Returns entries with _level field added.")]
     fn parse_logs(&self, Parameters(params): Parameters<ParseLogsParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
+
         let lines: Vec<&str> = params.log_content.lines().collect();
 
         // Auto-detect format if needed
@@ -245,6 +249,9 @@ impl LogParserService {
                 errors += 1;
             }
         }
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         Ok(json!({
             "format_detected": format,
