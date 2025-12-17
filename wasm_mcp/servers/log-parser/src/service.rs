@@ -271,6 +271,7 @@ impl LogParserService {
 
     #[tool(description = "Filter log entries by severity level. Pass entries from parse_logs result.")]
     fn filter_entries(&self, Parameters(params): Parameters<FilterEntriesParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         let mut filtered = Vec::new();
         let mut level_counts: HashMap<String, i32> = HashMap::new();
 
@@ -292,6 +293,8 @@ impl LogParserService {
             }
         }
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "original_count": params.entries.len(),
             "filtered_count": filtered.len(),
@@ -303,7 +306,9 @@ impl LogParserService {
 
     #[tool(description = "Compute statistics from parsed log entries.")]
     fn compute_log_statistics(&self, Parameters(params): Parameters<ComputeStatisticsParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         if params.entries.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
         }
 
@@ -355,11 +360,14 @@ impl LogParserService {
             result["top_paths"] = json!(top_paths);
         }
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(result.to_string())
     }
 
     #[tool(description = "Search log entries by regex pattern.")]
     fn search_entries(&self, Parameters(params): Parameters<SearchEntriesParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         let fields = params.fields.unwrap_or_else(|| vec!["message".to_string(), "raw".to_string()]);
 
         let regex = if params.case_sensitive {
@@ -386,6 +394,8 @@ impl LogParserService {
             if matches.len() >= 100 { break; }
         }
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "search_pattern": params.pattern,
             "fields_searched": fields,
@@ -397,6 +407,7 @@ impl LogParserService {
 
     #[tool(description = "Extract time range information from log entries.")]
     fn extract_time_range(&self, Parameters(params): Parameters<ExtractTimeRangeParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         let mut times = Vec::new();
 
         for entry in &params.entries {
@@ -405,13 +416,17 @@ impl LogParserService {
             }
         }
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+
         if times.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
             return Ok(json!({
                 "has_timestamps": false,
                 "entry_count": params.entries.len()
             }).to_string());
         }
 
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "has_timestamps": true,
             "entry_count": params.entries.len(),

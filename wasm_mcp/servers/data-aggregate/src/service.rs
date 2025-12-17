@@ -14,6 +14,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::time::Instant;  // profiling
 
 /// Data Aggregate MCP Service
 #[derive(Debug, Clone)]
@@ -216,8 +217,10 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
         }
 
@@ -289,6 +292,8 @@ impl DataAggregateService {
         result["output_size_estimate"] = json!(output_size);
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(result.to_string())
     }
 
@@ -298,8 +303,10 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<MergeSummariesParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let summaries = params.summaries;
         if summaries.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"merged_count": 0}).to_string());
         }
 
@@ -366,6 +373,8 @@ impl DataAggregateService {
             }
         }
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(merged.to_string())
     }
 
@@ -375,8 +384,10 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let results = params.results;
         if results.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
         }
 
@@ -425,6 +436,8 @@ impl DataAggregateService {
             .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
             .sum();
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "result_count": results.len(),
             "items": items,
@@ -440,8 +453,10 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<DeduplicateParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
         }
 
@@ -477,6 +492,8 @@ impl DataAggregateService {
         let unique_count = result.len();
         let duplicates_removed = items.len() - unique_count;
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "original_count": items.len(),
             "unique_count": unique_count,
@@ -492,8 +509,10 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<ComputeTrendsParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let time_series = params.time_series;
         if time_series.is_empty() {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
         }
 
@@ -515,6 +534,7 @@ impl DataAggregateService {
         }
 
         if data.len() < 2 {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(json!({"data_points": data.len(), "trend": "insufficient_data"}).to_string());
         }
 
@@ -542,6 +562,8 @@ impl DataAggregateService {
 
         let stats = compute_stats(&values);
 
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
         Ok(json!({
             "data_points": data.len(),
             "trend": trend,

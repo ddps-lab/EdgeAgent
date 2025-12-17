@@ -12,6 +12,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Instant;  // profiling
 
 /// Summarize MCP Service
 #[derive(Debug, Clone)]
@@ -244,6 +245,7 @@ impl SummarizeService {
     /// Summarize a single text - matching Python summarize_server.py
     #[tool(description = "Summarize the given text.")]
     fn summarize_text(&self, Parameters(params): Parameters<SummarizeTextParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         // Match Python: empty text returns error
         if params.text.trim().is_empty() {
             return Err("Error: Empty text provided".to_string());
@@ -251,10 +253,16 @@ impl SummarizeService {
 
         // Match Python: text too short to summarize
         if params.text.len() < 100 {
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
             return Ok(params.text);
         }
 
+        let io_start = Instant::now();
         let summary = self.call_llm(&params.text, Some(params.max_length), &params.style)?;
+        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0 - io_ms;
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
 
         // Return plain text (matching Python output format)
         Ok(summary)
@@ -263,6 +271,9 @@ impl SummarizeService {
     /// Summarize multiple documents - matching Python summarize_server.py
     #[tool(description = "Summarize multiple documents.")]
     fn summarize_documents(&self, Parameters(params): Parameters<SummarizeDocumentsParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
+        let mut io_ms = 0.0;
+
         // Match Python: accepts list[str]
         let mut summaries = Vec::new();
 
@@ -270,11 +281,17 @@ impl SummarizeService {
             let summary = if doc.trim().is_empty() || doc.len() < 100 {
                 doc.clone()
             } else {
-                self.call_llm(doc, Some(params.max_length_per_doc), &params.style)?
+                let io_start = Instant::now();
+                let result = self.call_llm(doc, Some(params.max_length_per_doc), &params.style)?;
+                io_ms += io_start.elapsed().as_secs_f64() * 1000.0;
+                result
             };
 
             summaries.push(summary);
         }
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0 - io_ms;
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
 
         // Return list of summaries (matching Python output format)
         serde_json::to_string(&summaries)
@@ -284,6 +301,7 @@ impl SummarizeService {
     /// Get information about the summarization provider - matching Python summarize_server.py
     #[tool(description = "Get information about the current summarization provider.")]
     fn get_provider_info(&self) -> Result<String, String> {
+        let compute_start = Instant::now();
         let result = ProviderInfo {
             provider: self.provider.clone(),
             available_styles: vec![
@@ -293,6 +311,9 @@ impl SummarizeService {
             ],
             default_max_length: 150,
         };
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         serde_json::to_string(&result)
             .map_err(|e| format!("Failed to serialize result: {}", e))

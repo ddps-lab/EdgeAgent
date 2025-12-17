@@ -13,6 +13,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
+use std::time::Instant;  // profiling
 
 /// Time MCP Service
 #[derive(Debug, Clone)]
@@ -97,10 +98,14 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<GetCurrentTimeParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let tz = parse_timezone(&params.timezone)?;
 
         let now_utc = Utc::now();
         let now_local = now_utc.with_timezone(&tz);
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         // Output format matches Python mcp-server-time:
         // {"timezone": "...", "datetime": "...", "day_of_week": "...", "is_dst": false}
@@ -119,6 +124,7 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<ConvertTimeParams>,
     ) -> Result<String, String> {
+        let compute_start = Instant::now();
         let source_tz = parse_timezone(&params.source_timezone)?;
         let target_tz = parse_timezone(&params.target_timezone)?;
 
@@ -137,6 +143,9 @@ impl TimeService {
 
         // Convert to target timezone
         let target_dt = source_dt.with_timezone(&target_tz);
+
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         // Output format matches Python mcp-server-time
         Ok(serde_json::json!({

@@ -13,6 +13,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use url::Url;
+use std::time::Instant;  // profiling
 
 /// Fetch MCP Service
 #[derive(Debug, Clone)]
@@ -202,6 +203,7 @@ impl FetchService {
     /// Output format matches Python fetch_server.py
     #[tool(description = "Fetches a URL from the internet and extracts its contents as markdown")]
     fn fetch(&self, Parameters(params): Parameters<FetchParams>) -> Result<String, String> {
+        let compute_start = Instant::now();
         let max_length = params.max_length.unwrap_or(50000);
 
         // Validate URL
@@ -212,14 +214,17 @@ impl FetchService {
             return Err(format!("Only http and https URLs are supported, got: {}", url.scheme()));
         }
 
-        // Fetch the URL
+        // Fetch the URL (network I/O)
+        let io_start = Instant::now();
         let (status, content) = Self::http_get(&params.url)?;
+        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         if status >= 400 {
             return Err(format!("HTTP error: status {}", status));
         }
 
-        // Convert HTML to markdown (matching Python fetch_server behavior)
+        // Convert HTML to markdown (compute)
+        let process_start = Instant::now();
         let processed = if content.trim_start().starts_with("<!") ||
                           content.trim_start().starts_with("<html") ||
                           content.contains("<head") {
@@ -234,6 +239,9 @@ impl FetchService {
         } else {
             processed
         };
+        let compute_ms = process_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
 
         // Return plain text (matching Python fetch_server output format)
         Ok(result)
