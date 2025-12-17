@@ -218,6 +218,7 @@ impl DataAggregateService {
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
         let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+        let compute_start = Instant::now();
 
         let items = params.items;
         if items.is_empty() {
@@ -226,10 +227,8 @@ impl DataAggregateService {
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
         }
 
-        // input_size 계산은 compute 시간 측정 전에 수행
+        // input_size 계산 (compute에 포함)
         let input_size = serde_json::to_string(&items).map(|s| s.len()).unwrap_or(0);
-
-        let compute_start = Instant::now();
         let mut result = json!({
             "total_count": items.len(),
             "input_size_estimate": input_size,
@@ -407,6 +406,7 @@ impl DataAggregateService {
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
         let fn_start = Instant::now();  // 함수 진입 시점 (역직렬화 완료 후)
+        let compute_start = Instant::now();
 
         let results = params.results;
         if results.is_empty() {
@@ -415,12 +415,10 @@ impl DataAggregateService {
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
         }
 
-        // input_size 계산은 compute 시간 측정 전에 수행
+        // input_size 계산 (compute에 포함)
         let input_size: usize = results.iter()
             .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
             .sum();
-
-        let compute_start = Instant::now();
         let title_field = &params.title_field;
         let summary_field = &params.summary_field;
         let score_field = params.score_field.as_deref().unwrap_or("relevance_score");
