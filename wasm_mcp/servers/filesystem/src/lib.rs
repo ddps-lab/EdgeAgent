@@ -25,9 +25,6 @@ impl wasi::exports::cli::run::Guest for TokioCliRunner {
             .build()
             .unwrap();
         rt.block_on(async move {
-            let runtime_init_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---WASM_INIT---{:.3}", runtime_init_ms);
-
             // Use wasmmcp's stdio transport
             let transport = StdioTransport::new();
             let (input, output) = transport.streams();
@@ -42,6 +39,10 @@ impl wasi::exports::cli::run::Guest for TokioCliRunner {
                 }
             }
         });
+
+        // serve() 완료 후 WASM 전체 실행 시간 출력
+        let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---WASM_TOTAL---{:.3}", wasm_total_ms);
         Ok(())
     }
 }
