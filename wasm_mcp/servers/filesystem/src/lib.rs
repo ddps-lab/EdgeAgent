@@ -9,6 +9,7 @@ pub mod service;
 
 use rmcp::ServiceExt;
 use wasmmcp::transport::{StdioTransport, Transport};
+use std::time::Instant;
 
 use service::FilesystemService;
 
@@ -17,11 +18,16 @@ struct TokioCliRunner;
 
 impl wasi::exports::cli::run::Guest for TokioCliRunner {
     fn run() -> Result<(), ()> {
+        let wasm_start = Instant::now();  // WASM 코드 실행 시작 시점
+
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         rt.block_on(async move {
+            let runtime_init_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---WASM_INIT---{:.3}", runtime_init_ms);
+
             // Use wasmmcp's stdio transport
             let transport = StdioTransport::new();
             let (input, output) = transport.streams();
