@@ -217,14 +217,16 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
-        let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
             eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
         }
 
+        // input_size 계산은 compute 시간 측정 전에 수행
         let input_size = serde_json::to_string(&items).map(|s| s.len()).unwrap_or(0);
+
+        let compute_start = Instant::now();
         let mut result = json!({
             "total_count": items.len(),
             "input_size_estimate": input_size,
@@ -288,12 +290,14 @@ impl DataAggregateService {
             result["field_stats"] = field_stats;
         }
 
+        // output_size 계산을 위해 임시로 serialize (compute 시간에 포함 안 됨)
         let output_size = serde_json::to_string(&result).map(|s| s.len()).unwrap_or(0);
         result["output_size_estimate"] = json!(output_size);
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
+        // serialize_ms: 최종 결과를 JSON 문자열로 변환하는 시간
         let serialize_start = Instant::now();
         let output = result.to_string();
         let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
@@ -394,13 +398,18 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
-        let compute_start = Instant::now();
         let results = params.results;
         if results.is_empty() {
             eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
         }
 
+        // input_size 계산은 compute 시간 측정 전에 수행
+        let input_size: usize = results.iter()
+            .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
+            .sum();
+
+        let compute_start = Instant::now();
         let title_field = &params.title_field;
         let summary_field = &params.summary_field;
         let score_field = params.score_field.as_deref().unwrap_or("relevance_score");
@@ -442,9 +451,6 @@ impl DataAggregateService {
         }
 
         let combined_text = combined_parts.join("\n\n");
-        let input_size: usize = results.iter()
-            .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
-            .sum();
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
