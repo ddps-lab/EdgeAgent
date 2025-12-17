@@ -338,53 +338,52 @@ impl FilesystemService {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        let compute_start = Instant::now();  // T_compute 시작
-        if let Some(n) = params.head {
-            let result = head_lines(&content, n);
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(result)
+        let compute_start = Instant::now();
+        let result = if let Some(n) = params.head {
+            head_lines(&content, n)
         } else if let Some(n) = params.tail {
-            let result = tail_lines(&content, n);
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(result)
+            tail_lines(&content, n)
         } else {
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(content)
-        }
+            content
+        };
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+
+        let serialize_start = Instant::now();
+        let output = result.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     // 2. read_text_file
-    // T_io, T_compute 분리 측정
     #[tool(description = "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Only works within allowed directories.")]
     fn read_text_file(&self, Parameters(params): Parameters<ReadTextFileParams>) -> Result<String, String> {
-        let io_start = Instant::now();  // T_io 시작
+        let io_start = Instant::now();
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;  // T_io 종료
+        let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         if params.head.is_some() && params.tail.is_some() {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        let compute_start = Instant::now();  // T_compute 시작
-        if let Some(n) = params.head {
-            let result = head_lines(&content, n);
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(result)
+        let compute_start = Instant::now();
+        let result = if let Some(n) = params.head {
+            head_lines(&content, n)
         } else if let Some(n) = params.tail {
-            let result = tail_lines(&content, n);
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(result)
+            tail_lines(&content, n)
         } else {
-            let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-            Ok(content)
-        }
+            content
+        };
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+
+        let serialize_start = Instant::now();
+        let output = result.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     // 3. read_media_file
@@ -398,10 +397,13 @@ impl FilesystemService {
         let compute_start = Instant::now();
         let base64_data = base64_encode(&data);
         let mime_type = get_mime_type(&params.path);
-        let result = format!("data:{};base64,{}", mime_type, base64_data);
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let result = format!("data:{};base64,{}", mime_type, base64_data);
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
@@ -418,10 +420,13 @@ impl FilesystemService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         let compute_start = Instant::now();
-        let result = results.join("\n---\n");
-        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        let compute_ms = 0.0; // no compute
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let result = results.join("\n---\n");
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
@@ -433,7 +438,7 @@ impl FilesystemService {
             .map_err(|e| format!("Failed to write file: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0}}", io_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
         Ok(format!("Successfully wrote to {}", params.path))
     }
 
@@ -460,7 +465,7 @@ impl FilesystemService {
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
         if params.dry_run {
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_read_ms, compute_ms);
+            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", io_read_ms, compute_ms);
             Ok(format!("Dry run - changes that would be made:\n{}", changes.join("\n")))
         } else {
             let io_write_start = Instant::now();
@@ -468,7 +473,7 @@ impl FilesystemService {
                 .map_err(|e| format!("Failed to write file: {}", e))?;
             let io_write_ms = io_write_start.elapsed().as_secs_f64() * 1000.0;
             let io_ms = io_read_ms + io_write_ms;
-            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+            eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", io_ms, compute_ms);
             Ok(format!("Applied {} edit(s) to {}", params.edits.len(), params.path))
         }
     }
@@ -481,7 +486,7 @@ impl FilesystemService {
             .map_err(|e| format!("Failed to create directory: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0}}", io_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
         Ok(format!("Successfully created directory {}", params.path))
     }
 
@@ -506,14 +511,17 @@ impl FilesystemService {
 
         let compute_start = Instant::now();
         items.sort();
+        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+
+        let serialize_start = Instant::now();
         let result = if items.is_empty() {
             "Directory is empty".to_string()
         } else {
             items.join("\n")
         };
-        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
@@ -573,10 +581,13 @@ impl FilesystemService {
         result.push(String::new());
         result.push(format!("Total: {} files, {} directories", file_count, dir_count));
         result.push(format!("Combined size: {}", format_size(total_size)));
-        let output = result.join("\n");
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let output = result.join("\n");
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -589,10 +600,13 @@ impl FilesystemService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         let compute_start = Instant::now();
-        let result = serde_json::to_string_pretty(&tree).unwrap_or_else(|_| "[]".to_string());
-        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        let compute_ms = 0.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let result = serde_json::to_string_pretty(&tree).unwrap_or_else(|_| "[]".to_string());
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
@@ -604,7 +618,7 @@ impl FilesystemService {
             .map_err(|e| format!("Failed to move file: {}", e))?;
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0}}", io_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
         Ok(format!("Successfully moved {} to {}", params.source, params.destination))
     }
 
@@ -618,14 +632,17 @@ impl FilesystemService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         let compute_start = Instant::now();
+        let compute_ms = 0.0;
+
+        let serialize_start = Instant::now();
         let output = if results.is_empty() {
             "No matches found".to_string()
         } else {
             results.join("\n")
         };
-        let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(output)
     }
 
@@ -654,7 +671,6 @@ impl FilesystemService {
         info.push(format!("type: {}", file_type));
         info.push(format!("readonly: {}", metadata.permissions().readonly()));
 
-        // Try to get timestamps (may not be available on all platforms)
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -662,18 +678,20 @@ impl FilesystemService {
             info.push(format!("accessed: {}", metadata.atime()));
             info.push(format!("created: {}", metadata.ctime()));
         }
-        let result = info.join("\n");
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let result = info.join("\n");
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
         Ok(result)
     }
 
     // 14. list_allowed_directories
     #[tool(description = "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.")]
     fn list_allowed_directories(&self) -> String {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
-        // In WASM/WASI context, allowed directories are controlled by the runtime via --dir flag
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.".to_string()
     }
 }

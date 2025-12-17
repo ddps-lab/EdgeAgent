@@ -105,16 +105,20 @@ impl TimeService {
         let now_local = now_utc.with_timezone(&tz);
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         // Output format matches Python mcp-server-time:
         // {"timezone": "...", "datetime": "...", "day_of_week": "...", "is_dst": false}
-        Ok(serde_json::json!({
+        let serialize_start = Instant::now();
+        let output = serde_json::json!({
             "timezone": params.timezone,
             "datetime": format_datetime(now_local),
             "day_of_week": day_of_week_name(now_local.weekday()),
             "is_dst": false
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Convert time between timezones
@@ -145,10 +149,10 @@ impl TimeService {
         let target_dt = source_dt.with_timezone(&target_tz);
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
         // Output format matches Python mcp-server-time
-        Ok(serde_json::json!({
+        let serialize_start = Instant::now();
+        let output = serde_json::json!({
             "source": {
                 "timezone": params.source_timezone,
                 "datetime": format_datetime(source_dt)
@@ -157,7 +161,11 @@ impl TimeService {
                 "timezone": params.target_timezone,
                 "datetime": format_datetime(target_dt)
             }
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 }
 

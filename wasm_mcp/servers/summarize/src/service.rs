@@ -253,7 +253,7 @@ impl SummarizeService {
 
         // Match Python: text too short to summarize
         if params.text.len() < 100 {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(params.text);
         }
 
@@ -262,10 +262,15 @@ impl SummarizeService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0 - io_ms;
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+
+        let serialize_start = Instant::now();
+        let output = summary.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
 
         // Return plain text (matching Python output format)
-        Ok(summary)
+        Ok(output)
     }
 
     /// Summarize multiple documents - matching Python summarize_server.py
@@ -291,11 +296,16 @@ impl SummarizeService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0 - io_ms;
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+
+        let serialize_start = Instant::now();
+        let output = serde_json::to_string(&summaries)
+            .map_err(|e| format!("Failed to serialize result: {}", e))?;
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
 
         // Return list of summaries (matching Python output format)
-        serde_json::to_string(&summaries)
-            .map_err(|e| format!("Failed to serialize result: {}", e))
+        Ok(output)
     }
 
     /// Get information about the summarization provider - matching Python summarize_server.py
@@ -313,10 +323,14 @@ impl SummarizeService {
         };
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
 
-        serde_json::to_string(&result)
-            .map_err(|e| format!("Failed to serialize result: {}", e))
+        let serialize_start = Instant::now();
+        let output = serde_json::to_string(&result)
+            .map_err(|e| format!("Failed to serialize result: {}", e))?;
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 }
 

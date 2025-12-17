@@ -241,10 +241,14 @@ impl FetchService {
         };
         let compute_ms = process_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
+        let serialize_start = Instant::now();
+        let output = result.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
 
         // Return plain text (matching Python fetch_server output format)
-        Ok(result)
+        Ok(output)
     }
 }
 

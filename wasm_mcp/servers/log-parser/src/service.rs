@@ -294,21 +294,26 @@ impl LogParserService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+
+        let serialize_start = Instant::now();
+        let output = json!({
             "original_count": params.entries.len(),
             "filtered_count": filtered.len(),
             "levels_included": level_counts.keys().collect::<Vec<_>>(),
             "by_level": level_counts,
             "entries": filtered
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     #[tool(description = "Compute statistics from parsed log entries.")]
     fn compute_log_statistics(&self, Parameters(params): Parameters<ComputeStatisticsParams>) -> Result<String, String> {
         let compute_start = Instant::now();
         if params.entries.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
         }
 
@@ -361,8 +366,13 @@ impl LogParserService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(result.to_string())
+
+        let serialize_start = Instant::now();
+        let output = result.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     #[tool(description = "Search log entries by regex pattern.")]
@@ -395,14 +405,19 @@ impl LogParserService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+
+        let serialize_start = Instant::now();
+        let output = json!({
             "search_pattern": params.pattern,
             "fields_searched": fields,
             "total_entries": params.entries.len(),
             "match_count": matches.len(),
             "matches": matches
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     #[tool(description = "Extract time range information from log entries.")]
@@ -419,21 +434,25 @@ impl LogParserService {
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
         if times.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":0.0}}", compute_ms);
             return Ok(json!({
                 "has_timestamps": false,
                 "entry_count": params.entries.len()
             }).to_string());
         }
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+        let serialize_start = Instant::now();
+        let output = json!({
             "has_timestamps": true,
             "entry_count": params.entries.len(),
             "first_timestamp": times.first(),
             "last_timestamp": times.last(),
             "sample_timestamps": times.iter().take(5).collect::<Vec<_>>()
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 }
 

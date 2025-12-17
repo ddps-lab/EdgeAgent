@@ -220,7 +220,7 @@ impl DataAggregateService {
         let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
         }
 
@@ -293,8 +293,13 @@ impl DataAggregateService {
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(result.to_string())
+
+        let serialize_start = Instant::now();
+        let output = result.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Merge multiple summary dictionaries into one
@@ -306,7 +311,7 @@ impl DataAggregateService {
         let compute_start = Instant::now();
         let summaries = params.summaries;
         if summaries.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"merged_count": 0}).to_string());
         }
 
@@ -374,8 +379,13 @@ impl DataAggregateService {
         }
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(merged.to_string())
+
+        let serialize_start = Instant::now();
+        let output = merged.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Combine multiple research/search results into a coherent summary
@@ -387,7 +397,7 @@ impl DataAggregateService {
         let compute_start = Instant::now();
         let results = params.results;
         if results.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
         }
 
@@ -437,14 +447,19 @@ impl DataAggregateService {
             .sum();
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+
+        let serialize_start = Instant::now();
+        let output = json!({
             "result_count": results.len(),
             "items": items,
             "combined_text": combined_text,
             "input_size": input_size,
             "output_size": combined_text.len(),
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Remove duplicate items based on key fields
@@ -456,7 +471,7 @@ impl DataAggregateService {
         let compute_start = Instant::now();
         let items = params.items;
         if items.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
         }
 
@@ -493,14 +508,19 @@ impl DataAggregateService {
         let duplicates_removed = items.len() - unique_count;
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+
+        let serialize_start = Instant::now();
+        let output = json!({
             "original_count": items.len(),
             "unique_count": unique_count,
             "duplicates_removed": duplicates_removed,
             "key_fields": key_fields,
             "items": result,
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Compute trends from time-series data
@@ -512,7 +532,7 @@ impl DataAggregateService {
         let compute_start = Instant::now();
         let time_series = params.time_series;
         if time_series.is_empty() {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
         }
 
@@ -534,7 +554,7 @@ impl DataAggregateService {
         }
 
         if data.len() < 2 {
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(json!({"data_points": data.len(), "trend": "insufficient_data"}).to_string());
         }
 
@@ -563,15 +583,20 @@ impl DataAggregateService {
         let stats = compute_stats(&values);
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(json!({
+
+        let serialize_start = Instant::now();
+        let output = json!({
             "data_points": data.len(),
             "trend": trend,
             "stats": stats,
             "first_half_avg": first_avg,
             "second_half_avg": second_avg,
             "change_percent": change_percent,
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 }
 

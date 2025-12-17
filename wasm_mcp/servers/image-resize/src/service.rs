@@ -267,8 +267,12 @@ impl ImageResizeService {
         });
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(result.to_string())
+        let serialize_start = Instant::now();
+        let output = result.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Resize an image and return as base64
@@ -348,8 +352,12 @@ impl ImageResizeService {
         });
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(result.to_string())
+        let serialize_start = Instant::now();
+        let output = result.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Scan directory for image files
@@ -434,8 +442,12 @@ impl ImageResizeService {
         }
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(result.to_string())
+        let serialize_start = Instant::now();
+        let output = result.to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Compute perceptual hash of an image
@@ -454,7 +466,7 @@ impl ImageResizeService {
                     hash_type: None,
                     error: Some(format!("Cannot open image: {}", e)),
                 };
-                eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+                eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
                 return Ok(serde_json::to_string(&result).unwrap());
             }
         };
@@ -475,8 +487,12 @@ impl ImageResizeService {
         };
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(serde_json::to_string(&result).unwrap())
+        let serialize_start = Instant::now();
+        let output = serde_json::to_string(&result).unwrap();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Compare image hashes to find duplicates
@@ -496,7 +512,7 @@ impl ImageResizeService {
                 .filter(|h| h.error.is_some())
                 .collect();
 
-            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+            eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
             return Ok(serde_json::json!({
                 "total_compared": valid_hashes.len(),
                 "duplicate_groups": [],
@@ -552,8 +568,8 @@ impl ImageResizeService {
 
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3}}}", compute_ms);
-        Ok(serde_json::json!({
+        let serialize_start = Instant::now();
+        let output = serde_json::json!({
             "total_compared": valid_hashes.len(),
             "duplicate_groups": groups,
             "duplicate_group_count": groups.len(),
@@ -561,7 +577,11 @@ impl ImageResizeService {
             "unique_count": unique.len(),
             "threshold": threshold,
             "errors": errors,
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", compute_ms, serialize_ms);
+        Ok(output)
     }
 
     /// Batch resize multiple images
@@ -649,8 +669,8 @@ impl ImageResizeService {
             }
         }
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(serde_json::json!({
+        let serialize_start = Instant::now();
+        let output = serde_json::json!({
             "total_images": params.image_paths.len(),
             "successful": successful,
             "failed": failed,
@@ -658,7 +678,11 @@ impl ImageResizeService {
             "total_output_bytes": total_output,
             "overall_reduction": if total_input > 0 { (total_output as f64 / total_input as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
             "results": results,
-        }).to_string())
+        }).to_string();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(output)
     }
 }
 

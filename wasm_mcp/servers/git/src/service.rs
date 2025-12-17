@@ -363,8 +363,12 @@ impl GitService {
         output.push_str("nothing to commit, working tree clean\n");
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(output)
+        let serialize_start = Instant::now();
+        let result = output.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(result)
     }
 
     /// Shows the commit logs
@@ -401,8 +405,12 @@ impl GitService {
         }
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0}}", io_ms);
-        Ok(output)
+        let serialize_start = Instant::now();
+        let result = output.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":{:.3}}}", io_ms, serialize_ms);
+        Ok(result)
     }
 
     /// Shows the contents of a commit
@@ -442,8 +450,12 @@ impl GitService {
         }
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(output)
+        let serialize_start = Instant::now();
+        let result = output.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(result)
     }
 
     /// List Git branches
@@ -472,28 +484,32 @@ impl GitService {
         }
         let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
 
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3}}}", io_ms, compute_ms);
-        Ok(output)
+        let serialize_start = Instant::now();
+        let result = output.clone();
+        let serialize_ms = serialize_start.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":{:.3},\"serialize_ms\":{:.3}}}", io_ms, compute_ms, serialize_ms);
+        Ok(result)
     }
 
     /// Shows changes in working directory not yet staged
     #[tool(description = "Shows changes not yet staged")]
     fn git_diff_unstaged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Ok("No unstaged changes".to_string())
     }
 
     /// Shows changes that are staged for commit
     #[tool(description = "Shows staged changes")]
     fn git_diff_staged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Ok("No staged changes".to_string())
     }
 
     /// Shows changes between commits
     #[tool(description = "Shows differences between commits")]
     fn git_diff(&self, Parameters(_params): Parameters<DiffParams>) -> Result<String, String> {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Ok("No changes".to_string())
     }
 
@@ -510,7 +526,7 @@ impl GitService {
         let io_ms = io_start.elapsed().as_secs_f64() * 1000.0;
 
         let short_sha = if current_sha.len() >= 7 { &current_sha[..7] } else { &current_sha };
-        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0}}", io_ms);
+        eprintln!("---TIMING---{{\"io_ms\":{:.3},\"compute_ms\":0.0,\"serialize_ms\":0.0}}", io_ms);
         Ok(format!("Changes committed successfully with hash {}{}", short_sha, "0000000"))
     }
 
@@ -519,7 +535,7 @@ impl GitService {
     #[tool(description = "Adds file contents to the index")]
     fn git_add(&self, Parameters(_params): Parameters<AddParams>) -> Result<String, String> {
         // Simulate success to match Python behavior
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Ok("Files staged successfully".to_string())
     }
 
@@ -528,21 +544,21 @@ impl GitService {
     #[tool(description = "Unstages all staged changes")]
     fn git_reset(&self, Parameters(_params): Parameters<RepoPathParams>) -> Result<String, String> {
         // Python server always returns success
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Ok("All staged changes reset".to_string())
     }
 
     /// Creates a new branch (disabled in WASM)
     #[tool(description = "Creates a new branch")]
     fn git_create_branch(&self, Parameters(_params): Parameters<CreateBranchParams>) -> Result<String, String> {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Err("git_create_branch is disabled in WASM for safety.".to_string())
     }
 
     /// Switches branches (disabled in WASM)
     #[tool(description = "Switches branches or restores working tree files")]
     fn git_checkout(&self, Parameters(_params): Parameters<CheckoutParams>) -> Result<String, String> {
-        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0}}");
+        eprintln!("---TIMING---{{\"io_ms\":0.0,\"compute_ms\":0.0,\"serialize_ms\":0.0}}");
         Err("git_checkout is disabled in WASM for safety.".to_string())
     }
 }
