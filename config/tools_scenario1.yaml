@@ -1,27 +1,22 @@
 # EdgeAgent Tool Configuration - Scenario 01: Code Review Pipeline
-# (Modified from Image Processing scenario to use same MCP servers as Scenario 1)
 #
 # Score-based Scheduling:
-#   Cost_i(u, v) = α * (P_comp[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
+#   Cost_i(u, v) = α * (P_exec[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
 #
 #   - α (alpha): 연산 중요도 (0~1), 높을수록 연산 비용 중시
 #   - β: data_locality == external_data일 때 자동으로 1 (scoring.py에서 처리)
-#   - P_comp: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
+#   - P_exec: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
 #   - P_net, P_comm: system.yaml에서 정의
 #
 # Data Locality Types:
 #   - args_only (Type A): 데이터가 args로 전달됨 → Score 기반 노드 선택
 #   - external_data (Type B): 외부 API 접근 → β=1 자동 적용
 #   - local_data (Type C): 로컬 파일 접근 → 경로 기반 노드 결정 (Score 무시)
-#
-# P_comp 기준 (순수 연산 능력):
-#   - DEVICE: 느림 (1.0) - 모바일/IoT 급
-#   - EDGE: 빠름 (0.3) - 서버 급
-#   - CLOUD: 가장 빠름 (0.0) - 고성능 클라우드
+
 
 tools:
   # ============================================================
-  # filesystem server tools (D, E, C)
+  # filesystem server tools
   # ============================================================
   filesystem:
     endpoints:
@@ -39,120 +34,134 @@ tools:
         url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
     tool_profiles:
+      # 파일 읽기: path 인자로 로컬 파일 경로 지정
       read_file:
         description: "Read file contents from filesystem"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 쓰기: path 인자로 로컬 파일 경로 지정
       write_file:
         description: "Write content to a file"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 다중 파일 읽기: paths 인자로 로컬 파일 경로들 지정
       read_multiple_files:
         description: "Read multiple files at once"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 목록: path 인자로 로컬 디렉토리 경로 지정
       list_directory:
         description: "List directory contents"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 목록(크기 포함): path 인자로 로컬 디렉토리 경로 지정
       list_directory_with_sizes:
         description: "List directory with file sizes"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 트리: path 인자로 로컬 디렉토리 경로 지정
       directory_tree:
         description: "Get directory tree structure"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 검색: path 인자로 검색 시작 경로 지정
       search_files:
         description: "Search for files by pattern"
         data_locality: local_data
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 정보: path 인자로 로컬 파일 경로 지정
       get_file_info:
         description: "Get file metadata"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 생성: path 인자로 생성할 로컬 경로 지정
       create_directory:
         description: "Create a new directory"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 이동: source/destination 인자로 로컬 경로 지정
       move_file:
         description: "Move or rename a file"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 편집: path 인자로 로컬 파일 경로 지정
       edit_file:
         description: "Edit file contents"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 텍스트 파일 읽기: path 인자로 로컬 파일 경로 지정 
       read_text_file:
         description: "Read text file contents"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 미디어 파일 읽기: path 인자로 로컬 파일 경로 지정 
       read_media_file:
         description: "Read media file as base64"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 허용 디렉토리 목록: 서버 설정 정보 반환, 인자 없음
       list_allowed_directories:
         description: "List allowed directories for access"
-        data_locality: local_data
-        alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
-        privacy_sensitive: true
+        privacy_sensitive: false
 
   # ============================================================
-  # git server tools (D, E, C)
+  # git server tools
   # ============================================================
   git:
     endpoints:
@@ -171,64 +180,116 @@ tools:
         url: "http://mcp-git.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
     tool_profiles:
+      # 저장소 상태: repo_path의 로컬 저장소 접근
       git_status:
         description: "Get repository status"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 커밋 이력: repo_path의 로컬 저장소 접근
       git_log:
         description: "Get commit history"
         data_locality: local_data
         alpha: 0.3
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # diff 조회: repo_path의 로컬 저장소 접근
       git_diff:
         description: "Get diff between commits or branches"
         data_locality: local_data
         alpha: 0.3
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # staged 변경: repo_path의 로컬 저장소 접근
       git_diff_staged:
         description: "Get staged changes"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # unstaged 변경: repo_path의 로컬 저장소 접근
       git_diff_unstaged:
         description: "Get unstaged changes"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 커밋 상세: repo_path의 로컬 저장소 접근
       git_show:
         description: "Show commit details"
         data_locality: local_data
         alpha: 0.3
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
-      git_blame:
-        description: "Get line-by-line blame information"
+      # 커밋 생성: repo_path의 로컬 저장소 접근
+      git_commit:
+        description: "Records changes to the repository"
         data_locality: local_data
-        alpha: 0.4
-        P_comp: [1.0, 0.3, 0.0]
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 스테이징: repo_path의 로컬 저장소 접근
+      git_add:
+        description: "Adds file contents to the staging area"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 스테이징 취소: repo_path의 로컬 저장소 접근
+      git_reset:
+        description: "Unstages all staged changes"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 브랜치 생성: repo_path의 로컬 저장소 접근
+      git_create_branch:
+        description: "Creates a new branch from an optional base branch"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 브랜치 전환: repo_path의 로컬 저장소 접근
+      git_checkout:
+        description: "Switches branches"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 브랜치 목록: repo_path의 로컬 저장소 접근
+      git_branch:
+        description: "List Git branches"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
   # ============================================================
-  # summarize server tools (D, E, C)
+  # summarize server tools
   # ============================================================
   summarize:
     endpoints:
@@ -248,32 +309,35 @@ tools:
         url: "http://mcp-summarize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
     tool_profiles:
+      # 텍스트 요약: text 인자 + 외부 LLM API 호출
       summarize_text:
         description: "Summarize text using LLM"
         data_locality: external_data
         alpha: 0.7
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: true
         privacy_sensitive: false
 
-      summarize_code:
-        description: "Summarize code changes or diff"
+      # 문서 요약: documents 인자 + 외부 LLM API 호출
+      summarize_documents:
+        description: "Summarize multiple documents."
         data_locality: external_data
         alpha: 0.7
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: true
         privacy_sensitive: false
 
-      extract_key_points:
-        description: "Extract key points from text"
-        data_locality: external_data
-        alpha: 0.6
-        P_comp: [1.0, 0.3, 0.0]
-        requires_cloud_api: true
+      # 프로바이더 정보: 인자 없이 서버 설정 반환
+      get_provider_info:
+        description: "Get information about the current summarization provider"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
         privacy_sensitive: false
 
   # ============================================================
-  # data_aggregate server tools (D, E, C)
+  # data_aggregate server tools
   # ============================================================
   data_aggregate:
     endpoints:
@@ -291,43 +355,48 @@ tools:
         url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
     tool_profiles:
+      # 리스트 집계: items 인자로 데이터 직접 전달
       aggregate_list:
         description: "Aggregate list of items by grouping/counting/summing"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
+      # 요약 병합: summaries 인자로 데이터 직접 전달
       merge_summaries:
         description: "Merge multiple summary dictionaries"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
+      # 연구결과 결합: results 인자로 데이터 직접 전달
       combine_research_results:
         description: "Combine research/search results into summary"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
+      # 중복 제거: items 인자로 데이터 직접 전달
       deduplicate:
         description: "Remove duplicate items based on key fields"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
+      # 트렌드 계산: time_series 인자로 데이터 직접 전달
       compute_trends:
         description: "Compute trends from time-series data"
         data_locality: args_only
         alpha: 0.6
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 

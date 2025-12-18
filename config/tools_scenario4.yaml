@@ -1,30 +1,21 @@
 # EdgeAgent Tool Configuration - Scenario 04: Image Processing Pipeline
 #
 # Score-based Scheduling:
-#   Cost_i(u, v) = α * (P_comp[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
+#   Cost_i(u, v) = α * (P_exec[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
 #
 #   - α (alpha): 연산 중요도 (0~1), 높을수록 연산 비용 중시
 #   - β: data_locality == external_data일 때 자동으로 1 (scoring.py에서 처리)
-#   - P_comp: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
+#   - P_exec: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
 #   - P_net, P_comm: system.yaml에서 정의
 #
 # Data Locality Types:
 #   - args_only (Type A): 데이터가 args로 전달됨 → Score 기반 노드 선택
 #   - external_data (Type B): 외부 API 접근 → β=1 자동 적용
 #   - local_data (Type C): 로컬 파일 접근 → 경로 기반 노드 결정 (Score 무시)
-#
-# P_comp 기준 (순수 연산 능력):
-#   - DEVICE: 느림 (1.0) - 모바일/IoT 급
-#   - EDGE: 빠름 (0.3) - 서버 급
-#   - CLOUD: 가장 빠름 (0.0) - 고성능 클라우드
-#
-# Tool Chain:
-#   filesystem -> image_resize -> data_aggregate -> filesystem
-#   (Score-based scheduling이 최적 위치 결정)
 
 tools:
   # ============================================================
-  # filesystem server tools (D, E, C)
+  # filesystem server tools
   # ============================================================
   filesystem:
     endpoints:
@@ -42,72 +33,134 @@ tools:
         url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
     tool_profiles:
+      # 파일 읽기: path 인자로 로컬 파일 경로 지정
       read_file:
         description: "Read file contents from filesystem"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 쓰기: path 인자로 로컬 파일 경로 지정
       write_file:
         description: "Write content to a file"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 다중 파일 읽기: paths 인자로 로컬 파일 경로들 지정
       read_multiple_files:
         description: "Read multiple files at once"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 목록: path 인자로 로컬 디렉토리 경로 지정
       list_directory:
         description: "List directory contents"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 목록(크기 포함): path 인자로 로컬 디렉토리 경로 지정
+      list_directory_with_sizes:
+        description: "List directory with file sizes"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 디렉토리 트리: path 인자로 로컬 디렉토리 경로 지정
+      directory_tree:
+        description: "Get directory tree structure"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 검색: path 인자로 검색 시작 경로 지정
       search_files:
         description: "Search for files by pattern"
         data_locality: local_data
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 파일 정보: path 인자로 로컬 파일 경로 지정
       get_file_info:
         description: "Get file metadata"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 디렉토리 생성: path 인자로 생성할 로컬 경로 지정
+      create_directory:
+        description: "Create a new directory"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 이동: source/destination 인자로 로컬 경로 지정
+      move_file:
+        description: "Move or rename a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 편집: path 인자로 로컬 파일 경로 지정
+      edit_file:
+        description: "Edit file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 텍스트 파일 읽기: path 인자로 로컬 파일 경로 지정
       read_text_file:
         description: "Read text file contents"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 미디어 파일 읽기: path 인자로 로컬 파일 경로 지정
       read_media_file:
         description: "Read media file as base64"
         data_locality: local_data
         alpha: 0.2
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: true
 
+      # 허용 디렉토리 목록: 서버 설정 정보 반환, 인자 없음
+      list_allowed_directories:
+        description: "List allowed directories for access"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
   # ============================================================
-  # image_resize server tools (D, E, C) - 이미지 처리
+  # image_resize server tools
   # ============================================================
   image_resize:
     endpoints:
@@ -129,7 +182,7 @@ tools:
         description: "Scan directory for images and get metadata"
         data_locality: local_data
         alpha: 0.6
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -137,7 +190,7 @@ tools:
         description: "Get detailed image metadata"
         data_locality: local_data
         alpha: 0.3
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -145,7 +198,7 @@ tools:
         description: "Resize a single image"
         data_locality: local_data
         alpha: 0.8
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -153,7 +206,7 @@ tools:
         description: "Resize multiple images at once (thumbnails)"
         data_locality: args_only
         alpha: 0.9
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -161,7 +214,7 @@ tools:
         description: "Compute perceptual hash for duplicate detection"
         data_locality: local_data
         alpha: 0.7
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -169,7 +222,7 @@ tools:
         description: "Compare image hashes to find duplicates"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -196,7 +249,7 @@ tools:
         description: "Aggregate list of items by grouping/counting/summing"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -204,7 +257,7 @@ tools:
         description: "Merge multiple summary dictionaries"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -212,7 +265,7 @@ tools:
         description: "Combine research/search results into summary"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -220,7 +273,7 @@ tools:
         description: "Remove duplicate items based on key fields"
         data_locality: args_only
         alpha: 0.5
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -228,7 +281,7 @@ tools:
         description: "Compute trends from time-series data"
         data_locality: args_only
         alpha: 0.6
-        P_comp: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.3, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
