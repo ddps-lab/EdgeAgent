@@ -255,7 +255,7 @@ def get_data_aggregate_test_cases() -> List[TestCase]:
 async def main():
     """Run data aggregate comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_data_aggregate.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_data_aggregate_cli.wasm"
     python_server_path = Path.home() / "edgeagent/servers/data_aggregate_server.py"
 
     if not wasm_path.exists():

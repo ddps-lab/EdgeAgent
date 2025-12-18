@@ -543,21 +543,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-data-aggregate-http"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -566,23 +557,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "url",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-fetch-http"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "url",
- "wasi",
 ]
 
 [[package]]
@@ -591,21 +572,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-filesystem-http"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -616,22 +588,12 @@ dependencies = [
  "flate2",
  "hex",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-git-http"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -642,23 +604,12 @@ dependencies = [
  "base64",
  "image",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-image-resize-http"
-version = "0.1.0"
-dependencies = [
- "base64",
- "image",
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -668,22 +619,12 @@ dependencies = [
  "anyhow",
  "regex",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-log-parser-http"
-version = "0.1.0"
-dependencies = [
- "regex",
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -692,21 +633,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-sequential-thinking-http"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -715,48 +647,25 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-summarize-http"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
 name = "mcp-server-time"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "chrono-tz",
- "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
- "tokio",
  "wasi",
  "wasmmcp",
-]
-
-[[package]]
-name = "mcp-server-time-http"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "serde",
- "serde_json",
- "wasi",
 ]
 
 [[package]]
@@ -969,7 +878,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "rmcp-macros",
- "schemars 1.1.0",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror",
@@ -1005,18 +914,6 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
 name = "schemars"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
-dependencies = [
- "dyn-clone",
- "schemars_derive 0.8.22",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "schemars"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9558e172d4e8533736ba97870c4b2cd63f84b382a3d6eb063da41b91cce17289"
@@ -1024,21 +921,9 @@ dependencies = [
  "chrono",
  "dyn-clone",
  "ref-cast",
- "schemars_derive 1.1.0",
+ "schemars_derive",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn",
 ]
 
 [[package]]
@@ -1360,7 +1245,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",

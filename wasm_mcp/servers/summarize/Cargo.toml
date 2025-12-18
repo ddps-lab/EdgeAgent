@@ -6,14 +6,22 @@ description = "MCP Summarize Server - WASM implementation with LLM API"
 
 [lib]
 name = "mcp_server_summarize"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-anyhow = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
+
+tokio = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+[features]
+default = ["cli-export"]
+cli-export = []
+http-export = []
+rmcp-service = ["tokio", "rmcp", "anyhow"]

@@ -163,12 +163,16 @@ def get_sequential_thinking_test_cases() -> List[TestCase]:
 async def main():
     """Run sequential thinking comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_sequential_thinking.wasm"
+    # Try CLI-specific build first, fallback to default
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_sequential_thinking_cli.wasm"
+    if not wasm_path.exists():
+        wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_sequential_thinking_cli.wasm"
 
     if not wasm_path.exists():
-        print(f"[ERROR] WASM file not found: {wasm_path}")
+        print(f"[ERROR] WASM file not found")
         print("Build first:")
-        print("  cargo build --target wasm32-wasip2 --release -p mcp-server-sequential-thinking")
+        print("  ./scripts/build_all.sh")
+        print("  or: cargo build --target wasm32-wasip2 --release -p mcp-server-sequential-thinking")
         sys.exit(1)
 
     wasmtime_path = os.path.expanduser("~/.wasmtime/bin/wasmtime")

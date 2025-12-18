@@ -5,20 +5,28 @@ edition = "2021"
 
 [lib]
 name = "mcp_server_time"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+# Core framework
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
+# Note: serde/serde_json/schemars needed directly for derive macros
 serde = { workspace = true }
 serde_json = { workspace = true }
-anyhow = { workspace = true }
 schemars = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
+# Time handling
 chrono = "0.4"
 chrono-tz = "0.10"
 
 [features]
-default = []
+# Build options:
+#   cargo build --features cli-export    → wasmtime run (stdio)
+#   cargo build --features http-export   → wasmtime serve (HTTP)
+#   cargo build (no features)            → library only (for time-http to import)
+default = ["cli-export"]
+cli-export = []
+http-export = []
+# Keep rmcp-based service for backward compatibility
+rmcp-service = []

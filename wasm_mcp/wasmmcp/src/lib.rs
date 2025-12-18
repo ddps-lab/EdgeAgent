@@ -33,15 +33,22 @@
 pub mod server;
 pub mod transport;
 pub mod protocol;
+pub mod registry;
+pub mod builder;
 
 // Re-export macros
-pub use wasmmcp_macros::{mcp_tool, wasmmcp_main, wasmmcp_http};
+pub use wasmmcp_macros::{mcp_tool, wasmmcp_main, wasmmcp_http, wasmmcp_tool, export_cli, export_http};
 
-// Re-export commonly used types from rmcp
+// Re-export rmcp entirely so users don't need to depend on rmcp directly
+pub use rmcp;
+
+// Re-export commonly used types from rmcp at top level for convenience
 pub use rmcp::{
     ServerHandler,
+    ServiceExt,
     model::{ServerCapabilities, ServerInfo},
     schemars,
+    tool, tool_router, tool_handler,
 };
 
 // Re-export serde for tool parameter structs
@@ -50,14 +57,26 @@ pub use serde_json;
 
 /// Prelude module for convenient imports
 pub mod prelude {
+    // WasmMCP types
     pub use crate::server::{WasmMcp, WasmMcpBuilder};
     pub use crate::transport::{Transport, StdioTransport};
     #[cfg(feature = "transport-http")]
     pub use crate::transport::HttpTransport;
-    pub use crate::{mcp_tool, wasmmcp_main};
+    pub use crate::registry::{Tool, ToolRegistry, ToolInfo, FnTool};
+    pub use crate::builder::{McpServer, McpServerBuilder, JsonRpcResult};
+
+    // WasmMCP macros
+    pub use crate::{mcp_tool, wasmmcp_main, wasmmcp_tool, export_cli, export_http};
+
+    // Re-exports from rmcp (so users don't need rmcp dependency)
+    pub use crate::rmcp::ServiceExt;
+    pub use crate::rmcp::handler::server::wrapper::Parameters;
+    pub use crate::{tool, tool_router, tool_handler};
+    pub use crate::{ServerHandler, ServerCapabilities, ServerInfo};
+
+    // Re-exports for derive macros
     pub use crate::schemars;
     pub use crate::serde;
-    pub use rmcp::handler::server::wrapper::Parameters;
 }
 
 /// Error type for WasmMCP operations

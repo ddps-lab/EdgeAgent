@@ -111,7 +111,7 @@ def get_summarize_test_cases(has_api_key: bool = False) -> List[TestCase]:
 async def main():
     """Run summarize server comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_summarize.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_summarize_cli.wasm"
 
     if not wasm_path.exists():
         print(f"[ERROR] WASM file not found: {wasm_path}")

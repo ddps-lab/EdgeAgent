@@ -1,37 +1,68 @@
-//! Fetch MCP Server - WASM Entry Point
+//! Fetch MCP Server - WASM compatible (wasip2)
 //!
-//! Uses wasi:cli/run for stdio transport and wasi:http/outgoing-handler for fetching.
-//! Run with: wasmtime run -S http target/wasm32-wasip2/release/mcp_server_fetch.wasm
+//! Fetches web pages and converts HTML to markdown using wasi:http/outgoing-handler.
+//!
+//! # Build Options
+//!
+//! - `cargo build --features cli-export` → stdio server (wasmtime run -S http)
+//! - `cargo build --features http-export` → HTTP server (wasmtime serve)
+//!
+//! Both use the same `create_server()` function with shared business logic.
 
-mod service;
+pub mod tools;
 
-use service::FetchService;
-use wasmmcp::prelude::{StdioTransport, Transport};
-use rmcp::ServiceExt;
+// Keep service module for backward compatibility (rmcp-based)
+#[cfg(feature = "rmcp-service")]
+pub mod service;
 
-struct TokioCliRunner;
+use wasmmcp::schemars::JsonSchema;
+use wasmmcp::serde::Deserialize;
+use wasmmcp::prelude::*;
 
-impl wasi::exports::cli::run::Guest for TokioCliRunner {
-    fn run() -> Result<(), ()> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+// ==========================================
+// Parameter structs for JSON Schema generation
+// ==========================================
 
-        rt.block_on(async move {
-            let transport = StdioTransport::new();
-            let (input, output) = transport.streams();
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FetchParams {
+    /// URL to fetch
+    pub url: String,
 
-            match FetchService::new().serve((input, output)).await {
-                Ok(server) => {
-                    let _ = server.waiting().await;
-                }
-                Err(_) => {}
-            }
-        });
-
-        Ok(())
-    }
+    /// Maximum length of returned content (default: 50000)
+    pub max_length: Option<usize>,
 }
 
-wasi::cli::command::export!(TokioCliRunner);
+// ==========================================
+// Unified Server Factory
+// ==========================================
+
+/// Create the MCP server with all tools registered.
+/// This is shared between CLI and HTTP transports.
+pub fn create_server() -> McpServer {
+    McpServer::builder("wasmmcp-fetch")
+        .version("1.0.0")
+        .description("Fetch MCP Server - Retrieves web content and converts to markdown")
+        .tool::<FetchParams, _>(
+            "fetch",
+            "Fetches a URL from the internet and extracts its contents as markdown",
+            |params| {
+                let max_length = params.max_length.unwrap_or(50000);
+                tools::fetch(&params.url, max_length)
+            }
+        )
+        .build()
+}
+
+// ==========================================
+// CLI Export (wasmtime run -S http)
+// ==========================================
+
+#[cfg(feature = "cli-export")]
+wasmmcp::export_cli!(create_server);
+
+// ==========================================
+// HTTP Export (wasmtime serve)
+// ==========================================
+
+#[cfg(feature = "http-export")]
+wasmmcp::export_http!(create_server);

@@ -6,16 +6,24 @@ description = "MCP Git Server - WASM implementation"
 
 [lib]
 name = "mcp_server_git"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-anyhow = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
 flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
 hex = "0.4"
+
+tokio = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+[features]
+default = ["cli-export"]
+cli-export = []
+http-export = []
+rmcp-service = ["tokio", "rmcp", "anyhow"]

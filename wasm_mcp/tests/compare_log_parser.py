@@ -182,7 +182,7 @@ def get_log_parser_test_cases() -> List[TestCase]:
 async def main():
     """Run log parser comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_log_parser.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_log_parser_cli.wasm"
     python_server_path = Path.home() / "edgeagent/servers/log_parser_server.py"
 
     if not wasm_path.exists():

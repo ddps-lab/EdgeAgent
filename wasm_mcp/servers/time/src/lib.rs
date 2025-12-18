@@ -2,40 +2,77 @@
 //!
 //! A stateless MCP server that provides time operations and timezone conversion.
 //! Designed to run as a WASM component with Wasmtime runtime.
+//!
+//! # Build Options
+//!
+//! - `cargo build --features cli-export` → stdio server (wasmtime run)
+//! - `cargo build --features http-export` → HTTP server (wasmtime serve)
+//!
+//! Both use the same `create_server()` function with shared business logic.
 
+pub mod tools;
+
+// Keep service module for backward compatibility (rmcp-based)
+#[cfg(feature = "rmcp-service")]
 pub mod service;
 
-use rmcp::ServiceExt;
-use wasmmcp::transport::{StdioTransport, Transport};
+use wasmmcp::schemars::JsonSchema;
+use wasmmcp::serde::Deserialize;
+use wasmmcp::prelude::*;
 
-use service::TimeService;
+// ==========================================
+// Parameter structs for JSON Schema generation
+// ==========================================
 
-/// WASI CLI runner that sets up the Tokio runtime and runs the MCP server
-struct TokioCliRunner;
-
-impl wasi::exports::cli::run::Guest for TokioCliRunner {
-    fn run() -> Result<(), ()> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async move {
-            // Use wasmmcp's stdio transport
-            let transport = StdioTransport::new();
-            let (input, output) = transport.streams();
-
-            match TimeService::new().serve((input, output)).await {
-                Ok(server) => {
-                    // Gracefully handle connection close
-                    let _ = server.waiting().await;
-                }
-                Err(_) => {
-                    // Connection failed or closed early - exit gracefully
-                }
-            }
-        });
-        Ok(())
-    }
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetCurrentTimeParams {
+    /// IANA timezone name (e.g., 'America/New_York', 'Asia/Seoul', 'UTC')
+    pub timezone: String,
 }
 
-wasi::cli::command::export!(TokioCliRunner);
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ConvertTimeParams {
+    /// Source IANA timezone name (e.g., 'UTC', 'America/New_York')
+    pub source_timezone: String,
+    /// Time to convert in 24-hour format (HH:MM)
+    pub time: String,
+    /// Target IANA timezone name (e.g., 'Asia/Seoul', 'Europe/London')
+    pub target_timezone: String,
+}
+
+// ==========================================
+// Unified Server Factory
+// ==========================================
+
+/// Create the MCP server with all tools registered.
+/// This is shared between CLI and HTTP transports.
+pub fn create_server() -> McpServer {
+    McpServer::builder("wasmmcp-time")
+        .version("1.0.0")
+        .description("Time MCP Server - Get current time and convert between timezones")
+        .tool::<GetCurrentTimeParams, _>(
+            "get_current_time",
+            "Get the current time in a specific timezone. Returns ISO 8601 formatted time with timezone offset.",
+            |params| tools::get_current_time(&params.timezone)
+        )
+        .tool::<ConvertTimeParams, _>(
+            "convert_time",
+            "Convert a time from one timezone to another. Input time should be in HH:MM 24-hour format.",
+            |params| tools::convert_time(&params.source_timezone, &params.time, &params.target_timezone)
+        )
+        .build()
+}
+
+// ==========================================
+// CLI Export (wasmtime run)
+// ==========================================
+
+#[cfg(feature = "cli-export")]
+wasmmcp::export_cli!(create_server);
+
+// ==========================================
+// HTTP Export (wasmtime serve)
+// ==========================================
+
+#[cfg(feature = "http-export")]
+wasmmcp::export_http!(create_server);

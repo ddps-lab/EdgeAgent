@@ -89,7 +89,7 @@ async def run_comparison(include_http: bool = False, start_http_server: bool = F
     print()
 
     project_root = Path(__file__).parent.parent
-    wasm_stdio = project_root / "target/wasm32-wasip2/release/mcp_server_filesystem.wasm"
+    wasm_stdio = project_root / "target/wasm32-wasip2/release/mcp_server_filesystem_cli.wasm"
     wasm_http = project_root / "target/wasm32-wasip2/release/mcp_server_filesystem_http.wasm"
 
     # WASM 파일 확인
@@ -259,7 +259,7 @@ async def run_quick_test():
     print("=" * 80)
 
     project_root = Path(__file__).parent.parent
-    wasm_path = project_root / "target/wasm32-wasip2/release/mcp_server_filesystem.wasm"
+    wasm_path = project_root / "target/wasm32-wasip2/release/mcp_server_filesystem_cli.wasm"
 
     if not wasm_path.exists():
         print(f"[ERROR] WASM file not found: {wasm_path}")

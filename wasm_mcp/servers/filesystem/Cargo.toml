@@ -2,22 +2,26 @@
 name = "mcp-server-filesystem"
 version = "0.1.0"
 edition = "2021"
+description = "MCP Filesystem Server - WASM implementation compatible with @modelcontextprotocol/server-filesystem"
 
-# Default lib: stdio transport (wasi:cli/run)
 [lib]
 name = "mcp_server_filesystem"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-anyhow = { workspace = true }
 schemars = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
+
+tokio = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["cli-export"]
+cli-export = []
+http-export = []
+rmcp-service = ["tokio", "rmcp", "anyhow"]

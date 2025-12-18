@@ -649,7 +649,7 @@ async def main():
     """예제 실행"""
     import sys
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_filesystem.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_filesystem_cli.wasm"
 
     if not wasm_path.exists():
         print(f"[ERROR] WASM file not found: {wasm_path}")

@@ -62,7 +62,7 @@ def get_fetch_test_cases() -> List[TestCase]:
 async def main():
     """Run fetch server comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_fetch.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_fetch_cli.wasm"
 
     if not wasm_path.exists():
         print(f"[ERROR] WASM file not found: {wasm_path}")

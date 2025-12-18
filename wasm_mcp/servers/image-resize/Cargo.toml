@@ -6,16 +6,24 @@ description = "MCP Image Resize Server - WASM implementation with image processi
 
 [lib]
 name = "mcp_server_image_resize"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-anyhow = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 base64 = "0.22"
+
+tokio = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+[features]
+default = ["cli-export"]
+cli-export = []
+http-export = []
+rmcp-service = ["tokio", "rmcp", "anyhow"]

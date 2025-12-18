@@ -174,7 +174,7 @@ def get_image_resize_test_cases(test_dir: str) -> List[TestCase]:
 async def main():
     """Run image resize server comparison tests"""
 
-    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_image_resize.wasm"
+    wasm_path = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_image_resize_cli.wasm"
 
     if not wasm_path.exists():
         print(f"[ERROR] WASM file not found: {wasm_path}")

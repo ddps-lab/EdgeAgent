@@ -19,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 
 
 # Paths
-WASM_FILE = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_filesystem.wasm"
+WASM_FILE = Path(__file__).parent.parent / "target/wasm32-wasip2/release/mcp_server_filesystem_cli.wasm"
 WASMTIME = os.path.expanduser("~/.wasmtime/bin/wasmtime")
 
 

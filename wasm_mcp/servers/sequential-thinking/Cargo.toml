@@ -6,15 +6,30 @@ description = "Sequential Thinking MCP Server - structured thinking process for 
 
 [lib]
 name = "mcp_server_sequential_thinking"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { workspace = true }
-rmcp = { workspace = true }
+# Core framework
+wasmmcp = { path = "../../wasmmcp" }
+wasi = { workspace = true }
+# Note: serde/serde_json/schemars needed directly for derive macros
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-anyhow = { workspace = true }
-wasi = { workspace = true }
-wasmmcp = { path = "../../wasmmcp" }
+
+# Only needed for rmcp-service feature (backward compatibility)
+tokio = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+[features]
+# Build options:
+#   cargo build --features cli-export    → wasmtime run (stdio)
+#   cargo build --features http-export   → wasmtime serve (HTTP)
+#   cargo build (no features)            → library only
+default = ["cli-export"]
+cli-export = []
+http-export = []
+# Keep rmcp-based service for backward compatibility
+rmcp-service = ["tokio", "rmcp", "anyhow"]

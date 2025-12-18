@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 tokio = { version = "1", default-features = false, features = ["rt", "io-util", "sync", "macros", "time"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-schemars = "0.8"
+schemars = "1"
 anyhow = "1.0"
 
 # WASI bindings
