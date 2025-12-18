@@ -276,8 +276,66 @@ def print_result(result: ExecutionResult):
         print(f"\nResult preview:\n{result.final_result[:300]}...")
 
 
+def save_metrics_csv(metrics_entries: list[dict], output_path: Path, scenario_name: str = ""):
+    """Save metrics entries to CSV file (flattened format)"""
+    import csv
+    import uuid
+
+    if not metrics_entries:
+        return
+
+    session_id = str(uuid.uuid4())[:8]
+    rows = []
+
+    for e in metrics_entries:
+        timing = e.get("timing", {})
+        location = e.get("location", {})
+        scheduling = e.get("scheduling", {})
+        data_flow = e.get("data_flow", {})
+        resource = e.get("resource", {})
+        status = e.get("status", {})
+
+        rows.append({
+            "session_id": session_id,
+            "scenario_name": scenario_name,
+            "tool_name": e.get("tool_name", ""),
+            "parent_tool_name": e.get("parent_tool_name", ""),
+            "pipeline_step": e.get("pipeline_step", 0),
+            "timestamp": e.get("timestamp", 0),
+            "latency_ms": timing.get("latency_ms", 0),
+            "inter_tool_latency_ms": timing.get("inter_tool_latency_ms", 0),
+            "scheduled_location": location.get("scheduled_location", ""),
+            "actual_location": location.get("actual_location", ""),
+            "fallback_occurred": location.get("fallback_occurred", False),
+            "scheduling_decision_time_ns": scheduling.get("decision_time_ns", 0),
+            "scheduling_reason": scheduling.get("reason", ""),
+            "scheduling_score": scheduling.get("score", 0),
+            "exec_cost": scheduling.get("exec_cost", 0),
+            "trans_cost": scheduling.get("trans_cost", 0),
+            "fixed_location": scheduling.get("fixed", ""),
+            "input_size_bytes": data_flow.get("input_size_bytes", 0),
+            "output_size_bytes": data_flow.get("output_size_bytes", 0),
+            "reduction_ratio": data_flow.get("reduction_ratio", 0),
+            "data_flow_type": data_flow.get("data_flow_type", ""),
+            "mcp_serialization_time_ms": timing.get("mcp_serialization_time_ms", 0),
+            "mcp_deserialization_time_ms": timing.get("mcp_deserialization_time_ms", 0),
+            "memory_delta_bytes": resource.get("memory_delta_bytes", 0),
+            "cpu_time_user_ms": resource.get("cpu_time_user_ms", 0),
+            "cpu_time_system_ms": resource.get("cpu_time_system_ms", 0),
+            "success": status.get("success", True),
+            "retry_count": status.get("retry_count", 0),
+            "error": status.get("error", ""),
+        })
+
+    if rows:
+        with open(output_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+
+
 def save_result(result: ExecutionResult, output_dir: str = "results/scenario2_subagent"):
-    """Save execution result to JSON file"""
+    """Save execution result to JSON and CSV files"""
     import time as time_module
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -300,6 +358,11 @@ def save_result(result: ExecutionResult, output_dir: str = "results/scenario2_su
     with open(output_path, "w") as f:
         json.dump(result_dict, f, indent=2)
     print(f"Results saved to: {output_path}")
+
+    # Save CSV
+    csv_path = Path(output_dir) / "metrics.csv"
+    save_metrics_csv(result.metrics_entries, csv_path, scenario_name="log_analysis")
+    print(f"Metrics CSV saved to: {csv_path}")
 
 
 def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):

@@ -258,8 +258,13 @@ async def run_log_analysis(
 
         # Extract metrics before context closes
         metrics_entries = []
-        if client.get_metrics():
-            metrics_entries = [e.to_dict() for e in client.get_metrics().entries]
+        metrics_collector = client.get_metrics()
+        if metrics_collector:
+            metrics_entries = [e.to_dict() for e in metrics_collector.entries]
+            # Save CSV
+            csv_path = Path(output_dir) / "metrics.csv"
+            metrics_collector.save_csv(str(csv_path))
+            print(f"  Metrics CSV saved to: {csv_path}")
 
     # ================================================================
     # Step 5: Summary
