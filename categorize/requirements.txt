@@ -1,0 +1,22 @@
+# MCP Tool Categorization Dependencies
+
+# Environment
+python-dotenv>=1.0.0
+
+# LLM Providers
+openai>=1.0.0
+anthropic>=0.18.0
+google-generativeai>=0.4.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# Progress Bar
+tqdm>=4.65.0
+
+# Optional: For Upstage (uses OpenAI client)
+# Already covered by openai package
