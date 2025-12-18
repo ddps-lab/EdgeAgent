@@ -17,5 +17,6 @@ schemars = { workspace = true }
 anyhow = { workspace = true }
 wasi = { workspace = true }
 wasmmcp = { path = "../../wasmmcp" }
+mcp-shared = { path = "../../shared" }
 flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
 hex = "0.4"

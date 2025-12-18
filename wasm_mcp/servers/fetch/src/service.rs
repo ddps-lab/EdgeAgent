@@ -11,6 +11,7 @@ use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
+use mcp_shared::timing::ToolTimer;
 use serde::Deserialize;
 use url::Url;
 
@@ -202,6 +203,7 @@ impl FetchService {
     /// Output format matches Python fetch_server.py
     #[tool(description = "Fetches a URL from the internet and extracts its contents as markdown")]
     fn fetch(&self, Parameters(params): Parameters<FetchParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let max_length = params.max_length.unwrap_or(50000);
 
         // Validate URL
@@ -212,8 +214,8 @@ impl FetchService {
             return Err(format!("Only http and https URLs are supported, got: {}", url.scheme()));
         }
 
-        // Fetch the URL
-        let (status, content) = Self::http_get(&params.url)?;
+        // Fetch the URL (I/O)
+        let (status, content) = timer.measure_io(|| Self::http_get(&params.url))?;
 
         if status >= 400 {
             return Err(format!("HTTP error: status {}", status));
@@ -236,6 +238,7 @@ impl FetchService {
         };
 
         // Return plain text (matching Python fetch_server output format)
+        timer.finish("fetch");
         Ok(result)
     }
 }

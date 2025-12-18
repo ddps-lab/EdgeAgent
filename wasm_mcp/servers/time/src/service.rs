@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
+use mcp_shared::timing::ToolTimer;
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -97,6 +98,7 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<GetCurrentTimeParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let tz = parse_timezone(&params.timezone)?;
 
         let now_utc = Utc::now();
@@ -104,12 +106,14 @@ impl TimeService {
 
         // Output format matches Python mcp-server-time:
         // {"timezone": "...", "datetime": "...", "day_of_week": "...", "is_dst": false}
-        Ok(serde_json::json!({
+        let result = serde_json::json!({
             "timezone": params.timezone,
             "datetime": format_datetime(now_local),
             "day_of_week": day_of_week_name(now_local.weekday()),
             "is_dst": false
-        }).to_string())
+        }).to_string();
+        timer.finish("get_current_time");
+        Ok(result)
     }
 
     /// Convert time between timezones
@@ -119,6 +123,7 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<ConvertTimeParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let source_tz = parse_timezone(&params.source_timezone)?;
         let target_tz = parse_timezone(&params.target_timezone)?;
 
@@ -139,7 +144,7 @@ impl TimeService {
         let target_dt = source_dt.with_timezone(&target_tz);
 
         // Output format matches Python mcp-server-time
-        Ok(serde_json::json!({
+        let result = serde_json::json!({
             "source": {
                 "timezone": params.source_timezone,
                 "datetime": format_datetime(source_dt)
@@ -148,7 +153,9 @@ impl TimeService {
                 "timezone": params.target_timezone,
                 "datetime": format_datetime(target_dt)
             }
-        }).to_string())
+        }).to_string();
+        timer.finish("convert_time");
+        Ok(result)
     }
 }
 

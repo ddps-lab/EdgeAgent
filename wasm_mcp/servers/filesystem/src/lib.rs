@@ -7,6 +7,7 @@
 
 pub mod service;
 
+use std::time::Instant;
 use rmcp::ServiceExt;
 use wasmmcp::transport::{StdioTransport, Transport};
 
@@ -17,6 +18,9 @@ struct TokioCliRunner;
 
 impl wasi::exports::cli::run::Guest for TokioCliRunner {
     fn run() -> Result<(), ()> {
+        // Start timing WASM execution
+        let wasm_start = Instant::now();
+
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -35,6 +39,10 @@ impl wasi::exports::cli::run::Guest for TokioCliRunner {
                     // Connection failed or closed early - exit gracefully
                 }
             }
+
+            // Output total WASM execution time
+            let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---WASM_TOTAL---{:.3}", wasm_total_ms);
         });
         Ok(())
     }

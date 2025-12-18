@@ -11,6 +11,7 @@ use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
+use mcp_shared::timing::ToolTimer;
 use serde::{Deserialize, Serialize};
 
 /// Summarize MCP Service
@@ -244,6 +245,8 @@ impl SummarizeService {
     /// Summarize a single text - matching Python summarize_server.py
     #[tool(description = "Summarize the given text.")]
     fn summarize_text(&self, Parameters(params): Parameters<SummarizeTextParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
+
         // Match Python: empty text returns error
         if params.text.trim().is_empty() {
             return Err("Error: Empty text provided".to_string());
@@ -251,18 +254,22 @@ impl SummarizeService {
 
         // Match Python: text too short to summarize
         if params.text.len() < 100 {
+            timer.finish("summarize_text");
             return Ok(params.text);
         }
 
-        let summary = self.call_llm(&params.text, Some(params.max_length), &params.style)?;
+        let summary = timer.measure_io(|| self.call_llm(&params.text, Some(params.max_length), &params.style))?;
 
         // Return plain text (matching Python output format)
+        timer.finish("summarize_text");
         Ok(summary)
     }
 
     /// Summarize multiple documents - matching Python summarize_server.py
     #[tool(description = "Summarize multiple documents.")]
     fn summarize_documents(&self, Parameters(params): Parameters<SummarizeDocumentsParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
+
         // Match Python: accepts list[str]
         let mut summaries = Vec::new();
 
@@ -270,20 +277,24 @@ impl SummarizeService {
             let summary = if doc.trim().is_empty() || doc.len() < 100 {
                 doc.clone()
             } else {
-                self.call_llm(doc, Some(params.max_length_per_doc), &params.style)?
+                timer.measure_io(|| self.call_llm(doc, Some(params.max_length_per_doc), &params.style))?
             };
 
             summaries.push(summary);
         }
 
         // Return list of summaries (matching Python output format)
-        serde_json::to_string(&summaries)
-            .map_err(|e| format!("Failed to serialize result: {}", e))
+        let result = serde_json::to_string(&summaries)
+            .map_err(|e| format!("Failed to serialize result: {}", e))?;
+        timer.finish("summarize_documents");
+        Ok(result)
     }
 
     /// Get information about the summarization provider - matching Python summarize_server.py
     #[tool(description = "Get information about the current summarization provider.")]
     fn get_provider_info(&self) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let result = ProviderInfo {
             provider: self.provider.clone(),
             available_styles: vec![
@@ -294,8 +305,10 @@ impl SummarizeService {
             default_max_length: 150,
         };
 
-        serde_json::to_string(&result)
-            .map_err(|e| format!("Failed to serialize result: {}", e))
+        let output = serde_json::to_string(&result)
+            .map_err(|e| format!("Failed to serialize result: {}", e))?;
+        timer.finish("get_provider_info");
+        Ok(output)
     }
 }
 

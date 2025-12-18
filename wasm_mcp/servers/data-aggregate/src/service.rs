@@ -14,6 +14,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use mcp_shared::timing::ToolTimer;
 
 /// Data Aggregate MCP Service
 #[derive(Debug, Clone)]
@@ -216,6 +217,7 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let items = params.items;
         if items.is_empty() {
             return Ok(json!({"total_count": 0, "groups": {}}).to_string());
@@ -289,6 +291,7 @@ impl DataAggregateService {
         result["output_size_estimate"] = json!(output_size);
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
+        timer.finish("aggregate_list");
         Ok(result.to_string())
     }
 
@@ -298,6 +301,7 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<MergeSummariesParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let summaries = params.summaries;
         if summaries.is_empty() {
             return Ok(json!({"merged_count": 0}).to_string());
@@ -366,6 +370,7 @@ impl DataAggregateService {
             }
         }
 
+        timer.finish("merge_summaries");
         Ok(merged.to_string())
     }
 
@@ -375,6 +380,7 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let results = params.results;
         if results.is_empty() {
             return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
@@ -425,13 +431,15 @@ impl DataAggregateService {
             .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
             .sum();
 
-        Ok(json!({
+        let result = json!({
             "result_count": results.len(),
             "items": items,
             "combined_text": combined_text,
             "input_size": input_size,
             "output_size": combined_text.len(),
-        }).to_string())
+        }).to_string();
+        timer.finish("combine_research_results");
+        Ok(result)
     }
 
     /// Remove duplicate items based on key fields
@@ -440,6 +448,7 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<DeduplicateParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let items = params.items;
         if items.is_empty() {
             return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
@@ -477,13 +486,15 @@ impl DataAggregateService {
         let unique_count = result.len();
         let duplicates_removed = items.len() - unique_count;
 
-        Ok(json!({
+        let output = json!({
             "original_count": items.len(),
             "unique_count": unique_count,
             "duplicates_removed": duplicates_removed,
             "key_fields": key_fields,
             "items": result,
-        }).to_string())
+        }).to_string();
+        timer.finish("deduplicate");
+        Ok(output)
     }
 
     /// Compute trends from time-series data
@@ -492,6 +503,7 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<ComputeTrendsParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let time_series = params.time_series;
         if time_series.is_empty() {
             return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
@@ -542,14 +554,16 @@ impl DataAggregateService {
 
         let stats = compute_stats(&values);
 
-        Ok(json!({
+        let result = json!({
             "data_points": data.len(),
             "trend": trend,
             "stats": stats,
             "first_half_avg": first_avg,
             "second_half_avg": second_avg,
             "change_percent": change_percent,
-        }).to_string())
+        }).to_string();
+        timer.finish("compute_trends");
+        Ok(result)
     }
 }
 

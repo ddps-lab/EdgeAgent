@@ -17,6 +17,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use flate2::read::ZlibDecoder;
+use mcp_shared::timing::ToolTimer;
 
 /// Git MCP Service
 #[derive(Debug, Clone)]
@@ -343,8 +344,10 @@ impl GitService {
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows the working tree status")]
     fn git_status(&self, Parameters(params): Parameters<RepoPathParams>) -> Result<String, String> {
-        let git_dir = Self::git_dir(&params.repo_path)?;
-        let head = Self::read_head(&git_dir)?;
+        let mut timer = ToolTimer::start();
+
+        let git_dir = timer.measure_io(|| Self::git_dir(&params.repo_path))?;
+        let head = timer.measure_io(|| Self::read_head(&git_dir))?;
 
         let mut output = String::from("Repository status:\n");
 
@@ -355,9 +358,9 @@ impl GitService {
             output.push_str(&format!("HEAD detached at {}\n", &head[..7]));
         }
 
-        // Note: Full working tree status requires comparing index with working directory
         output.push_str("nothing to commit, working tree clean\n");
 
+        timer.finish("git_status");
         Ok(output)
     }
 
@@ -365,22 +368,24 @@ impl GitService {
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows the commit logs")]
     fn git_log(&self, Parameters(params): Parameters<LogParams>) -> Result<String, String> {
-        let git_dir = Self::git_dir(&params.repo_path)?;
+        let mut timer = ToolTimer::start();
+
+        let git_dir = timer.measure_io(|| Self::git_dir(&params.repo_path))?;
         let max_count = params.max_count.unwrap_or(10);
 
-        let head = Self::read_head(&git_dir)?;
-        let mut current_sha = Self::resolve_ref(&git_dir, &head)?;
+        let head = timer.measure_io(|| Self::read_head(&git_dir))?;
+        let mut current_sha = timer.measure_io(|| Self::resolve_ref(&git_dir, &head))?;
 
         let mut output = String::from("Commit history:\n");
         let mut count = 0;
 
         while count < max_count && !current_sha.is_empty() {
-            match Self::read_object(&git_dir, &current_sha) {
+            match timer.measure_io(|| Self::read_object(&git_dir, &current_sha)) {
                 Ok(data) => {
                     if let Ok(commit) = Self::parse_commit(&data) {
                         output.push_str(&format!("Commit: '{}'\n", current_sha));
                         output.push_str(&format!("Author: <git.Actor \"{}\">\n", commit.author));
-                        output.push_str(&format!("Date: {}\n", "N/A")); // Date parsing would require more work
+                        output.push_str(&format!("Date: {}\n", "N/A"));
                         output.push_str(&format!("Message: '{}'\n\n", commit.message.replace('\n', "\\n")));
 
                         current_sha = commit.parents.first().cloned().unwrap_or_default();
@@ -393,6 +398,7 @@ impl GitService {
             }
         }
 
+        timer.finish("git_log");
         Ok(output)
     }
 
@@ -400,25 +406,28 @@ impl GitService {
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows a commit or other object")]
     fn git_show(&self, Parameters(params): Parameters<ShowParams>) -> Result<String, String> {
-        let git_dir = Self::git_dir(&params.repo_path)?;
+        let mut timer = ToolTimer::start();
+
+        let git_dir = timer.measure_io(|| Self::git_dir(&params.repo_path))?;
 
         let sha = if params.revision.len() == 40 && params.revision.chars().all(|c| c.is_ascii_hexdigit()) {
             params.revision.clone()
         } else if params.revision == "HEAD" {
-            let head = Self::read_head(&git_dir)?;
-            Self::resolve_ref(&git_dir, &head)?
+            let head = timer.measure_io(|| Self::read_head(&git_dir))?;
+            timer.measure_io(|| Self::resolve_ref(&git_dir, &head))?
         } else {
             let ref_path = git_dir.join("refs/heads").join(&params.revision);
             if ref_path.exists() {
-                fs::read_to_string(&ref_path)
+                timer.measure_io(|| fs::read_to_string(&ref_path))
                     .map(|s| s.trim().to_string())
                     .map_err(|e| format!("Failed to read ref: {}", e))?
             } else {
+                timer.finish("git_show");
                 return Err(format!("Cannot resolve revision: {}", params.revision));
             }
         };
 
-        let data = Self::read_object(&git_dir, &sha)?;
+        let data = timer.measure_io(|| Self::read_object(&git_dir, &sha))?;
         let commit = Self::parse_commit(&data)?;
 
         let mut output = format!("Commit: {}\n", sha);
@@ -428,6 +437,7 @@ impl GitService {
             output.push_str(&format!("Parents: {}\n", commit.parents.join(", ")));
         }
 
+        timer.finish("git_show");
         Ok(output)
     }
 
@@ -435,9 +445,12 @@ impl GitService {
     /// Output format matches Python mcp-server-git
     #[tool(description = "Lists repository branches")]
     fn git_branch(&self, Parameters(params): Parameters<BranchListParams>) -> Result<String, String> {
-        let git_dir = Self::git_dir(&params.repo_path)?;
+        let mut timer = ToolTimer::start();
+
+        let git_dir = timer.measure_io(|| Self::git_dir(&params.repo_path))?;
         let branch_type = &params.branch_type;
 
+        // list_branches does I/O internally
         let branches = Self::list_branches(&git_dir, branch_type)?;
 
         let mut output = String::new();
@@ -453,24 +466,31 @@ impl GitService {
             output.push_str("No branches found\n");
         }
 
+        timer.finish("git_branch");
         Ok(output)
     }
 
     /// Shows changes in working directory not yet staged
     #[tool(description = "Shows changes not yet staged")]
     fn git_diff_unstaged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+        timer.finish("git_diff_unstaged");
         Ok("No unstaged changes".to_string())
     }
 
     /// Shows changes that are staged for commit
     #[tool(description = "Shows staged changes")]
     fn git_diff_staged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+        timer.finish("git_diff_staged");
         Ok("No staged changes".to_string())
     }
 
     /// Shows changes between commits
     #[tool(description = "Shows differences between commits")]
     fn git_diff(&self, Parameters(_params): Parameters<DiffParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+        timer.finish("git_diff");
         Ok("No changes".to_string())
     }
 
@@ -478,12 +498,14 @@ impl GitService {
     /// Note: In WASM, this returns a simulated success message (matching Python behavior)
     #[tool(description = "Records changes to the repository")]
     fn git_commit(&self, Parameters(params): Parameters<CommitParams>) -> Result<String, String> {
-        // Python server creates commits even when nothing to commit
-        // We simulate success to match Python behavior
-        let git_dir = Self::git_dir(&params.repo_path)?;
-        let head = Self::read_head(&git_dir)?;
-        let current_sha = Self::resolve_ref(&git_dir, &head).unwrap_or_default();
+        let mut timer = ToolTimer::start();
+
+        let git_dir = timer.measure_io(|| Self::git_dir(&params.repo_path))?;
+        let head = timer.measure_io(|| Self::read_head(&git_dir))?;
+        let current_sha = timer.measure_io(|| Self::resolve_ref(&git_dir, &head)).unwrap_or_default();
         let short_sha = if current_sha.len() >= 7 { &current_sha[..7] } else { &current_sha };
+
+        timer.finish("git_commit");
         Ok(format!("Changes committed successfully with hash {}{}", short_sha, "0000000"))
     }
 
@@ -491,7 +513,8 @@ impl GitService {
     /// Note: In WASM, this returns a simulated success message
     #[tool(description = "Adds file contents to the index")]
     fn git_add(&self, Parameters(_params): Parameters<AddParams>) -> Result<String, String> {
-        // Simulate success to match Python behavior
+        let timer = ToolTimer::start();
+        timer.finish("git_add");
         Ok("Files staged successfully".to_string())
     }
 
@@ -499,19 +522,24 @@ impl GitService {
     /// Note: In WASM, this returns a simulated success message (matching Python behavior)
     #[tool(description = "Unstages all staged changes")]
     fn git_reset(&self, Parameters(_params): Parameters<RepoPathParams>) -> Result<String, String> {
-        // Python server always returns success
+        let timer = ToolTimer::start();
+        timer.finish("git_reset");
         Ok("All staged changes reset".to_string())
     }
 
     /// Creates a new branch (disabled in WASM)
     #[tool(description = "Creates a new branch")]
     fn git_create_branch(&self, Parameters(_params): Parameters<CreateBranchParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+        timer.finish("git_create_branch");
         Err("git_create_branch is disabled in WASM for safety.".to_string())
     }
 
     /// Switches branches (disabled in WASM)
     #[tool(description = "Switches branches or restores working tree files")]
     fn git_checkout(&self, Parameters(_params): Parameters<CheckoutParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+        timer.finish("git_checkout");
         Err("git_checkout is disabled in WASM for safety.".to_string())
     }
 }

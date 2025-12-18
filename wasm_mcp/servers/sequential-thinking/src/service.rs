@@ -16,6 +16,7 @@ use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
+use mcp_shared::timing::ToolTimer;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -98,6 +99,8 @@ impl SequentialThinkingService {
         &self,
         Parameters(params): Parameters<SequentialThinkingParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         // TypeScript validates thoughtNumber >= 1 and totalThoughts >= 1 via zod schema
         if params.thought_number < 1 {
             return Err("thoughtNumber must be >= 1".to_string());
@@ -118,6 +121,7 @@ impl SequentialThinkingService {
             "thoughtHistoryLength": params.thought_number
         });
 
+        timer.finish("sequentialthinking");
         Ok(response.to_string())
     }
 }

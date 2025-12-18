@@ -18,6 +18,7 @@ use std::fs;
 use std::io::Cursor;
 use image::{GenericImageView, ImageFormat, imageops::FilterType};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use mcp_shared::timing::ToolTimer;
 
 /// Image Resize MCP Service
 #[derive(Debug, Clone)]
@@ -233,16 +234,15 @@ impl ImageResizeService {
     /// Get detailed information about an image
     #[tool(description = "Get detailed information about an image file")]
     fn get_image_info(&self, Parameters(params): Parameters<GetImageInfoParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let path = &params.image_path;
 
-        // Check file exists
-        let metadata = fs::metadata(path)
+        let metadata = timer.measure_io(|| fs::metadata(path))
             .map_err(|e| format!("Cannot access file: {}", e))?;
 
         let size_bytes = metadata.len();
 
-        // Open image
-        let img = image::open(path)
+        let img = timer.measure_io(|| image::open(path))
             .map_err(|e| format!("Cannot open image: {}", e))?;
 
         let (width, height) = img.dimensions();
@@ -262,28 +262,27 @@ impl ImageResizeService {
             "aspect_ratio": if height > 0 { (width as f64 / height as f64 * 100.0).round() / 100.0 } else { 0.0 },
         });
 
+        timer.finish("get_image_info");
         Ok(result.to_string())
     }
 
     /// Resize an image and return as base64
     #[tool(description = "Resize an image and return the result as base64-encoded data")]
     fn resize_image(&self, Parameters(params): Parameters<ResizeImageParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let path = &params.image_path;
         let quality = params.quality.unwrap_or(85);
         let output_format = params.output_format.as_deref().unwrap_or("JPEG");
 
-        // Get original size
-        let original_bytes = fs::metadata(path)
+        let original_bytes = timer.measure_io(|| fs::metadata(path))
             .map(|m| m.len())
             .unwrap_or(0);
 
-        // Open image
-        let img = image::open(path)
+        let img = timer.measure_io(|| image::open(path))
             .map_err(|e| format!("Cannot open image: {}", e))?;
 
         let (orig_width, orig_height) = img.dimensions();
 
-        // Calculate new dimensions
         let (new_width, new_height) = if let Some(max_size) = params.max_size {
             let ratio = (max_size as f64 / orig_width.max(orig_height) as f64).min(1.0);
             ((orig_width as f64 * ratio) as u32, (orig_height as f64 * ratio) as u32)
@@ -296,13 +295,13 @@ impl ImageResizeService {
             let ratio = h as f64 / orig_height as f64;
             ((orig_width as f64 * ratio) as u32, h)
         } else {
+            timer.finish("resize_image");
             return Err("No resize parameters provided (width, height, or max_size)".to_string());
         };
 
-        // Resize
+        // Resize (compute)
         let resized = img.resize(new_width, new_height, FilterType::Lanczos3);
 
-        // Convert to RGB if needed for JPEG
         let format = Self::output_format_from_str(output_format);
         let output_img = if format == ImageFormat::Jpeg {
             image::DynamicImage::ImageRgb8(resized.to_rgb8())
@@ -310,10 +309,8 @@ impl ImageResizeService {
             resized
         };
 
-        // Encode to buffer
         let mut buffer = Cursor::new(Vec::new());
 
-        // For JPEG with quality
         if format == ImageFormat::Jpeg {
             let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
             output_img.write_with_encoder(encoder)
@@ -338,12 +335,14 @@ impl ImageResizeService {
             "data_base64": data_base64,
         });
 
+        timer.finish("resize_image");
         Ok(result.to_string())
     }
 
     /// Scan directory for image files
     #[tool(description = "Scan a directory for image files")]
     fn scan_directory(&self, Parameters(params): Parameters<ScanDirectoryParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let directory = &params.directory;
         let recursive = params.recursive.unwrap_or(true);
         let include_info = params.include_info.unwrap_or(false);
@@ -357,6 +356,7 @@ impl ImageResizeService {
 
         let dir_path = Path::new(directory);
         if !dir_path.exists() {
+            timer.finish("scan_directory");
             return Err(format!("Directory not found: {}", directory));
         }
 
@@ -392,6 +392,7 @@ impl ImageResizeService {
             Ok(())
         }
 
+        // scan_dir does I/O internally
         scan_dir(dir_path, &extensions, recursive, &mut image_paths, &mut total_size)?;
 
         let mut result = serde_json::json!({
@@ -405,9 +406,9 @@ impl ImageResizeService {
         if include_info {
             let mut images_info = Vec::new();
             for img_path in &image_paths {
-                if let Ok(img) = image::open(img_path) {
+                if let Ok(img) = timer.measure_io(|| image::open(img_path)) {
                     let (w, h) = img.dimensions();
-                    let size = fs::metadata(img_path).map(|m| m.len()).unwrap_or(0);
+                    let size = timer.measure_io(|| fs::metadata(img_path)).map(|m| m.len()).unwrap_or(0);
                     images_info.push(serde_json::json!({
                         "path": img_path,
                         "width": w,
@@ -419,16 +420,18 @@ impl ImageResizeService {
             result["images"] = serde_json::json!(images_info);
         }
 
+        timer.finish("scan_directory");
         Ok(result.to_string())
     }
 
     /// Compute perceptual hash of an image
     #[tool(description = "Compute perceptual hash of an image for duplicate detection")]
     fn compute_image_hash(&self, Parameters(params): Parameters<ComputeHashParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let path = &params.image_path;
         let hash_type = params.hash_type.as_deref().unwrap_or("phash");
 
-        let img = match image::open(path) {
+        let img = match timer.measure_io(|| image::open(path)) {
             Ok(img) => img,
             Err(e) => {
                 let result = HashResult {
@@ -437,10 +440,12 @@ impl ImageResizeService {
                     hash_type: None,
                     error: Some(format!("Cannot open image: {}", e)),
                 };
+                timer.finish("compute_image_hash");
                 return Ok(serde_json::to_string(&result).unwrap());
             }
         };
 
+        // Hash computation (compute)
         let hash_value = match hash_type.to_lowercase().as_str() {
             "ahash" => Self::compute_ahash(&img),
             "dhash" => Self::compute_dhash(&img),
@@ -454,15 +459,16 @@ impl ImageResizeService {
             error: None,
         };
 
+        timer.finish("compute_image_hash");
         Ok(serde_json::to_string(&result).unwrap())
     }
 
     /// Compare image hashes to find duplicates
     #[tool(description = "Compare image hashes to find duplicates/similar images")]
     fn compare_hashes(&self, Parameters(params): Parameters<CompareHashesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let threshold = params.threshold.unwrap_or(5);
 
-        // Filter valid hashes
         let valid_hashes: Vec<(&str, &str)> = params.hashes.iter()
             .filter(|h| h.hash.is_some() && h.error.is_none())
             .map(|h| (h.path.as_str(), h.hash.as_ref().unwrap().as_str()))
@@ -473,6 +479,7 @@ impl ImageResizeService {
                 .filter(|h| h.error.is_some())
                 .collect();
 
+            timer.finish("compare_hashes");
             return Ok(serde_json::json!({
                 "total_compared": valid_hashes.len(),
                 "duplicate_groups": [],
@@ -481,7 +488,6 @@ impl ImageResizeService {
             }).to_string());
         }
 
-        // Find similar pairs
         let mut groups: Vec<Vec<String>> = Vec::new();
         let mut processed: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
@@ -512,7 +518,6 @@ impl ImageResizeService {
             }
         }
 
-        // Find unique paths
         let all_duplicates: std::collections::HashSet<&str> = groups.iter()
             .flat_map(|g| g.iter().map(|s| s.as_str()))
             .collect();
@@ -526,6 +531,7 @@ impl ImageResizeService {
             .filter(|h| h.error.is_some())
             .collect();
 
+        timer.finish("compare_hashes");
         Ok(serde_json::json!({
             "total_compared": valid_hashes.len(),
             "duplicate_groups": groups,
@@ -540,6 +546,7 @@ impl ImageResizeService {
     /// Batch resize multiple images
     #[tool(description = "Resize multiple images at once (e.g., create thumbnails)")]
     fn batch_resize(&self, Parameters(params): Parameters<BatchResizeParams>) -> Result<String, String> {
+        let mut timer = ToolTimer::start();
         let max_size = params.max_size.unwrap_or(150);
         let quality = params.quality.unwrap_or(75);
         let output_format = params.output_format.as_deref().unwrap_or("JPEG");
@@ -552,10 +559,10 @@ impl ImageResizeService {
         let mut failed = 0;
 
         for path in &params.image_paths {
-            let original_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let original_bytes = timer.measure_io(|| fs::metadata(path)).map(|m| m.len()).unwrap_or(0);
             total_input += original_bytes;
 
-            match image::open(path) {
+            match timer.measure_io(|| image::open(path)) {
                 Ok(img) => {
                     let (orig_w, orig_h) = img.dimensions();
                     let ratio = (max_size as f64 / orig_w.max(orig_h) as f64).min(1.0);
@@ -613,6 +620,7 @@ impl ImageResizeService {
             }
         }
 
+        timer.finish("batch_resize");
         Ok(serde_json::json!({
             "total_images": params.image_paths.len(),
             "successful": successful,

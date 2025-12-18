@@ -13,6 +13,7 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use mcp_shared::timing::ToolTimer;
 
 /// Log Parser MCP Service
 #[derive(Debug, Clone)]
@@ -222,6 +223,7 @@ pub struct ExtractTimeRangeParams {
 impl LogParserService {
     #[tool(description = "Parse raw log content into structured entries. Returns entries with _level field added.")]
     fn parse_logs(&self, Parameters(params): Parameters<ParseLogsParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let lines: Vec<&str> = params.log_content.lines().collect();
 
         // Auto-detect format if needed
@@ -246,17 +248,20 @@ impl LogParserService {
             }
         }
 
-        Ok(json!({
+        let result = json!({
             "format_detected": format,
             "total_lines": lines.len(),
             "parsed_count": entries.len(),
             "error_count": errors,
             "entries": entries
-        }).to_string())
+        }).to_string();
+        timer.finish("parse_logs");
+        Ok(result)
     }
 
     #[tool(description = "Filter log entries by severity level. Pass entries from parse_logs result.")]
     fn filter_entries(&self, Parameters(params): Parameters<FilterEntriesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let mut filtered = Vec::new();
         let mut level_counts: HashMap<String, i32> = HashMap::new();
 
@@ -278,17 +283,20 @@ impl LogParserService {
             }
         }
 
-        Ok(json!({
+        let result = json!({
             "original_count": params.entries.len(),
             "filtered_count": filtered.len(),
             "levels_included": level_counts.keys().collect::<Vec<_>>(),
             "by_level": level_counts,
             "entries": filtered
-        }).to_string())
+        }).to_string();
+        timer.finish("filter_entries");
+        Ok(result)
     }
 
     #[tool(description = "Compute statistics from parsed log entries.")]
     fn compute_log_statistics(&self, Parameters(params): Parameters<ComputeStatisticsParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         if params.entries.is_empty() {
             return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
         }
@@ -341,11 +349,13 @@ impl LogParserService {
             result["top_paths"] = json!(top_paths);
         }
 
+        timer.finish("compute_log_statistics");
         Ok(result.to_string())
     }
 
     #[tool(description = "Search log entries by regex pattern.")]
     fn search_entries(&self, Parameters(params): Parameters<SearchEntriesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let fields = params.fields.unwrap_or_else(|| vec!["message".to_string(), "raw".to_string()]);
 
         let regex = if params.case_sensitive {
@@ -372,17 +382,20 @@ impl LogParserService {
             if matches.len() >= 100 { break; }
         }
 
-        Ok(json!({
+        let result = json!({
             "search_pattern": params.pattern,
             "fields_searched": fields,
             "total_entries": params.entries.len(),
             "match_count": matches.len(),
             "matches": matches
-        }).to_string())
+        }).to_string();
+        timer.finish("search_entries");
+        Ok(result)
     }
 
     #[tool(description = "Extract time range information from log entries.")]
     fn extract_time_range(&self, Parameters(params): Parameters<ExtractTimeRangeParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let mut times = Vec::new();
 
         for entry in &params.entries {
@@ -398,13 +411,15 @@ impl LogParserService {
             }).to_string());
         }
 
-        Ok(json!({
+        let result = json!({
             "has_timestamps": true,
             "entry_count": params.entries.len(),
             "first_timestamp": times.first(),
             "last_timestamp": times.last(),
             "sample_timestamps": times.iter().take(5).collect::<Vec<_>>()
-        }).to_string())
+        }).to_string();
+        timer.finish("extract_time_range");
+        Ok(result)
     }
 }
 

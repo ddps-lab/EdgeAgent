@@ -17,5 +17,6 @@ schemars = { workspace = true }
 anyhow = { workspace = true }
 wasi = { workspace = true }
 wasmmcp = { path = "../../wasmmcp" }
+mcp-shared = { path = "../../shared" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 base64 = "0.22"

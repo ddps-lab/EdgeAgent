@@ -18,3 +18,4 @@ schemars = { workspace = true }
 anyhow = { workspace = true }
 wasi = { workspace = true }
 wasmmcp = { path = "../../wasmmcp" }
+mcp-shared = { path = "../../shared" }

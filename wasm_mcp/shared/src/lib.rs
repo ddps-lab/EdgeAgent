@@ -71,18 +71,22 @@ pub mod timing {
         }
 
         /// Finish timing and output results to stderr
-        /// Format: ---TIMING---{"tool_ms":X,"io_ms":Y}
+        /// Format: ---TIMING---{"fn_total_ms":X,"io_ms":Y,"compute_ms":Z}
+        /// - fn_total_ms: total tool function execution time
+        /// - io_ms: accumulated I/O time
+        /// - compute_ms: fn_total_ms - io_ms (pure computation time)
         pub fn finish(self, tool_name: &str) {
-            let tool_ms = self.tool_start.elapsed().as_secs_f64() * 1000.0;
+            let fn_total_ms = self.tool_start.elapsed().as_secs_f64() * 1000.0;
             let io_ms = self.io_total.as_secs_f64() * 1000.0;
+            let compute_ms = (fn_total_ms - io_ms).max(0.0);
             eprintln!(
-                "---TIMING---{{\"tool\":\"{}\",\"tool_ms\":{:.3},\"io_ms\":{:.3}}}",
-                tool_name, tool_ms, io_ms
+                "---TIMING---{{\"tool\":\"{}\",\"fn_total_ms\":{:.3},\"io_ms\":{:.3},\"compute_ms\":{:.3}}}",
+                tool_name, fn_total_ms, io_ms, compute_ms
             );
         }
 
         /// Get current tool execution time in ms
-        pub fn tool_ms(&self) -> f64 {
+        pub fn fn_total_ms(&self) -> f64 {
             self.tool_start.elapsed().as_secs_f64() * 1000.0
         }
 

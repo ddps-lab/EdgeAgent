@@ -5,6 +5,7 @@
 
 mod service;
 
+use std::time::Instant;
 use service::ImageResizeService;
 use wasmmcp::prelude::{StdioTransport, Transport};
 use rmcp::ServiceExt;
@@ -13,6 +14,8 @@ struct TokioCliRunner;
 
 impl wasi::exports::cli::run::Guest for TokioCliRunner {
     fn run() -> Result<(), ()> {
+        let wasm_start = Instant::now();
+
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -28,6 +31,9 @@ impl wasi::exports::cli::run::Guest for TokioCliRunner {
                 }
                 Err(_) => {}
             }
+
+            let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("---WASM_TOTAL---{:.3}", wasm_total_ms);
         });
 
         Ok(())
