@@ -22,7 +22,7 @@ Usage:
 
 import re
 import json
-from typing import Literal
+from typing import Literal, Any
 from collections import Counter
 from fastmcp import FastMCP
 
@@ -191,7 +191,7 @@ def parse_logs(
 
 @mcp.tool()
 def filter_entries(
-    entries: list[dict],
+    entries: list,
     min_level: Literal[
         "debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"
     ] = "warning",
@@ -251,7 +251,7 @@ def filter_entries(
 
 
 @mcp.tool()
-def compute_log_statistics(entries: list[dict]) -> dict:
+def compute_log_statistics(entries: list) -> dict:
     """
     Compute statistics from parsed log entries.
 
@@ -308,7 +308,7 @@ def compute_log_statistics(entries: list[dict]) -> dict:
 
 @mcp.tool()
 def search_entries(
-    entries: list[dict],
+    entries: list,
     pattern: str,
     fields: list[str] | None = None,
     case_sensitive: bool = False,
@@ -364,7 +364,7 @@ def search_entries(
 
 
 @mcp.tool()
-def extract_time_range(entries: list[dict]) -> dict:
+def extract_time_range(entries: list) -> dict:
     """
     Extract time range information from log entries.
 
