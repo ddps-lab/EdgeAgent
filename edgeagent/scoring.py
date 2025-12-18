@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
-from .types import Location, ToolPlacement, LOCATIONS
+from .types import Location, SchedulingResult, LOCATIONS
 
 
 class ScoringEngine:
@@ -200,7 +200,7 @@ class ScoringEngine:
         self,
         tool_names: list[str],
         node_assignments: list[Location],
-    ) -> tuple[float, list[ToolPlacement]]:
+    ) -> tuple[float, list[SchedulingResult]]:
         """
         Tool Chain 전체의 총 비용 계산
 
@@ -224,9 +224,10 @@ class ScoringEngine:
                 tool_name, u, v, is_first, is_last
             )
 
-            placements.append(ToolPlacement(
+            placements.append(SchedulingResult(
                 tool_name=tool_name,
                 location=u,
+                reason="brute_force_optimal",
                 score=cost,
                 exec_cost=comp_cost,
                 trans_cost=comm_cost,

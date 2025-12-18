@@ -5,7 +5,7 @@ Scenario 3: Research Assistant Pipeline - With Chain Scheduling
 Tool Chain:
     fetch(×N) -> summarize_text(×N) -> aggregate_list -> combine_research_results -> write_file
 
-Mode: _with_metrics
+Mode: script
 - Tool sequence is STATIC (predefined)
 - Scheduler runs FIRST via schedule_chain() to determine optimal placement
 - get_backend_tools(placement_map) 사용: 필요한 서버만 연결, MetricsWrappedTool 반환
@@ -23,7 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from edgeagent import EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import BruteForceChainScheduler, create_scheduler
-from edgeagent.paths import get_paths
 
 
 # Tool Chain 정의 (순서 고정)
@@ -60,7 +59,7 @@ def parse_tool_result(result):
 
 def load_s2orc_papers(data_dir: Path, max_papers: int = 5) -> list[dict]:
     """Load papers from S2ORC dataset."""
-    s2orc_dir = data_dir / "scenario03" / "s2orc"
+    s2orc_dir = data_dir / "scenario3" / "s2orc"
     papers_file = s2orc_dir / "papers.json"
 
     if papers_file.exists():
@@ -91,7 +90,7 @@ async def run_research_assistant(
     system_config_path: Path,
     scheduler_type: str = "brute_force",
     subagent_mode: bool = False,
-    output_dir: str = "results/scenario03",
+    output_dir: str = "results/scenario3",
     max_urls: int = 3,
 ) -> dict:
     """
@@ -101,14 +100,12 @@ async def run_research_assistant(
     """
     start_time = time.time()
 
-    # 스케줄러 타입에 따른 경로 설정
-    paths = get_paths(scheduler_type)
+    # 경로 설정 (모든 location에서 동일한 구조)
+    report_path = "/edgeagent/results/scenario3_research_report.md"
 
     # Ensure directories exist
-    Path(paths.base).mkdir(parents=True, exist_ok=True)
+    Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-    report_path = paths.research_report
 
     # Load research items
     data_dir = Path(__file__).parent.parent / "data"
@@ -392,7 +389,7 @@ async def main():
     parser.add_argument("--max-urls", type=int, default=3)
     args = parser.parse_args()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario03.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario3.yaml"
     system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
 
     print("=" * 70)

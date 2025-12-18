@@ -337,34 +337,25 @@ class SubAgent:
         server_name = self.registry.get_server_for_tool(tool_name) or tool_name
 
         if server_name == "filesystem":
-            # Path 추출 - 파일 경로 후 마침표/쉼표/공백 등 구분자 제외
-            path_patterns = [
-                r'/tmp/edgeagent_device_hy/[\w\._/-]+(?:\.\w+)?',  # /tmp/edgeagent_device_hy/path/file.ext
-                r'/tmp/[\w\._/-]+(?:\.\w+)?',                    # /tmp/path/file.ext
-            ]
-            for pattern in path_patterns:
-                match = re.search(pattern, task)
-                if match:
-                    path = match.group(0)
-                    # 끝에 불필요한 마침표 제거
-                    path = path.rstrip('.')
-                    args["path"] = path
-                    break
+            # Path 추출 - /edgeagent/{data,repos,results} 경로만 허용
+            path_pattern = r'/edgeagent/[\w\._/-]+(?:\.\w+)?'
+            match = re.search(path_pattern, task)
+            if match:
+                path = match.group(0).rstrip('.')
+                args["path"] = path
+            else:
+                args["path"] = "/edgeagent/data"
 
-            if "path" not in args:
-                args["path"] = "/tmp/edgeagent_device_hy"
-
-            # Write 체크 (기존: task에서 "write" 검색 → 변경: tool_name에서 직접 판단)
+            # Write 체크 (tool_name에서 직접 판단)
             is_write_tool = "write" in tool_name.lower()
             if prev_result and (is_write_tool or "report" in task.lower()):
                 write_match = re.search(r'(?:to|write)\s+([/\w\._-]+\.(?:md|txt|json))', task, re.IGNORECASE)
                 if write_match:
                     args["path"] = write_match.group(1)
-                    if not args["path"].startswith("/"):
-                        args["path"] = "/tmp/edgeagent_device_hy/" + args["path"]
+                    if not args["path"].startswith("/edgeagent"):
+                        args["path"] = "/edgeagent/results/" + args["path"].lstrip("/")
                 elif is_write_tool:
-                    # write_file인데 경로를 못 찾으면 기본 출력 파일 설정
-                    args["path"] = "/tmp/edgeagent_device_hy/output.txt"
+                    args["path"] = "/edgeagent/results/output.txt"
                 args["content"] = str(prev_result)
 
         elif server_name == "log_parser":
@@ -372,8 +363,8 @@ class SubAgent:
                 args["text"] = str(prev_result)[:10000]
 
         elif server_name == "git":
-            repo_match = re.search(r'/tmp/[^\s\"\'\`]+/repo', task)
-            args["repo_path"] = repo_match.group(0) if repo_match else "/tmp/edgeagent_device_hy/repo"
+            repo_match = re.search(r'/edgeagent/repos/[\w\._/-]+', task)
+            args["repo_path"] = repo_match.group(0) if repo_match else "/edgeagent/repos/scenario1"
 
         elif server_name == "summarize":
             if prev_result:
@@ -402,7 +393,7 @@ class SubAgent:
                 args["url"] = url_match.group(0)
 
         elif server_name == "image":
-            path_match = re.search(r'/tmp/[^\s\"\'\`]+', task)
+            path_match = re.search(r'/edgeagent/[\w\._/-]+', task)
             if path_match:
                 args["path"] = path_match.group(0)
 

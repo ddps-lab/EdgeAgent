@@ -228,18 +228,18 @@ class ToolSequencePlanner:
     def create_execution_plan_with_chain_scheduler(
         self,
         tool_names: list[str],
-        chain_scheduler: "BruteForceChainScheduler",
+        chain_scheduler: BaseScheduler,
         tool_args: Optional[list[dict]] = None,
     ) -> ExecutionPlan:
         """
-        BruteForceChainScheduler를 사용한 실행 계획 생성
+        schedule_chain을 사용한 실행 계획 생성
 
         전체 tool chain을 한 번에 최적화하여 각 tool의 실행 위치를 결정합니다.
-        StaticScheduler와 달리 chain 전체의 비용을 고려하여 최적 배치를 찾습니다.
+        모든 스케줄러가 schedule_chain 메서드를 구현하므로 어떤 스케줄러든 사용 가능.
 
         Args:
             tool_names: Tool 이름 목록 (실행 순서대로)
-            chain_scheduler: BruteForceChainScheduler 인스턴스
+            chain_scheduler: schedule_chain을 갖는 스케줄러 인스턴스
             tool_args: 각 Tool의 인자 리스트 (optional, local_data 처리용)
 
         Returns:

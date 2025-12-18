@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-Scenario 3: Research Assistant Pipeline - Orchestration Mode Comparison
+Scenario 4: Image Processing Pipeline - SubAgent Mode
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario03_orchestrated.py --mode legacy
-    python scripts/run_scenario03_orchestrated.py --mode subagent
-    python scripts/run_scenario03_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario4_subagent.py --mode legacy
+    python scripts/run_scenario4_subagent.py --mode subagent
+    python scripts/run_scenario4_subagent.py --compare  # Run both and compare
 
 Tool Chain:
-    fetch -> summarize -> data_aggregate -> filesystem(write)
-    EDGE    EDGE        EDGE              DEVICE
+    filesystem(scan) -> image_resize(hash,batch) -> data_aggregate -> filesystem(write)
+    DEVICE            EDGE                         EDGE              DEVICE
 """
 
 import argparse
 import asyncio
 import os
+import shutil
 import sys
 import time
 from dataclasses import dataclass, field
@@ -53,53 +54,71 @@ class ExecutionResult:
     placement_map: dict = field(default_factory=dict)
 
 
-def load_research_urls() -> tuple[list[str], str]:
-    """Load research URLs from S2ORC data or use defaults"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario03"
-    s2orc_file = data_dir / "s2orc_papers.json"
+def load_image_source() -> tuple[Path, str]:
+    """Load image source directory"""
+    data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+    coco_images = data_dir / "coco" / "images"
+    sample_images = data_dir / "sample_images"
 
-    # Check for S2ORC papers
-    if s2orc_file.exists():
-        import json
-        try:
-            with open(s2orc_file) as f:
-                papers = json.load(f)
-            urls = []
-            for paper in papers[:3]:  # Use first 3 papers
-                if paper.get("url"):
-                    urls.append(paper["url"])
-            if urls:
-                return urls, "S2ORC papers"
-        except Exception:
-            pass
+    if coco_images.exists() and len(list(coco_images.glob("*.jpg"))) > 0:
+        return coco_images, "COCO 2017"
 
-    # Default Wikipedia URLs (reliable and fast)
-    default_urls = [
-        "https://en.wikipedia.org/wiki/Intelligent_agent",
-        "https://en.wikipedia.org/wiki/Large_language_model",
-    ]
-    return default_urls, "Default Wikipedia URLs"
+    if sample_images.exists() and len(list(sample_images.glob("*"))) > 0:
+        return sample_images, "Generated test images"
+
+    raise FileNotFoundError(
+        f"No image directory found in {data_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 4' for test data"
+    )
 
 
-RESEARCH_URLS, DATA_SOURCE = load_research_urls()
+def prepare_images() -> tuple[Path, str, int]:
+    """Prepare images at device location"""
+    image_source, data_source = load_image_source()
+
+    device_images = Path("/edgeagent/data/scenario4/sample_images")
+    device_images.mkdir(parents=True, exist_ok=True)
+
+    # Clear existing images
+    for f in device_images.glob("*"):
+        f.unlink()
+
+    # Copy images
+    count = 0
+    for img in image_source.glob("*"):
+        if img.is_file():
+            shutil.copyfile(img, device_images / img.name)
+            count += 1
+
+    return device_images, data_source, count
 
 
-USER_REQUEST = f"""
-Research the topic of AI agents using these URLs:
-{chr(10).join(f'- {url}' for url in RESEARCH_URLS)}
+# Prepare images at module load time
+IMAGE_PATH, DATA_SOURCE, IMAGE_COUNT = prepare_images()
+
+
+USER_REQUEST = """
+Process images at /edgeagent/data/scenario4/sample_images.
 
 Please:
-1. Fetch content from each URL using the fetch tool
-2. Summarize the content from each page using summarize_text
-3. Aggregate the summaries into a cohesive research summary
-4. Write a research report to /tmp/edgeagent_device_hy/research_report.md
+1. List the directory contents using list_directory to find image files
+2. For each image, compute a perceptual hash using compute_image_hash (hash_type="phash")
+3. Find duplicate images using compare_hashes with threshold=5
+4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
+5. Write an image processing report to /edgeagent/results/scenario4_image_report.md
 
-Return a summary of the research findings.
+The report should include:
+- Number of images found
+- Number of duplicates detected
+- Number of thumbnails created
+- Size reduction achieved
+
+Return a summary of the image processing results.
 """
 
 # Tool sequence for Sub-Agent mode (order matters)
 # 개별 tool 이름 사용 (서버 이름 아님) - Scheduler가 정확한 profile 참조 가능
-TOOL_SEQUENCE = ["fetch_url", "summarize_text", "combine_research_results", "write_file"]
+TOOL_SEQUENCE = ["list_directory", "scan_directory", "batch_resize", "aggregate_list", "write_file"]
 
 
 async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
@@ -181,7 +200,7 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
             subagent_endpoints={},  # Local execution
             model=model,
             temperature=0,
-            max_iterations=15,  # More iterations for multiple URLs
+            max_iterations=15,  # More iterations for multiple images
         )
 
         system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
@@ -280,14 +299,14 @@ def print_result(result: ExecutionResult):
         print(f"\nResult preview:\n{result.final_result[:300]}...")
 
 
-def save_result(result: ExecutionResult, output_dir: str = "results/scenario03_orchestrated"):
+def save_result(result: ExecutionResult, output_dir: str = "results/scenario4_subagent"):
     """Save execution result to JSON file"""
     import time as time_module
     import json
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     result_dict = {
-        "scenario_name": "research_assistant",
+        "scenario_name": "image_processing",
         "mode": result.mode,
         "scheduler_type": result.scheduler_type,
         "success": result.success,
@@ -301,7 +320,7 @@ def save_result(result: ExecutionResult, output_dir: str = "results/scenario03_o
         "error": result.error if result.error else None,
     }
 
-    output_path = Path(output_dir) / f"research_assistant_{result.mode}_{int(time_module.time())}.json"
+    output_path = Path(output_dir) / f"image_processing_{result.mode}_{int(time_module.time())}.json"
     with open(output_path, "w") as f:
         json.dump(result_dict, f, indent=2)
     print(f"Results saved to: {output_path}")
@@ -333,7 +352,7 @@ def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
 async def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Run Scenario 3 with different orchestration modes"
+        description="Run Scenario 4 with different orchestration modes"
     )
     parser.add_argument(
         "--mode",
@@ -366,26 +385,24 @@ async def main():
         print("[ERROR] OPENAI_API_KEY not set")
         return False
 
-    # Ensure output directory exists
-    Path("/tmp/edgeagent_device_hy").mkdir(parents=True, exist_ok=True)
-
     print("=" * 70)
-    print("Scenario 3: Research Assistant Pipeline")
+    print("Scenario 4: Image Processing Pipeline")
     print("=" * 70)
     print(f"Data Source: {DATA_SOURCE}")
-    print(f"URLs to research: {len(RESEARCH_URLS)}")
-    for url in RESEARCH_URLS:
-        print(f"  - {url}")
+    print(f"Images: {IMAGE_COUNT} at {IMAGE_PATH}")
     print(f"Model: {args.model}")
     print(f"Scheduler: {args.scheduler}")
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario03.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario4.yaml"
 
     if args.compare:
         # Run both modes
         legacy_result = await run_legacy_mode(config_path, args.model)
         print_result(legacy_result)
         save_result(legacy_result)
+
+        # Re-prepare images for subagent mode
+        prepare_images()
 
         subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(subagent_result)

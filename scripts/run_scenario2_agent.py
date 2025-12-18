@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """
-Scenario 04: Image Processing Pipeline - LLM Agent Version
+Scenario 02: Log Analysis Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
-to complete the image processing task. This demonstrates "true AI Agent" behavior
+to complete the log analysis task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
 
 Tool Chain (expected, but LLM decides):
-    scan_directory -> compute_image_hash -> compare_hashes -> batch_resize -> aggregate_list -> write_file
-    EDGE             EDGE                  EDGE              EDGE           EDGE             DEVICE
+    filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
+    DEVICE            EDGE         EDGE             DEVICE
 """
 
 import argparse
 import asyncio
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 import sys
@@ -31,61 +30,74 @@ from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
 from scripts.agent_utils import run_agent_with_logging
 
 
-def load_image_source() -> tuple[Path, str]:
-    """Load image source from COCO or sample images.
+def load_log_source() -> tuple[Path, str]:
+    """Load log file source from LogHub or sample log.
 
     Returns:
-        Tuple of (image_dir_path, data_source_description)
+        Tuple of (log_file_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario04"
-    coco_images = data_dir / "coco" / "images"
-    sample_images = data_dir / "sample_images"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
+    loghub_dir = data_dir / "loghub_samples"
+    sample_log = data_dir / "server.log"
 
-    if coco_images.exists() and len(list(coco_images.glob("*.jpg"))) > 0:
-        return coco_images, "COCO 2017"
+    if loghub_dir.exists():
+        # Priority: small_python for agent (faster), medium for script version
+        for log_name in ["small_python.log", "medium_python.log"]:
+            candidate = loghub_dir / log_name
+            if candidate.exists():
+                return candidate, f"LogHub ({log_name})"
 
-    if sample_images.exists():
-        return sample_images, "Generated test images"
+        log_files = list(loghub_dir.glob("*.log"))
+        if log_files:
+            return log_files[0], f"LogHub ({log_files[0].name})"
+
+    if sample_log.exists():
+        return sample_log, "Sample server.log"
 
     raise FileNotFoundError(
-        f"No image directory found.\n"
-        "Run 'python scripts/download_public_datasets.py -s 4' for COCO 2017, or\n"
-        "Run 'python scripts/generate_test_images.py' for test images"
+        f"No log file found in {data_dir}\n"
+        "Run 'python scripts/download_public_datasets.py -s 2' for LogHub data"
     )
 
 
-# System prompt for the Image Processing Agent
-IMAGE_PROCESSING_SYSTEM_PROMPT = """You are an image processing assistant. Your task is to analyze a directory of images, find duplicates, create thumbnails, and generate a report.
+# Load log source at module level
+LOG_SOURCE, DATA_SOURCE = load_log_source()
+
+
+# System prompt for the Log Analysis Agent
+LOG_ANALYSIS_SYSTEM_PROMPT = f"""You are a log analysis assistant. Your task is to analyze server logs and generate a comprehensive error report.
 
 You have access to the following tools:
-- scan_directory: Scan a directory for images and get metadata
-- compute_image_hash: Compute perceptual hash for an image
-- compare_hashes: Compare hashes to find duplicate images
-- batch_resize: Create thumbnails for multiple images
-- aggregate_list: Group and aggregate data
+- read_text_file: Read file contents
+- parse_logs: Parse log file content into structured entries (returns "entries" array)
+- filter_entries: Filter log entries by severity level (requires "entries" array)
+- compute_log_statistics: Compute statistics on log entries (requires "entries" array)
 - write_file: Write files to the filesystem
 
-The images are located at /tmp/edgeagent_device_hy/images
+The log file is located at /edgeagent/data/scenario2/server.log
 
-When processing images, follow this workflow:
-1. Scan the image directory using scan_directory (recursive=False, include_info=True)
-2. Compute perceptual hashes for each image using compute_image_hash (hash_type="phash")
-3. Compare hashes to find duplicates using compare_hashes (threshold=5)
-4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
-5. Aggregate statistics using aggregate_list (group_by="format")
-6. Write a comprehensive report to /tmp/edgeagent_device_hy/agent_image_report.md
+IMPORTANT - Data Flow:
+- parse_logs returns {{"entries": [...]}} - you MUST pass this "entries" array to other tools
+- filter_entries(entries=<parsed_result>["entries"], min_level="warning")
+- compute_log_statistics(entries=<parsed_result>["entries"])
+
+Example workflow:
+1. log_content = read_text_file("/edgeagent/data/scenario2/server.log")
+2. parsed = parse_logs(log_content=log_content, format_type="python")
+3. stats = compute_log_statistics(entries=parsed["entries"])
+4. filtered = filter_entries(entries=parsed["entries"], min_level="warning")
+5. write_file(path="/edgeagent/results/scenario2_agent_log_report.md", content=report_markdown)
 
 Include in your report:
-- Total images scanned
-- Number of unique images vs duplicates
-- Thumbnail generation results
-- Image format distribution
+- Total entries analyzed
+- Breakdown by severity level
+- Error details and recommendations
 """
 
 
-class AgentImageProcessingScenario(ScenarioRunner):
+class AgentLogAnalysisScenario(ScenarioRunner):
     """
-    LLM Agent-based Image Processing Scenario.
+    LLM Agent-based Log Analysis Scenario.
 
     Unlike the script-based version, this uses an LLM to autonomously
     decide which tools to call and in what order.
@@ -94,7 +106,7 @@ class AgentImageProcessingScenario(ScenarioRunner):
     def __init__(
         self,
         config_path: str | Path,
-        output_dir: str | Path = "results/scenario04_agent",
+        output_dir: str | Path = "results/scenario2_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
         scheduler=None,
@@ -102,24 +114,24 @@ class AgentImageProcessingScenario(ScenarioRunner):
         super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
-        self._image_source = None
-        self._data_source = None
 
     @property
     def name(self) -> str:
-        return "image_processing_agent"
+        return "log_analysis_agent"
 
     @property
     def description(self) -> str:
-        return "LLM Agent autonomously processes images and generates a report"
+        return "LLM Agent autonomously analyzes logs and generates a report"
 
     @property
     def user_request(self) -> str:
         return (
-            "Process the images at /tmp/edgeagent_device_hy/images. "
-            "Scan the directory, compute perceptual hashes, find duplicate images, "
-            "create thumbnails for unique images, and generate a comprehensive "
-            "image processing report to /tmp/edgeagent_device_hy/agent_image_report.md"
+            "Analyze the server log file at /edgeagent/data/scenario2/server.log. "
+            "Follow these steps: "
+            "1) Read the log file with read_text_file, "
+            "2) Parse using parse_logs with format_type='python' to get entries array, "
+            "3) Compute statistics using compute_log_statistics with the entries array, "
+            "4) Write a comprehensive analysis report to /edgeagent/results/scenario2_agent_log_report.md"
         )
 
     async def execute(
@@ -127,35 +139,22 @@ class AgentImageProcessingScenario(ScenarioRunner):
         client: EdgeAgentMCPClient,
         tools: list,
     ) -> Any:
-        """Execute image processing using LLM Agent"""
+        """Execute log analysis using LLM Agent"""
 
         # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
         excluded_tools = {"directory_tree"}
         tools = [t for t in tools if t.name not in excluded_tools]
 
-        # Prepare image directory
-        image_source, data_source = load_image_source()
-        self._image_source = image_source
-        self._data_source = data_source
-
-        device_images = Path("/tmp/edgeagent_device_hy/images")
-        device_images.mkdir(parents=True, exist_ok=True)
-
-        # Clear and copy images
-        for f in device_images.glob("*"):
-            f.unlink()
-        for img in image_source.glob("*"):
-            if img.is_file():
-                shutil.copy(img, device_images / img.name)
-
-        total_input_size = sum(f.stat().st_size for f in device_images.glob("*") if f.is_file())
-        image_count = len(list(device_images.glob("*")))
+        # Prepare log file
+        log_path = Path("/edgeagent/data/scenario2/server.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(LOG_SOURCE.read_text())
 
         print("-" * 70)
-        print("LLM Agent Image Processing")
+        print("LLM Agent Log Analysis")
         print("-" * 70)
-        print(f"Data Source: {data_source}")
-        print(f"Images: {image_count} ({total_input_size:,} bytes)")
+        print(f"Data Source: {DATA_SOURCE}")
+        print(f"Log file size: {LOG_SOURCE.stat().st_size:,} bytes")
         print(f"Model: {self.model}")
         print(f"Temperature: {self.temperature}")
         print(f"Available tools: {len(tools)}")
@@ -199,14 +198,13 @@ class AgentImageProcessingScenario(ScenarioRunner):
                 tool_counts[tool] = tool_counts.get(tool, 0) + 1
 
             client.metrics_collector.add_custom_metric("agent_model", self.model)
-            client.metrics_collector.add_custom_metric("data_source", data_source)
+            client.metrics_collector.add_custom_metric("data_source", DATA_SOURCE)
             client.metrics_collector.add_custom_metric("tool_call_counts", tool_counts)
             client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
-            client.metrics_collector.add_custom_metric("images_count", image_count)
-            client.metrics_collector.add_custom_metric("total_input_size", total_input_size)
+            client.metrics_collector.add_custom_metric("log_file_size", LOG_SOURCE.stat().st_size)
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device_hy/agent_image_report.md")
+        report_path = Path("/edgeagent/results/scenario2_agent_log_report.md")
         if report_path.exists():
             report_content = report_path.read_text()
             print(f"Report written to: {report_path}")
@@ -218,9 +216,9 @@ class AgentImageProcessingScenario(ScenarioRunner):
 
 
 async def main():
-    """Run the LLM Agent-based Image Processing scenario"""
+    """Run the LLM Agent-based Log Analysis scenario"""
 
-    parser = argparse.ArgumentParser(description="Run Scenario 04 with LLM Agent")
+    parser = argparse.ArgumentParser(description="Run Scenario 02 with LLM Agent")
     parser.add_argument(
         "--scheduler",
         choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
@@ -238,7 +236,7 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 04: Image Processing Pipeline (LLM Agent Version)")
+    print("Scenario 02: Log Analysis Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
@@ -246,7 +244,7 @@ async def main():
     print(f"Scheduler: {args.scheduler}")
     print()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario04.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
     system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
 
     # Create scheduler
@@ -256,9 +254,9 @@ async def main():
     else:
         scheduler = create_scheduler(args.scheduler, config_path, registry)
 
-    scenario = AgentImageProcessingScenario(
+    scenario = AgentLogAnalysisScenario(
         config_path=config_path,
-        output_dir="results/scenario04_agent",
+        output_dir="results/scenario2_agent",
         model="gpt-4o-mini",
         temperature=0,
         scheduler=scheduler,
@@ -287,7 +285,7 @@ async def main():
 
     if result.metrics:
         # Export metrics
-        csv_path = result.metrics.save_csv("results/scenario04_agent/metrics.csv")
+        csv_path = result.metrics.save_csv("results/scenario2_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")
 
     return result.success

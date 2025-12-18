@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Scenario 2: Log Analysis Pipeline - Orchestration Mode Comparison
+Scenario 2: Log Analysis Pipeline - SubAgent Mode
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario02_orchestrated.py --mode legacy
-    python scripts/run_scenario02_orchestrated.py --mode subagent
-    python scripts/run_scenario02_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario2_subagent.py --mode legacy
+    python scripts/run_scenario2_subagent.py --mode subagent
+    python scripts/run_scenario2_subagent.py --compare  # Run both and compare
 
 Tool Chain:
     filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
@@ -56,7 +56,7 @@ class ExecutionResult:
 
 def load_log_source() -> tuple[Path, str]:
     """Load log file source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario02"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
     loghub_dir = data_dir / "loghub_samples"
     sample_log = data_dir / "server.log"
 
@@ -70,7 +70,7 @@ def load_log_source() -> tuple[Path, str]:
         return sample_log, "Sample server.log"
 
     # Create minimal test log if nothing exists
-    test_log = Path("/tmp/edgeagent_device_hy/server.log")
+    test_log = Path("/edgeagent/data/scenario2/server.log")
     test_log.parent.mkdir(parents=True, exist_ok=True)
     test_log.write_text("""2024-01-01 10:00:00,000 - root - INFO - Application started
 2024-01-01 10:00:01,000 - root - WARNING - High memory usage detected
@@ -86,11 +86,11 @@ LOG_SOURCE, DATA_SOURCE = load_log_source()
 
 
 USER_REQUEST = """
-Analyze the server log file at /tmp/edgeagent_device_hy/server.log.
+Analyze the server log file at /edgeagent/data/scenario2/server.log.
 1. Read the log file using read_text_file
 2. Parse the logs using parse_logs with format_type='python' to get entries
 3. Compute statistics using compute_log_statistics with the entries
-4. Write a summary report to /tmp/edgeagent_device_hy/log_report.md
+4. Write a summary report to /edgeagent/results/scenario2_log_report.md
 
 Return the analysis summary.
 """
@@ -276,7 +276,7 @@ def print_result(result: ExecutionResult):
         print(f"\nResult preview:\n{result.final_result[:300]}...")
 
 
-def save_result(result: ExecutionResult, output_dir: str = "results/scenario02_orchestrated"):
+def save_result(result: ExecutionResult, output_dir: str = "results/scenario2_subagent"):
     """Save execution result to JSON file"""
     import time as time_module
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -370,12 +370,12 @@ async def main():
     print(f"Scheduler: {args.scheduler}")
 
     # Prepare log file
-    device_log = Path("/tmp/edgeagent_device_hy/server.log")
-    device_log.parent.mkdir(parents=True, exist_ok=True)
-    device_log.write_text(LOG_SOURCE.read_text())
-    print(f"Prepared: {device_log} ({device_log.stat().st_size} bytes)")
+    log_path = Path("/edgeagent/data/scenario2/server.log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(LOG_SOURCE.read_text())
+    print(f"Prepared: {log_path} ({log_path.stat().st_size} bytes)")
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario02.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
 
     if args.compare:
         # Run both modes

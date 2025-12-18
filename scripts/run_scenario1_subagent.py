@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Scenario 1: Code Review Pipeline - Orchestration Mode Comparison
+Scenario 1: Code Review Pipeline - SubAgent Mode
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario01_orchestrated.py --mode legacy
-    python scripts/run_scenario01_orchestrated.py --mode subagent
-    python scripts/run_scenario01_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario1_subagent.py --mode legacy
+    python scripts/run_scenario1_subagent.py --mode subagent
+    python scripts/run_scenario1_subagent.py --compare  # Run both and compare
 
 Tool Chain:
     filesystem(list) -> git(log,diff) -> summarize -> data_aggregate -> filesystem(write)
@@ -37,7 +37,6 @@ from edgeagent import (
     SubAgentOrchestrator,
     OrchestrationConfig,
 )
-from edgeagent.paths import get_paths
 
 
 @dataclass
@@ -58,7 +57,7 @@ class ExecutionResult:
 
 def load_repo_source() -> tuple[Path, str]:
     """Load Git repository source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario01"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
     defects4j_dir = data_dir / "defects4j"
     sample_repo = data_dir / "sample_repo"
 
@@ -78,43 +77,48 @@ def load_repo_source() -> tuple[Path, str]:
     )
 
 
-def prepare_repo(scheduler_type: str = "brute_force") -> tuple[Path, str, str]:
-    """Prepare repository at device location (required before MCP git server starts)"""
+def prepare_repo() -> tuple[Path, str]:
+    """Prepare repository (same path structure exists on all locations)"""
     repo_source, data_source = load_repo_source()
 
-    paths = get_paths(scheduler_type)
-    device_repo = Path(paths.repo)
-    device_repo.parent.mkdir(parents=True, exist_ok=True)
+    repo_path = Path("/edgeagent/repos/scenario1")
+    repo_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if device_repo.exists():
-        shutil.rmtree(device_repo)
-    shutil.copytree(repo_source, device_repo)
+    if repo_path.exists():
+        shutil.rmtree(repo_path)
+    shutil.copytree(repo_source, repo_path)
 
-    return device_repo, data_source, paths.code_review_report
-
-
-def find_source_file(repo_path: Path) -> str:
-    """Find a source file in the repository"""
-    patterns = ["src/main/java/**/*.java", "src/**/*.java", "src/**/*.py", "**/*.py"]
-    for pattern in patterns:
-        files = list(repo_path.glob(pattern))
-        if files:
-            return str(files[0])
-    # Fallback to README
-    if (repo_path / "README.md").exists():
-        return str(repo_path / "README.md")
-    return ""
+    return repo_path, data_source
 
 
-def get_user_request(repo_path: str, report_path: str, source_file: str) -> str:
-    """Generate user request with correct paths"""
-    return f"""
-Review the Git repository at {repo_path}.
-1. Read the source file {source_file} using read_file
-2. Get git diff to see recent code changes
-3. Summarize the key changes using summarize_text
-4. Merge the summaries using merge_summaries
-5. Write a code review report to {report_path}
+# Prepare repo at module load time (before MCP client starts)
+REPO_PATH, DATA_SOURCE = prepare_repo()
+
+
+USER_REQUEST = """
+Review the Git repository at /edgeagent/repos/scenario1.
+
+Execute the following tool calls with EXACT parameters:
+
+Step 1: read_file
+  - path: "/edgeagent/repos/scenario1/README.md"
+
+Step 2: git_diff
+  - repo_path: "/edgeagent/repos/scenario1"
+  - target: "HEAD~1"
+
+Step 3: summarize_text
+  - text: (use content from steps 1 and 2)
+
+Step 4: merge_summaries
+  - summaries: (use results from step 3)
+
+Step 5: write_file
+  - path: "/edgeagent/results/scenario1_code_review_report.md"
+  - content: (final review report)
+
+CRITICAL: Use the EXACT paths shown above. Do NOT modify or shorten them.
+The repository path is "/edgeagent/repos/scenario1" (ends with "1").
 
 Return a summary of the code review.
 """
@@ -124,7 +128,7 @@ Return a summary of the code review.
 TOOL_SEQUENCE = ["read_file", "git_diff", "summarize_text", "merge_summaries", "write_file"]
 
 
-async def run_legacy_mode(config_path: Path, model: str, repo_path: str, report_path: str) -> ExecutionResult:
+async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
     """Run with legacy single-agent mode"""
     print("\n" + "=" * 70, flush=True)
     print("LEGACY MODE: Single Agent with All Tools", flush=True)
@@ -149,10 +153,8 @@ async def run_legacy_mode(config_path: Path, model: str, repo_path: str, report_
             result_content = ""
             seen_tool_ids = set()
 
-            source_file = find_source_file(Path(repo_path))
-            user_request = get_user_request(repo_path, report_path, source_file)
             async for chunk in agent.astream(
-                {"messages": [("user", user_request)]},
+                {"messages": [("user", USER_REQUEST)]},
                 stream_mode="values",
             ):
                 if "messages" in chunk:
@@ -191,7 +193,7 @@ async def run_legacy_mode(config_path: Path, model: str, repo_path: str, report_
         )
 
 
-async def run_subagent_mode(config_path: Path, model: str, scheduler: str, repo_path: str, report_path: str) -> ExecutionResult:
+async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "brute_force") -> ExecutionResult:
     """Run with Sub-Agent Orchestration mode"""
     print("\n" + "=" * 70)
     print(f"SUBAGENT MODE: Location-Aware Orchestration (scheduler={scheduler})")
@@ -222,11 +224,9 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str, repo_
 
         print("\nRunning orchestration...")
 
-        source_file = find_source_file(Path(repo_path))
-        user_request = get_user_request(repo_path, report_path, source_file)
         async with orchestrator:
             result = await orchestrator.run(
-                user_request=user_request,
+                user_request=USER_REQUEST,
                 tool_sequence=TOOL_SEQUENCE,
                 mode="subagent",
             )
@@ -307,7 +307,7 @@ def print_result(result: ExecutionResult):
         print(f"\nResult preview:\n{result.final_result[:300]}...")
 
 
-def save_result(result: ExecutionResult, output_dir: str = "results/scenario01_orchestrated"):
+def save_result(result: ExecutionResult, output_dir: str = "results/scenario1_subagent"):
     """Save execution result to JSON file"""
     import time as time_module
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -392,29 +392,26 @@ async def main():
         print("[ERROR] OPENAI_API_KEY not set")
         return False
 
-    # Prepare repo with scheduler-aware paths
-    repo_path, data_source, report_path = prepare_repo(args.scheduler)
-
     print("=" * 70)
     print("Scenario 1: Code Review Pipeline")
     print("=" * 70)
-    print(f"Data Source: {data_source}")
-    print(f"Repository: {repo_path}")
+    print(f"Data Source: {DATA_SOURCE}")
+    print(f"Repository: {REPO_PATH}")
     print(f"Model: {args.model}")
     print(f"Scheduler: {args.scheduler}")
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario01.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
 
     if args.compare:
-        # Run both modes (legacy uses DEVICE paths)
-        legacy_repo, legacy_source, legacy_report = prepare_repo("all_device")
-        legacy_result = await run_legacy_mode(config_path, args.model, str(legacy_repo), legacy_report)
+        # Run both modes
+        legacy_result = await run_legacy_mode(config_path, args.model)
         print_result(legacy_result)
         save_result(legacy_result)
 
-        # Re-prepare repo for subagent mode with selected scheduler
-        repo_path, data_source, report_path = prepare_repo(args.scheduler)
-        subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler, str(repo_path), report_path)
+        # Re-prepare repo for subagent mode
+        prepare_repo()
+
+        subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(subagent_result)
         save_result(subagent_result)
 
@@ -423,15 +420,13 @@ async def main():
         return legacy_result.success and subagent_result.success
 
     elif args.mode == "legacy":
-        # Legacy always uses DEVICE paths
-        legacy_repo, legacy_source, legacy_report = prepare_repo("all_device")
-        result = await run_legacy_mode(config_path, args.model, str(legacy_repo), legacy_report)
+        result = await run_legacy_mode(config_path, args.model)
         print_result(result)
         save_result(result)
         return result.success
 
     else:  # subagent
-        result = await run_subagent_mode(config_path, args.model, args.scheduler, str(repo_path), report_path)
+        result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(result)
         save_result(result)
         return result.success

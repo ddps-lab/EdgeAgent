@@ -48,6 +48,7 @@ class MetricsWrappedTool(BaseTool):
     - schedule_chain()으로 placement가 이미 결정됨
     - ProxyTool의 스케줄링 로직 불필요
     - 메트릭 수집만 수행
+    - Lazy 초기화: 도구 호출 시점에 해당 서버 세션만 생성
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -55,10 +56,16 @@ class MetricsWrappedTool(BaseTool):
     name: str = Field(description="Tool name")
     description: str = Field(default="", description="Tool description")
 
-    backend_tool: BaseTool = Field(description="Actual backend tool to wrap")
+    # Lazy 초기화용 필드
+    backend_tool: Optional[BaseTool] = Field(default=None, description="Actual backend tool (lazily loaded)")
     location: str = Field(description="Location where this tool is placed")
     parent_tool_name: str = Field(default="", description="Parent MCP server name")
     metrics_collector: Optional[Any] = Field(default=None)
+
+    # Lazy 초기화를 위한 추가 필드
+    client: Optional[Any] = Field(default=None, description="EdgeAgentMCPClient reference")
+    server_location: str = Field(default="", description="Server-location identifier (e.g., 'summarize_EDGE')")
+    _initialized: bool = False
 
     def _run(
         self,
@@ -71,13 +78,38 @@ class MetricsWrappedTool(BaseTool):
             self._arun(*args, run_manager=run_manager, **kwargs)
         )
 
+    async def _ensure_initialized(self):
+        """Lazy 초기화: 첫 호출 시 해당 서버 세션만 생성"""
+        if self._initialized:
+            return
+
+        if self.backend_tool is not None:
+            # 이미 backend_tool이 설정됨 (기존 방식)
+            self._initialized = True
+            return
+
+        if self.client is None or not self.server_location:
+            raise RuntimeError(
+                f"MetricsWrappedTool({self.name}) requires client and server_location for lazy init"
+            )
+
+        # 클라이언트를 통해 세션 생성 및 backend tool 로드
+        self.backend_tool = await self.client._lazy_load_backend_tool(
+            tool_name=self.name,
+            server_location=self.server_location,
+        )
+        self._initialized = True
+
     async def _arun(
         self,
         *args: Any,
         run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
         **kwargs: Any,
     ) -> Any:
-        """메트릭 수집과 함께 backend tool 호출 (스케줄링 없음)"""
+        """메트릭 수집과 함께 backend tool 호출 (스케줄링 없음, lazy 초기화)"""
+        # Lazy 초기화
+        await self._ensure_initialized()
+
         # EDGE camelCase 서버용 파라미터 변환
         invoke_kwargs = kwargs
         if self.location == "EDGE" and self.parent_tool_name in EDGE_CAMELCASE_SERVERS:
@@ -112,7 +144,7 @@ class MetricsWrappedTool(BaseTool):
             return await self.backend_tool.ainvoke(invoke_kwargs)
 
     def __repr__(self) -> str:
-        return f"MetricsWrappedTool({self.name}, location={self.location})"
+        return f"MetricsWrappedTool({self.name}, location={self.location}, initialized={self._initialized})"
 
 
 class EdgeAgentMCPClient:
@@ -563,21 +595,29 @@ class EdgeAgentMCPClient:
             if not endpoint:
                 continue
 
-            # 세션이 없으면 연결
+            # 세션이 없으면 연결 - _connection_processor를 통해 세션 생성
+            # (같은 task에서 세션 생성/정리하여 anyio cancel scope 문제 해결)
             if server_location not in self._active_sessions:
-                if server_location not in self.clients:
-                    mcp_config = endpoint.to_mcp_config()
-                    self.clients[server_location] = MultiServerMCPClient({
-                        server_location: mcp_config
-                    })
-
-                client = self.clients[server_location]
-                session = await self._exit_stack.enter_async_context(
-                    client.session(server_location)
+                # Queue를 통해 processor task에 연결 요청
+                response_queue = asyncio.Queue()
+                await self._connection_queue.put(
+                    (server_location, tool_config, location, response_queue)
                 )
-                self._active_sessions[server_location] = session
 
-            # tool 로드
+                # Processor task의 응답 대기
+                result = await response_queue.get()
+
+                if not result["success"]:
+                    raise result["error"]
+
+                # tool 로드 완료 - 바로 backend_tools에 추가
+                for mcp_tool in result["tools"].values():
+                    if mcp_tool.name in placement_map and placement_map[mcp_tool.name] == location:
+                        backend_tools[mcp_tool.name] = mcp_tool
+                        tool_metadata[mcp_tool.name] = (server_name, location)
+                continue
+
+            # 이미 세션이 있으면 tool 로드
             session = self._active_sessions[server_location]
             mcp_tools = await load_mcp_tools(session)
 

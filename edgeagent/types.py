@@ -5,7 +5,7 @@ EdgeAgent Type Definitions
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 # ============================================================================
 # Location Types
@@ -39,44 +39,19 @@ RUNTIMES: list[Runtime] = ["WASI", "CONTAINER"]
 
 
 # ============================================================================
-# 4D Taxonomy Types
+# Scheduling Constraints
 # ============================================================================
 
-DataAffinity = Literal["DEVICE", "EDGE", "CLOUD"]
-"""
-Dimension 1: Data Affinity
+@dataclass
+class SchedulingConstraints:
+    """
+    스케줄링 제약조건 결과
 
-Tool이 어떤 데이터에 접근하는지에 따른 분류
-
-- DEVICE: 로컬 파일시스템, 센서, 로컬 DB 접근 필수
-- EDGE: 지역 데이터 처리, 전처리/변환 작업
-- CLOUD: 외부 API 의존, 글로벌 데이터 접근
-"""
-
-ComputeIntensity = Literal["LOW", "MEDIUM", "HIGH"]
-"""
-Dimension 2: Compute Intensity
-
-Tool의 연산 복잡도
-
-- LOW: 단순 I/O, CRUD 작업 (예: read_file, get_time)
-- MEDIUM: 파싱, 변환, 집계 (예: parse_json, aggregate_data)
-- HIGH: ML 추론, Browser 렌더링 (예: embedding, screenshot)
-"""
-
-DataFlow = Literal["REDUCTION", "TRANSFORM", "EXPANSION"]
-"""
-Dimension 3: Data Flow
-
-Tool의 입출력 데이터 크기 비율
-
-- REDUCTION: Output << Input (예: search, filter, summarize)
-  → Edge에서 실행하면 네트워크 전송량 감소
-- TRANSFORM: Output ≈ Input (예: convert, format, translate)
-  → 위치 선택이 덜 중요
-- EXPANSION: Output >> Input (예: read_file, fetch, download)
-  → Data source 가까운 곳에서 실행
-"""
+    각 Tool 호출에 대해 검사된 제약조건 결과를 저장합니다.
+    """
+    requires_cloud_api: bool = False    # Cloud API 필요 여부
+    privacy_sensitive: bool = False     # 프라이버시 민감 여부
+    tool_available: bool = True         # 해당 위치에서 툴 실행 가능 여부 (TODO: 스케줄러에서 로직 구현)
 
 
 # ============================================================================
@@ -107,37 +82,52 @@ Tool의 데이터 접근 유형
 
 
 # ============================================================================
-# Chain Scheduling Types
+# Scheduling Result
 # ============================================================================
 
 @dataclass
-class ToolPlacement:
+class SchedulingResult:
     """
-    단일 Tool의 배치 정보
+    Scheduler 결정 결과 (location + metadata)
 
-    Score(i, u, v) = α * { ExecCost(i, u) + β } + (1-α) * TransCost(v → u)
+    스케줄링 결정의 추적을 위해 location뿐 아니라
+    결정 이유, 검사된 제약조건, 사용 가능한 위치 등을 함께 반환합니다.
+
+    - agent 모드: 개별 tool 호출마다 생성
+    - script/subagent 모드: schedule_chain()에서 ChainSchedulingResult.placements로 반환
     """
-    tool_name: str
-    location: Location
-    score: float
-    exec_cost: float
-    trans_cost: float
-    fixed: bool = False  # Type C (local_data)로 고정된 경우
+    tool_name: str                               # Tool 이름
+    location: Location                           # 결정된 실행 위치
+    reason: str                                  # 결정 이유 (static_mapping, brute_force_optimal, etc.)
+    decision_time_ns: int = 0                    # 결정 소요 시간 (나노초)
+    available_locations: list[str] = field(default_factory=list)  # 사용 가능한 위치
+    # 제약조건 결과
+    constraints: SchedulingConstraints = field(default_factory=SchedulingConstraints)
+    # Cost 정보 (brute_force만 값 설정, 나머지 None)
+    score: Optional[float] = None                # 총 비용
+    exec_cost: Optional[float] = None            # 연산 비용
+    trans_cost: Optional[float] = None           # 통신 비용
+    fixed: Optional[bool] = None                 # 노드 고정 여부
 
+
+# ============================================================================
+# Chain Scheduling Types
+# ============================================================================
 
 @dataclass
 class ChainSchedulingResult:
     """
     Tool Chain 전체의 스케줄링 결과
 
-    Brute-force 완전 탐색으로 최적 노드 배치 조합을 찾은 결과
+    schedule_chain() 메서드의 반환 타입.
+    brute_force만 total_score, search_space_size, valid_combinations 값 설정.
     """
-    placements: list[ToolPlacement]
-    total_score: float
-    search_space_size: int
-    valid_combinations: int
-    optimization_method: str  # "brute_force"
-    decision_time_ns: int
+    placements: list[SchedulingResult]              # 각 Tool의 스케줄링 결과
+    optimization_method: str                        # 스케줄러 이름
+    decision_time_ns: int                           # 전체 chain 스케줄링 소요 시간
+    total_score: Optional[float] = None             # 전체 비용 (brute_force만)
+    search_space_size: Optional[int] = None         # 탐색 공간 크기 (brute_force만)
+    valid_combinations: Optional[int] = None        # 유효 조합 수 (brute_force만)
 
     def get_location(self, tool_name: str) -> Location:
         """특정 Tool의 배치된 노드 반환"""
@@ -158,5 +148,8 @@ class ChainSchedulingResult:
         """상세 배치 출력"""
         for p in self.placements:
             fixed_mark = " [fixed]" if p.fixed else ""
+            score = p.score if p.score is not None else 0.0
+            exec_cost = p.exec_cost if p.exec_cost is not None else 0.0
+            trans_cost = p.trans_cost if p.trans_cost is not None else 0.0
             print(f"  {p.tool_name} @ {p.location} "
-                  f"(score: {p.score:.2f}, exec: {p.exec_cost:.2f}, trans: {p.trans_cost:.2f}){fixed_mark}")
+                  f"(score: {score:.2f}, exec: {exec_cost:.2f}, trans: {trans_cost:.2f}){fixed_mark}")

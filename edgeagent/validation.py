@@ -123,8 +123,8 @@ class LogAnalysisValidator(ScenarioValidator):
         result = ValidationResult(passed=False, score=0.0)
 
         # Check 1: Output file exists
-        report_path = Path(context.get("report_path", "/tmp/edgeagent_device_hy/log_report.md"))
-        agent_report_path = Path("/tmp/edgeagent_device_hy/agent_report.md")
+        report_path = Path(context.get("report_path", "/edgeagent/results/scenario2_log_report.md"))
+        agent_report_path = Path("/edgeagent/results/scenario2_agent_log_report.md")
 
         # Try both paths (script vs agent may use different names)
         actual_path = None
@@ -204,8 +204,8 @@ class ImageProcessingValidator(ScenarioValidator):
         result = ValidationResult(passed=False, score=0.0)
 
         # Check 1: Output file exists
-        report_path = Path(context.get("report_path", "/tmp/edgeagent_device_hy/image_report.md"))
-        agent_report_path = Path("/tmp/edgeagent_device_hy/agent_image_report.md")
+        report_path = Path(context.get("report_path", "/edgeagent/results/scenario4_image_report.md"))
+        agent_report_path = Path("/edgeagent/results/scenario4_agent_image_report.md")
 
         actual_path = None
         if report_path.exists():
@@ -244,7 +244,7 @@ class ImageProcessingValidator(ScenarioValidator):
                         "Report includes image statistics" if has_stats else "No statistics found")
 
         # Check 5: Validate against input if available
-        input_dir = context.get("input_dir", "/tmp/edgeagent_device_hy/images")
+        input_dir = context.get("input_dir", "/edgeagent/data/scenario4/sample_images")
         if Path(input_dir).exists():
             input_images = list(Path(input_dir).glob("*"))
             input_count = len([f for f in input_images if f.is_file()])
@@ -273,8 +273,8 @@ class CodeReviewValidator(ScenarioValidator):
         result = ValidationResult(passed=False, score=0.0)
 
         # Check 1: Output file exists
-        report_path = Path(context.get("report_path", "/tmp/edgeagent_device_hy/code_review_report.md"))
-        agent_report_path = Path("/tmp/edgeagent_device_hy/agent_code_review.md")
+        report_path = Path(context.get("report_path", "/edgeagent/results/scenario1_code_review_report.md"))
+        agent_report_path = Path("/edgeagent/results/scenario1_agent_code_review_report.md")
 
         actual_path = None
         if report_path.exists():
@@ -327,8 +327,8 @@ class ResearchAssistantValidator(ScenarioValidator):
         result = ValidationResult(passed=False, score=0.0)
 
         # Check 1: Output file exists
-        report_path = Path(context.get("report_path", "/tmp/edgeagent_device_hy/research_report.md"))
-        agent_report_path = Path("/tmp/edgeagent_device_hy/agent_research_report.md")
+        report_path = Path(context.get("report_path", "/edgeagent/results/scenario3_research_report.md"))
+        agent_report_path = Path("/edgeagent/results/scenario3_agent_research_report.md")
 
         actual_path = None
         if report_path.exists():

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Scenario 4: Image Processing Pipeline - With Chain Scheduling
+Scenario 2: Log Analysis Pipeline - With Chain Scheduling
 
 Tool Chain:
-    scan_directory -> compute_image_hash(×N) -> compare_hashes -> batch_resize -> aggregate_list -> write_file
+    filesystem(read) -> log_parser -> data_aggregate -> filesystem(write)
 
-Mode: _with_metrics
+Mode: script
 - Tool sequence is STATIC (predefined)
 - Scheduler runs FIRST via schedule_chain() to determine optimal placement
 - get_backend_tools(placement_map) 사용: 필요한 서버만 연결, MetricsWrappedTool 반환
@@ -14,7 +14,6 @@ Mode: _with_metrics
 
 import asyncio
 import json
-import shutil
 import time
 from pathlib import Path
 import sys
@@ -24,16 +23,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from edgeagent import EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import BruteForceChainScheduler, create_scheduler
-from edgeagent.paths import get_paths
+from edgeagent.metrics import MetricsCollector, MetricsConfig
 
 
-# Tool Chain 정의 (순서 고정)
+# Tool Chain 정의 (orchestrated와 동일)
 TOOL_CHAIN = [
-    "scan_directory",
-    "compute_image_hash",
-    "compare_hashes",
-    "batch_resize",
-    "aggregate_list",
+    "read_text_file",
+    "parse_logs",
+    "compute_log_statistics",
     "write_file",
 ]
 
@@ -60,32 +57,34 @@ def parse_tool_result(result):
     return {"raw": str(result)}
 
 
-async def run_image_processing(
+async def run_log_analysis(
     config_path: Path,
     system_config_path: Path,
     scheduler_type: str = "brute_force",
     subagent_mode: bool = False,
-    output_dir: str = "results/scenario04",
+    output_dir: str = "results/scenario2",
 ) -> dict:
     """
-    Run Image Processing Pipeline with Chain Scheduling.
+    Log Analysis Pipeline 실행 (Chain Scheduling 적용)
 
-    Scheduler runs FIRST (no MCP connection), then only required locations connect.
+    핵심 설계:
+    1. 스케줄러가 먼저 실행 (MCP 연결 없이) -> 최적 배치 결정
+    2. get_backend_tools(placement_map)으로 필요한 서버만 연결
+    3. MetricsWrappedTool 사용 (ProxyTool 오버헤드 없음)
     """
     start_time = time.time()
 
-    # 스케줄러 타입에 따른 경로 설정
-    paths = get_paths(scheduler_type)
+    # 경로 설정 (모든 location에서 동일한 구조)
+    log_path = "/edgeagent/data/scenario2/server.log"
+    report_path = "/edgeagent/results/scenario2_log_report.md"
 
-    # Ensure directories exist
-    Path(paths.base).mkdir(parents=True, exist_ok=True)
+    # 디렉토리 생성
+    Path("/edgeagent/data/scenario2").mkdir(parents=True, exist_ok=True)
+    Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    input_dir = paths.images
-    report_path = paths.image_report
-
     # ================================================================
-    # Step 1: Run Scheduler FIRST (NO MCP connection!)
+    # Step 1: 스케줄러 먼저 실행 (MCP 연결 없이)
     # ================================================================
     print("=" * 70)
     print(f"Step 1: Chain Scheduling ({scheduler_type})")
@@ -169,181 +168,92 @@ async def run_image_processing(
         print("Step 3: Prepare data")
         print("=" * 70)
 
-        data_dir = Path(__file__).parent.parent / "data" / "scenario04"
-        coco_images = data_dir / "coco" / "images"
-        sample_images = data_dir / "sample_images"
+        data_dir = Path(__file__).parent.parent / "data" / "scenario2"
+        loghub_dir = data_dir / "loghub_samples"
+        sample_log = data_dir / "server.log"
 
-        if coco_images.exists() and len(list(coco_images.glob("*.jpg"))) > 0:
-            image_source = coco_images
-            data_source = "COCO 2017"
-        elif sample_images.exists():
-            image_source = sample_images
-            data_source = "Generated test images"
-        else:
-            raise FileNotFoundError(
-                f"No image directory found.\n"
-                "Run 'python scripts/download_public_datasets.py -s 4' for COCO 2017, or\n"
-                "Run 'python scripts/generate_test_images.py' for test images"
-            )
+        log_file = None
+        data_source = None
+
+        if loghub_dir.exists():
+            for log_name in ["medium_python.log", "small_python.log"]:
+                candidate = loghub_dir / log_name
+                if candidate.exists():
+                    log_file = candidate
+                    data_source = f"LogHub ({log_name})"
+                    break
+
+        if log_file is None and sample_log.exists():
+            log_file = sample_log
+            data_source = "Sample server.log"
+
+        if log_file is None:
+            raise FileNotFoundError(f"No log file found in {data_dir}")
 
         print(f"  Data Source: {data_source}")
+        print(f"  Log file size: {log_file.stat().st_size:,} bytes")
 
-        device_images = Path(input_dir)
-        device_images.mkdir(parents=True, exist_ok=True)
-
-        for img in image_source.glob("*"):
-            if img.is_file():
-                shutil.copy(img, device_images / img.name)
-
-        total_input_size = sum(f.stat().st_size for f in device_images.glob("*") if f.is_file())
-        print(f"  Prepared {len(list(device_images.glob('*')))} images ({total_input_size:,} bytes)")
+        target_log = Path(log_path)
+        target_log.write_text(log_file.read_text())
         print()
 
         # ================================================================
-        # Step 4: Execute pipeline
+        # Step 4: Execute pipeline (orchestrated와 동일한 TOOL_CHAIN)
+        # read_text_file -> parse_logs -> compute_log_statistics -> write_file
         # ================================================================
         print("=" * 70)
         print("Step 4: Execute pipeline")
         print("=" * 70)
 
-        # 4.1: scan_directory
-        tool_name = "scan_directory"
-        location = placement_map.get(tool_name, "DEVICE")
+        # 4.1: read_text_file
+        tool_name = "read_text_file"
+        location = placement_map[tool_name]
         print(f"\n  [{tool_name}] -> {location}")
 
-        scan_tool = get_tool("scan_directory")
-        if scan_tool:
-            raw_scan = await scan_tool.ainvoke({
-                "directory": str(device_images),
-                "recursive": False,
-                "include_info": True,
-            })
-            scan_result = parse_tool_result(raw_scan)
-        else:
-            scan_result = {"image_count": 0, "image_paths": []}
-            print(f"    [SKIP] No tool available")
+        read_tool = get_tool("read_text_file")
+        log_content = await read_tool.ainvoke({"path": str(target_log)})
+        print(f"    Read {len(str(log_content))} chars")
 
-        image_count = scan_result.get("image_count", 0)
-        image_paths = scan_result.get("image_paths", [])
-        print(f"    Found {image_count} images")
-
-        # 4.2: compute_image_hash (×N)
-        tool_name = "compute_image_hash"
-        location = placement_map.get(tool_name, "EDGE")
-        print(f"\n  [{tool_name}] -> {location} (×{len(image_paths)})")
-
-        hash_tool = get_tool("compute_image_hash")
-        hashes = []
-        if hash_tool:
-            for img_path in image_paths:
-                raw_hash = await hash_tool.ainvoke({
-                    "image_path": img_path,
-                    "hash_type": "phash",
-                })
-                hashes.append(parse_tool_result(raw_hash))
-            print(f"    Computed {len([h for h in hashes if 'hash' in h])} hashes")
-        else:
-            print(f"    [SKIP] No tool available")
-
-        # 4.3: compare_hashes
-        tool_name = "compare_hashes"
-        location = placement_map.get(tool_name, "EDGE")
+        # 4.2: parse_logs
+        tool_name = "parse_logs"
+        location = placement_map[tool_name]
         print(f"\n  [{tool_name}] -> {location}")
 
-        compare_tool = get_tool("compare_hashes")
-        if compare_tool and hashes:
-            raw_compare = await compare_tool.ainvoke({
-                "hashes": hashes,
-                "threshold": 5,
-            })
-            compare_result = parse_tool_result(raw_compare)
-        else:
-            compare_result = {"duplicate_groups": [], "unique_count": len(image_paths)}
-            print(f"    [SKIP] No tool available")
+        parse_tool = get_tool("parse_logs")
+        raw_parsed = await parse_tool.ainvoke({
+            "log_content": str(log_content),
+            "format_type": "python"
+        })
+        parsed = parse_tool_result(raw_parsed)
+        print(f"    Parsed {parsed.get('parsed_count', 0)} entries")
 
-        duplicate_groups = compare_result.get("duplicate_groups", [])
-        unique_count = compare_result.get("unique_count", 0)
-        print(f"    Duplicate groups: {len(duplicate_groups)}, Unique: {unique_count}")
-
-        # 4.4: batch_resize
-        tool_name = "batch_resize"
-        location = placement_map.get(tool_name, "EDGE")
+        # 4.3: compute_log_statistics
+        tool_name = "compute_log_statistics"
+        location = placement_map[tool_name]
         print(f"\n  [{tool_name}] -> {location}")
 
-        unique_paths = compare_result.get("unique_paths", image_paths[:unique_count])
-        batch_tool = get_tool("batch_resize")
-        if batch_tool and unique_paths:
-            raw_batch = await batch_tool.ainvoke({
-                "image_paths": unique_paths,
-                "max_size": 150,
-                "quality": 75,
-                "output_format": "JPEG",
-            })
-            batch_result = parse_tool_result(raw_batch)
-        else:
-            batch_result = {"successful": 0, "overall_reduction": 0}
-            if not batch_tool:
-                print(f"    [SKIP] No tool available")
-            elif not unique_paths:
-                print(f"    [SKIP] No unique images to resize")
+        stats_tool = get_tool("compute_log_statistics")
+        raw_stats = await stats_tool.ainvoke({"entries": parsed.get("entries", [])})
+        stats = parse_tool_result(raw_stats)
+        print(f"    By level: {stats.get('by_level', {})}")
 
-        thumbnails_created = batch_result.get("successful", 0)
-        thumbnail_reduction = batch_result.get("overall_reduction", 0)
-        print(f"    Thumbnails: {thumbnails_created}, Reduction: {thumbnail_reduction:.2%}")
-
-        # 4.5: aggregate_list
-        tool_name = "aggregate_list"
-        location = placement_map.get(tool_name, "EDGE")
-        print(f"\n  [{tool_name}] -> {location}")
-
-        images_info = scan_result.get("images", [])
-        if not images_info:
-            images_info = [{"path": p, "format": Path(p).suffix.upper()[1:]} for p in image_paths]
-
-        aggregate_tool = get_tool("aggregate_list")
-        if aggregate_tool:
-            raw_agg = await aggregate_tool.ainvoke({
-                "items": images_info,
-                "group_by": "format",
-            })
-            agg_result = parse_tool_result(raw_agg)
-            print(f"    Format groups: {list(agg_result.get('groups', {}).keys())}")
-        else:
-            agg_result = {"groups": {}}
-            print(f"    [SKIP] No tool available")
-
-        # 4.6: write_file
+        # 4.4: write_file
         tool_name = "write_file"
-        location = placement_map.get(tool_name, "DEVICE")
+        location = placement_map[tool_name]
         print(f"\n  [{tool_name}] -> {location}")
 
-        report = f"""# Image Processing Report
+        report = f"""# Log Analysis Report
 
 ## Summary
-- Images scanned: {image_count}
-- Total input size: {total_input_size:,} bytes
-- Unique images: {unique_count}
-- Duplicate groups: {len(duplicate_groups)}
+- Total entries: {parsed.get('parsed_count', 0)}
+- Format: {parsed.get('format_detected', 'N/A')}
 
-## Thumbnail Generation
-- Thumbnails created: {thumbnails_created}
-- Reduction ratio: {thumbnail_reduction:.2%}
-
-## Images by Format
-"""
-        for fmt, count in agg_result.get("groups", {}).items():
-            report += f"- {fmt}: {count} images\n"
-
-        report += """
----
-*Generated by EdgeAgent Image Processing Pipeline*
+## By Level
+{chr(10).join(f"- {k}: {v}" for k, v in stats.get('by_level', {}).items())}
 """
 
         write_tool = get_tool("write_file")
-        if write_tool:
-            await write_tool.ainvoke({"path": report_path, "content": report})
-        else:
-            Path(report_path).write_text(report)
+        await write_tool.ainvoke({"path": report_path, "content": report})
         print(f"    Written to {report_path}")
 
         # Extract metrics before context closes
@@ -369,8 +279,9 @@ async def run_image_processing(
     print(f"  Tool calls: {len(metrics_entries)}")
     print("=" * 70)
 
+    # Save results
     result = {
-        "scenario_name": "image_processing",
+        "scenario_name": "log_analysis",
         "scheduler_type": scheduler_type,
         "success": True,
         "total_time_ms": total_time_ms,
@@ -380,7 +291,7 @@ async def run_image_processing(
         "tool_call_count": len(metrics_entries),
     }
 
-    output_path = Path(output_dir) / f"image_processing_{int(start_time)}.json"
+    output_path = Path(output_dir) / f"log_analysis_{int(start_time)}.json"
     with open(output_path, "w") as f:
         json.dump(result, f, indent=2)
     print(f"Results saved to: {output_path}")
@@ -396,17 +307,17 @@ async def main():
     parser.add_argument("--subagent-mode", action="store_true")
     args = parser.parse_args()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario04.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
     system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
 
     print("=" * 70)
-    print("Scenario 4: Image Processing Pipeline")
+    print("Scenario 2: Log Analysis Pipeline")
     print("=" * 70)
     print(f"Scheduler: {args.scheduler}")
     print(f"SubAgent Mode: {args.subagent_mode}")
     print()
 
-    result = await run_image_processing(
+    result = await run_log_analysis(
         config_path=config_path,
         system_config_path=system_config_path,
         scheduler_type=args.scheduler,

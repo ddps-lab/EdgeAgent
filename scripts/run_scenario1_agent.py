@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-Scenario 03: Research Assistant Pipeline - LLM Agent Version
+Scenario 01: Code Review Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
-to complete the research task. This demonstrates "true AI Agent" behavior
+to complete the code review task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
 
 Tool Chain (expected, but LLM decides):
-    fetch -> summarize -> aggregate -> filesystem(write)
-    EDGE    EDGE        EDGE        DEVICE
+    filesystem -> git -> summarize -> data_aggregate -> filesystem(write)
+    DEVICE       DEVICE  EDGE        EDGE             DEVICE
 """
 
 import argparse
 import asyncio
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 import sys
@@ -30,70 +31,67 @@ from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
 from scripts.agent_utils import run_agent_with_logging
 
 
-# Default URLs (fallback if S2ORC not available)
-DEFAULT_RESEARCH_URLS = [
-    "https://en.wikipedia.org/wiki/Intelligent_agent",
-    "https://en.wikipedia.org/wiki/Large_language_model",
-]
-
-
-def load_s2orc_urls(max_urls: int = 3) -> tuple[list[str], str]:
-    """Load research URLs from S2ORC dataset.
-
-    Note: Semantic Scholar paper URLs are automatically converted to API calls
-    by the fetch server, avoiding the HTTP 202 issue.
+def load_repo_source() -> tuple[Path, str]:
+    """Load Git repository source from Defects4J or sample repo.
 
     Returns:
-        Tuple of (urls, data_source_description)
+        Tuple of (repo_path, data_source_description)
     """
-    s2orc_dir = Path(__file__).parent.parent / "data" / "scenario03" / "s2orc"
-    paper_urls_file = s2orc_dir / "paper_urls.txt"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
+    defects4j_dir = data_dir / "defects4j"
+    sample_repo = data_dir / "sample_repo"
 
-    if paper_urls_file.exists():
-        urls = paper_urls_file.read_text().strip().split('\n')
-        urls = [u.strip() for u in urls if u.strip()][:max_urls]
-        if urls:
-            return urls, f"S2ORC ({len(urls)} papers)"
+    if defects4j_dir.exists():
+        for subdir in defects4j_dir.iterdir():
+            if subdir.is_dir() and (subdir / ".git").exists():
+                return subdir, f"Defects4J ({subdir.name})"
 
-    return DEFAULT_RESEARCH_URLS, "Wikipedia (fallback)"
+    if sample_repo.exists() and (sample_repo / ".git").exists():
+        return sample_repo, "Generated sample repository"
+
+    raise FileNotFoundError(
+        f"No Git repository found in {data_dir}\n"
+        "Run 'python scripts/download_public_datasets.py -s 1' for Defects4J, or\n"
+        "Run 'python scripts/generate_test_repo.py' for sample repository"
+    )
 
 
-# Load URLs at module level
-RESEARCH_URLS, DATA_SOURCE = load_s2orc_urls(max_urls=3)
-
-# System prompt for the Research Assistant Agent
-RESEARCH_ASSISTANT_SYSTEM_PROMPT = f"""You are a research assistant. Your task is to research topics by fetching web content, summarizing it, and generating research reports.
+# System prompt for the Code Review Agent
+CODE_REVIEW_SYSTEM_PROMPT = """You are a code review assistant. Your task is to analyze a Git repository and generate a comprehensive code review report.
 
 You have access to the following tools:
-- fetch: Fetch content from a URL (converts to markdown)
+- list_directory: List files in a directory (use this, NOT directory_tree)
+- read_file: Read file contents
+- git_status: Get Git repository status
+- git_log: Get commit history
+- git_diff: Get code differences
 - summarize_text: Summarize text content
-- summarize_documents: Summarize multiple documents at once
 - aggregate_list: Group and aggregate data
-- combine_research_results: Combine multiple research results
 - write_file: Write files to the filesystem
 
-For this research task, use these URLs:
-{chr(10).join(f"- {url}" for url in RESEARCH_URLS)}
+IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
 
-When conducting research, follow this workflow:
-1. Fetch content from each URL using the fetch tool
-2. Summarize each fetched content using summarize_text
-3. Aggregate the summaries using aggregate_list or combine_research_results
-4. Write a comprehensive research report using write_file
+The repository is located at /edgeagent/repos/scenario1
 
-Write the final report to /tmp/edgeagent_device_hy/agent_research_report.md
+When conducting code review, follow this workflow:
+1. List the repository files to understand the structure
+2. Get git status to see current state
+3. Get git log to see recent commits (use max_count=5)
+4. Get git diff to see recent code changes
+5. Summarize the changes
+6. Write a comprehensive code review report to /edgeagent/results/scenario1_agent_code_review_report.md
 
 Include in your report:
-- Overview of the research topic
-- Key findings from each source
-- Synthesized conclusions
-- References to the sources
+- Repository overview
+- Recent commits summary
+- Code changes analysis
+- Recommendations for improvement
 """
 
 
-class AgentResearchAssistantScenario(ScenarioRunner):
+class AgentCodeReviewScenario(ScenarioRunner):
     """
-    LLM Agent-based Research Assistant Scenario.
+    LLM Agent-based Code Review Scenario.
 
     Unlike the script-based version, this uses an LLM to autonomously
     decide which tools to call and in what order.
@@ -102,7 +100,7 @@ class AgentResearchAssistantScenario(ScenarioRunner):
     def __init__(
         self,
         config_path: str | Path,
-        output_dir: str | Path = "results/scenario03_agent",
+        output_dir: str | Path = "results/scenario1_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
         scheduler=None,
@@ -110,22 +108,35 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
+        self._repo_source = None
+        self._data_source = None
+
+        # Pre-initialize repo directory for MCP git server
+        # (git server validates repo path on startup)
+        repo_source, data_source = load_repo_source()
+        self._repo_source = repo_source
+        self._data_source = data_source
+
+        repo_path = Path("/edgeagent/repos/scenario1")
+        repo_path.parent.mkdir(parents=True, exist_ok=True)
+        if repo_path.exists():
+            shutil.rmtree(repo_path)
+        shutil.copytree(repo_source, repo_path)
 
     @property
     def name(self) -> str:
-        return "research_assistant_agent"
+        return "code_review_agent"
 
     @property
     def description(self) -> str:
-        return "LLM Agent autonomously researches a topic and generates a report"
+        return "LLM Agent autonomously reviews code and generates a report"
 
     @property
     def user_request(self) -> str:
-        urls_str = ", ".join(RESEARCH_URLS)
         return (
-            f"Research the topic of AI agents by fetching and analyzing these URLs: {urls_str}. "
-            "Summarize each source, synthesize the findings, and write a comprehensive "
-            "research report to /tmp/edgeagent_device_hy/agent_research_report.md"
+            "Review the Git repository at /edgeagent/repos/scenario1. "
+            "Analyze the commit history, code changes, and generate a comprehensive "
+            "code review report to /edgeagent/results/scenario1_agent_code_review_report.md"
         )
 
     async def execute(
@@ -133,24 +144,21 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         client: EdgeAgentMCPClient,
         tools: list,
     ) -> Any:
-        """Execute research using LLM Agent"""
+        """Execute code review using LLM Agent"""
+
+        repo_path = Path("/edgeagent/repos/scenario1")
 
         # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
         excluded_tools = {"directory_tree"}
         tools = [t for t in tools if t.name not in excluded_tools]
 
-        # Ensure output directory exists
-        Path("/tmp/edgeagent_device_hy").mkdir(parents=True, exist_ok=True)
-
         print("-" * 70)
-        print("LLM Agent Research Assistant")
+        print("LLM Agent Code Review")
         print("-" * 70)
-        print(f"Data Source: {DATA_SOURCE}")
+        print(f"Data Source: {self._data_source}")
+        print(f"Repository: {repo_path}")
         print(f"Model: {self.model}")
         print(f"Temperature: {self.temperature}")
-        print(f"Research URLs: {len(RESEARCH_URLS)}")
-        for url in RESEARCH_URLS:
-            print(f"  - {url}")
         print(f"Available tools: {len(tools)}")
         print()
 
@@ -160,7 +168,7 @@ class AgentResearchAssistantScenario(ScenarioRunner):
             llm_kwargs["temperature"] = self.temperature
         llm = ChatOpenAI(**llm_kwargs)
 
-        # Create agent using langchain.agents.create_agent
+        # Create agent
         agent = create_agent(llm, tools)
 
         print("Agent created. Sending user request...")
@@ -192,16 +200,15 @@ class AgentResearchAssistantScenario(ScenarioRunner):
                 tool_counts[tool] = tool_counts.get(tool, 0) + 1
 
             client.metrics_collector.add_custom_metric("agent_model", self.model)
-            client.metrics_collector.add_custom_metric("data_source", DATA_SOURCE)
+            client.metrics_collector.add_custom_metric("data_source", self._data_source)
             client.metrics_collector.add_custom_metric("tool_call_counts", tool_counts)
             client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
-            client.metrics_collector.add_custom_metric("urls_researched", len(RESEARCH_URLS))
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device_hy/agent_research_report.md")
-        if report_path.exists():
-            report_content = report_path.read_text()
-            print(f"Report written to: {report_path}")
+        report_file = Path("/edgeagent/results/scenario1_agent_code_review_report.md")
+        if report_file.exists():
+            report_content = report_file.read_text()
+            print(f"Report written to: {report_file}")
             print(f"Report size: {len(report_content)} bytes")
             return report_content
         else:
@@ -210,9 +217,9 @@ class AgentResearchAssistantScenario(ScenarioRunner):
 
 
 async def main():
-    """Run the LLM Agent-based Research Assistant scenario"""
+    """Run the LLM Agent-based Code Review scenario"""
 
-    parser = argparse.ArgumentParser(description="Run Scenario 03 with LLM Agent")
+    parser = argparse.ArgumentParser(description="Run Scenario 01 with LLM Agent")
     parser.add_argument(
         "--scheduler",
         choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
@@ -230,7 +237,7 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 03: Research Assistant Pipeline (LLM Agent Version)")
+    print("Scenario 01: Code Review Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
@@ -238,7 +245,7 @@ async def main():
     print(f"Scheduler: {args.scheduler}")
     print()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario03.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
     system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
 
     # Create scheduler
@@ -248,9 +255,9 @@ async def main():
     else:
         scheduler = create_scheduler(args.scheduler, config_path, registry)
 
-    scenario = AgentResearchAssistantScenario(
+    scenario = AgentCodeReviewScenario(
         config_path=config_path,
-        output_dir="results/scenario03_agent",
+        output_dir="results/scenario1_agent",
         model="gpt-4o-mini",
         temperature=0,
         scheduler=scheduler,
@@ -279,7 +286,7 @@ async def main():
 
     if result.metrics:
         # Export metrics
-        csv_path = result.metrics.save_csv("results/scenario03_agent/metrics.csv")
+        csv_path = result.metrics.save_csv("results/scenario1_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")
 
     return result.success

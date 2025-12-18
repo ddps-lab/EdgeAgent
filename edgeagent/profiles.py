@@ -10,9 +10,6 @@ from typing import Optional
 from .types import (
     Location,
     Runtime,
-    DataAffinity,
-    ComputeIntensity,
-    DataFlow,
     TransportType,
     DataLocality,
 )
@@ -44,7 +41,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 1: Data Affinity
     # ========================================================================
-    data_affinity: DataAffinity = "EDGE"
+    data_affinity: str = "EDGE"
     """
     Tool이 주로 접근하는 데이터의 위치
 
@@ -57,7 +54,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 2: Compute Intensity
     # ========================================================================
-    compute_intensity: ComputeIntensity = "LOW"
+    compute_intensity: str = "LOW"
     """
     Tool의 연산 복잡도
 
@@ -70,7 +67,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 3: Data Flow
     # ========================================================================
-    data_flow: DataFlow = "TRANSFORM"
+    data_flow: str = "TRANSFORM"
     """
     Tool의 입출력 데이터 크기 비율
 

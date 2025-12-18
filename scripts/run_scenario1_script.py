@@ -5,7 +5,7 @@ Scenario 1: Code Review Pipeline - With Chain Scheduling
 Tool Chain:
     read_file -> git_diff -> summarize_text -> merge_summaries -> write_file
 
-Mode: _with_metrics
+Mode: script
 - Tool sequence is STATIC (predefined)
 - Scheduler runs FIRST via schedule_chain() to determine optimal placement
 - get_backend_tools(placement_map) 사용: 필요한 서버만 연결, MetricsWrappedTool 반환
@@ -24,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from edgeagent import EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import BruteForceChainScheduler, create_scheduler
-from edgeagent.paths import get_paths
 
 
 # Tool Chain 정의 (실제 서버에 존재하는 툴 사용)
@@ -61,7 +60,7 @@ def parse_tool_result(result):
 
 def prepare_repo(repo_path: str) -> tuple[Path, str]:
     """Prepare Git repository - returns (repo_path, data_source)."""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario01"
+    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
     defects4j_dir = data_dir / "defects4j"
     sample_repo = data_dir / "sample_repo"
 
@@ -99,7 +98,7 @@ async def run_code_review(
     system_config_path: Path,
     scheduler_type: str = "brute_force",
     subagent_mode: bool = False,
-    output_dir: str = "results/scenario01",
+    output_dir: str = "results/scenario1",
 ) -> dict:
     """
     Code Review Pipeline 실행 (Chain Scheduling 적용)
@@ -111,15 +110,14 @@ async def run_code_review(
     """
     start_time = time.time()
 
-    # 스케줄러 타입에 따른 경로 설정
-    paths = get_paths(scheduler_type)
+    # 경로 설정 (모든 location에서 동일한 구조)
+    repo_path = "/edgeagent/repos/scenario1"
+    report_path = "/edgeagent/results/scenario1_code_review_report.md"
 
     # 디렉토리 생성
-    Path(paths.base).mkdir(parents=True, exist_ok=True)
+    Path("/edgeagent/repos").mkdir(parents=True, exist_ok=True)
+    Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-    repo_path = paths.repo
-    report_path = paths.code_review_report
 
     # Prepare repository first
     device_repo, data_source = prepare_repo(repo_path)
@@ -354,7 +352,7 @@ async def main():
     parser.add_argument("--subagent-mode", action="store_true")
     args = parser.parse_args()
 
-    config_path = Path(__file__).parent.parent / "config" / "tools_scenario01.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
     system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
 
     print("=" * 70)

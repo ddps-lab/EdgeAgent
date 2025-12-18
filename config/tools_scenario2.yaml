@@ -1,0 +1,232 @@
+# EdgeAgent Tool Configuration - Scenario 02: Log Analysis Pipeline
+#
+# Score-based Scheduling:
+#   Cost_i(u, v) = α * (P_comp[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
+#
+#   - α (alpha): 연산 중요도 (0~1), 높을수록 연산 비용 중시
+#   - β: data_locality == external_data일 때 자동으로 1 (scoring.py에서 처리)
+#   - P_comp: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
+#   - P_net, P_comm: system.yaml에서 정의
+#
+# Data Locality Types:
+#   - args_only (Type A): 데이터가 args로 전달됨 → Score 기반 노드 선택
+#   - external_data (Type B): 외부 API 접근 → β=1 자동 적용
+#   - local_data (Type C): 로컬 파일 접근 → 경로 기반 노드 결정 (Score 무시)
+#
+# P_comp 기준 (순수 연산 능력):
+#   - DEVICE: 느림 (1.0) - 모바일/IoT 급
+#   - EDGE: 빠름 (0.3) - 서버 급
+#   - CLOUD: 가장 빠름 (0.0) - 고성능 클라우드
+#
+# Tool Chain:
+#   filesystem -> log_parser -> data_aggregate -> filesystem
+#   (Score-based scheduling이 최적 위치 결정)
+
+tools:
+  # ============================================================
+  # filesystem server tools (D, E, C)
+  # ============================================================
+  filesystem:
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: mcp-server-filesystem
+        args:
+          - "/edgeagent"
+        env: {}
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      read_file:
+        description: "Read file contents from filesystem"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      write_file:
+        description: "Write content to a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      read_multiple_files:
+        description: "Read multiple files at once"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      list_directory:
+        description: "List directory contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      search_files:
+        description: "Search for files by pattern"
+        data_locality: local_data
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      get_file_info:
+        description: "Get file metadata"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      read_text_file:
+        description: "Read text file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+  # ============================================================
+  # log_parser server tools (D, E, C) - 로그 파싱 및 분석
+  # ============================================================
+  log_parser:
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: python
+        args:
+          - "servers/log_parser_server.py"
+        env: {}
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      parse_logs:
+        description: "Parse log file and extract structured data"
+        data_locality: args_only
+        alpha: 0.6
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      filter_entries:
+        description: "Filter log entries by severity level (min_level)"
+        data_locality: args_only
+        alpha: 0.4
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      filter_by_level:
+        description: "Filter log entries by severity level"
+        data_locality: args_only
+        alpha: 0.4
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      filter_by_time_range:
+        description: "Filter log entries by time range"
+        data_locality: args_only
+        alpha: 0.4
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      extract_errors:
+        description: "Extract error entries from logs"
+        data_locality: args_only
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_log_statistics:
+        description: "Compute statistics from log data"
+        data_locality: args_only
+        alpha: 0.6
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ============================================================
+  # data_aggregate server tools (D, E, C)
+  # ============================================================
+  data_aggregate:
+    endpoints:
+      DEVICE:
+        transport: stdio
+        command: python
+        args:
+          - "servers/data_aggregate_server.py"
+        env: {}
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      aggregate_list:
+        description: "Aggregate list of items by grouping/counting/summing"
+        data_locality: args_only
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      merge_summaries:
+        description: "Merge multiple summary dictionaries"
+        data_locality: args_only
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      combine_research_results:
+        description: "Combine research/search results into summary"
+        data_locality: args_only
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      deduplicate:
+        description: "Remove duplicate items based on key fields"
+        data_locality: args_only
+        alpha: 0.5
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_trends:
+        description: "Compute trends from time-series data"
+        data_locality: args_only
+        alpha: 0.6
+        P_comp: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+
+# Static mapping (StaticScheduler용) - MCP Server 이름으로 location 지정
+static_mapping:
+  filesystem: DEVICE
+  log_parser: EDGE
+  data_aggregate: EDGE

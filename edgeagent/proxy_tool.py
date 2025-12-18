@@ -204,9 +204,15 @@ class LocationAwareProxyTool(BaseTool):
                 args=kwargs,  # 원본 args 기록 (snake_case)
             ) as ctx:
                 # Scheduling 정보 추가 (cost 포함)
+                # SchedulingConstraints → list[str] 변환
+                constraints_list = []
+                if scheduling_result.constraints.requires_cloud_api:
+                    constraints_list.append("requires_cloud_api")
+                if scheduling_result.constraints.privacy_sensitive:
+                    constraints_list.append("privacy_sensitive")
                 ctx.add_scheduling_info(
                     reason=scheduling_result.reason,
-                    constraints=scheduling_result.constraints_checked,
+                    constraints=constraints_list,
                     available=scheduling_result.available_locations,
                     decision_time_ns=scheduling_result.decision_time_ns,
                     score=scheduling_result.score,

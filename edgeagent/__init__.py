@@ -26,9 +26,6 @@ from .proxy_tool import LocationAwareProxyTool
 from .types import (
     Location,
     Runtime,
-    DataAffinity,
-    ComputeIntensity,
-    DataFlow,
     TransportType,
 )
 from .metrics import (
@@ -66,13 +63,6 @@ from .orchestrator import (
     OrchestrationResult,
     SubAgentOrchestrator,
     OrchestrationMode,
-)
-from .paths import (
-    ScenarioPaths,
-    DEVICE_PATHS,
-    EDGE_CLOUD_PATHS,
-    get_paths,
-    get_paths_for_location,
 )
 
 __all__ = [
@@ -112,9 +102,6 @@ __all__ = [
     # Types
     "Location",
     "Runtime",
-    "DataAffinity",
-    "ComputeIntensity",
-    "DataFlow",
     "TransportType",
     # Planner
     "Partition",
@@ -132,10 +119,4 @@ __all__ = [
     "OrchestrationResult",
     "SubAgentOrchestrator",
     "OrchestrationMode",
-    # Paths
-    "ScenarioPaths",
-    "DEVICE_PATHS",
-    "EDGE_CLOUD_PATHS",
-    "get_paths",
-    "get_paths_for_location",
 ]

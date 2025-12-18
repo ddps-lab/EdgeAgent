@@ -1,0 +1,61 @@
+# ============================================================================
+# System Configuration - Endpoint별 리소스 및 네트워크 설정
+# ============================================================================
+#
+# Score-based Scheduling에서 이 파일의 역할:
+#   - endpoints: 노드별 하드웨어 capabilities (GPU, 메모리 등)
+#   - network: TransCost(v → u) 계산에 사용 (bandwidth, latency)
+#
+# Score 공식:
+#   Score(i, u, v) = α * ExecCost(i, u) + (1-α) * TransCost(v → u)
+#   - ExecCost: tools_scenario*.yaml의 P_comp 참조
+#   - TransCost: 이 파일의 network 섹션 참조
+
+
+# ============================================================================
+# Score-based Scheduling 비용 파라미터 (Min-Max 정규화, 0.0~1.0)
+# ============================================================================
+#
+# Cost 공식:
+#   Cost_k(u, v) = α_i * (P_comp[u] + β_i * P_net[u]) + (1-α_i) * P_comm[(v,u)]
+#
+#   - k: 순서 (Sequence Step)
+#   - i = type(k): k번째 태스크 타입
+#   - u: 현재 노드 {D, E, C}
+#   - v: 이전 노드 {D, E, C}
+#   - α_i: 연산 중요도 (0~1) - tools_scenario*.yaml에서 정의
+#   - β_i: 외부 인터넷 사용 여부 (0 or 1) - tools_scenario*.yaml에서 정의
+
+# P_comp: 노드별 연산 비용
+# - DEVICE: 느림 (모바일/IoT 급)
+# - EDGE: 빠름 (서버 급)
+# - CLOUD: 가장 빠름 (고성능 클라우드)
+p_comp:
+  DEVICE: 1.0
+  EDGE: 0.3
+  CLOUD: 0.0
+
+# P_net: 노드별 외부 네트워크 비용 (β=1일 때만 사용)
+# - DEVICE: 외부 접근 어려움 (방화벽, NAT 등)
+# - EDGE: 중간
+# - CLOUD: 외부 접근 최적 (인터넷 직접 연결)
+p_net:
+  DEVICE: 1.0
+  EDGE: 0.5
+  CLOUD: 0.0
+
+# P_comm: 노드 간 통신 비용 (v → u)
+# - 대칭: P_comm[(v,u)] = P_comm[(u,v)]
+# - 같은 노드: 0.0 (로컬 통신)
+# - D↔E: 0.5 (근거리)
+# - D↔C, E↔C: 1.0, 0.5 (원거리)
+p_comm:
+  D_D: 0.0
+  D_E: 0.5
+  D_C: 1.0
+  E_D: 0.5
+  E_E: 0.0
+  E_C: 0.5
+  C_D: 1.0
+  C_E: 0.5
+  C_C: 0.0

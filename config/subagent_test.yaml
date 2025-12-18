@@ -1,0 +1,51 @@
+# EdgeAgent Sub-Agent Orchestration Test Configuration
+#
+# 이 파일은 Sub-Agent 모드 테스트를 위한 설정입니다.
+# 초기 테스트에서는 모든 Sub-Agent가 localhost에서 실행됩니다.
+
+# Orchestration 모드 선택
+# - legacy: 기존 방식 (단일 Agent가 모든 tool 호출)
+# - subagent: Sub-Agent 방식 (location별 분산 실행)
+orchestration_mode: subagent
+
+# LLM 설정
+model: gpt-4o-mini
+temperature: 0
+max_iterations: 15
+
+# Sub-Agent Endpoint 설정
+# Phase 0: 동일 서버에서 포트만 다르게 설정
+subagent_endpoints:
+  DEVICE:
+    host: localhost
+    port: 8001
+    timeout: 300.0
+  EDGE:
+    host: localhost
+    port: 8002
+    timeout: 300.0
+  CLOUD:
+    host: localhost
+    port: 8003
+    timeout: 300.0
+
+# Phase 1 (Docker Compose):
+# subagent_endpoints:
+#   DEVICE:
+#     host: device-subagent
+#     port: 8000
+#   EDGE:
+#     host: edge-subagent
+#     port: 8000
+#   CLOUD:
+#     host: cloud-subagent
+#     port: 8000
+
+# Phase 2 (Knative):
+# subagent_endpoints:
+#   EDGE:
+#     host: edge-subagent.default.svc.cluster.local
+#     port: 80
+#   CLOUD:
+#     host: cloud-subagent.default.svc.cluster.local
+#     port: 80
