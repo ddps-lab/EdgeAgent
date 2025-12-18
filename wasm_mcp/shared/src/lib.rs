@@ -5,6 +5,94 @@
 
 use anyhow::Result;
 
+/// Timing utilities for profiling MCP tool execution
+pub mod timing {
+    use std::time::{Duration, Instant};
+
+    /// Result of a timed operation
+    #[derive(Debug, Clone)]
+    pub struct TimingResult<T> {
+        pub result: T,
+        pub duration: Duration,
+    }
+
+    impl<T> TimingResult<T> {
+        pub fn duration_ms(&self) -> f64 {
+            self.duration.as_secs_f64() * 1000.0
+        }
+    }
+
+    /// Measure execution time of a closure (for I/O operations)
+    ///
+    /// # Example
+    /// ```
+    /// use mcp_shared::timing::measure;
+    ///
+    /// let TimingResult { result, duration } = measure(|| {
+    ///     std::fs::read_to_string("/tmp/test.txt")
+    /// });
+    /// ```
+    #[inline]
+    pub fn measure<F, T>(f: F) -> TimingResult<T>
+    where
+        F: FnOnce() -> T,
+    {
+        let start = Instant::now();
+        let result = f();
+        let duration = start.elapsed();
+        TimingResult { result, duration }
+    }
+
+    /// Tool timing context - tracks tool execution and I/O time
+    #[derive(Debug)]
+    pub struct ToolTimer {
+        tool_start: Instant,
+        io_total: Duration,
+    }
+
+    impl ToolTimer {
+        /// Start timing a tool
+        pub fn start() -> Self {
+            Self {
+                tool_start: Instant::now(),
+                io_total: Duration::ZERO,
+            }
+        }
+
+        /// Measure an I/O operation and accumulate time
+        pub fn measure_io<F, T>(&mut self, f: F) -> T
+        where
+            F: FnOnce() -> T,
+        {
+            let start = Instant::now();
+            let result = f();
+            self.io_total += start.elapsed();
+            result
+        }
+
+        /// Finish timing and output results to stderr
+        /// Format: ---TIMING---{"tool_ms":X,"io_ms":Y}
+        pub fn finish(self, tool_name: &str) {
+            let tool_ms = self.tool_start.elapsed().as_secs_f64() * 1000.0;
+            let io_ms = self.io_total.as_secs_f64() * 1000.0;
+            eprintln!(
+                "---TIMING---{{\"tool\":\"{}\",\"tool_ms\":{:.3},\"io_ms\":{:.3}}}",
+                tool_name, tool_ms, io_ms
+            );
+        }
+
+        /// Get current tool execution time in ms
+        pub fn tool_ms(&self) -> f64 {
+            self.tool_start.elapsed().as_secs_f64() * 1000.0
+        }
+
+        /// Get accumulated I/O time in ms
+        pub fn io_ms(&self) -> f64 {
+            self.io_total.as_secs_f64() * 1000.0
+        }
+    }
+}
+
 /// Common utilities for MCP servers
 pub mod utils {
     use anyhow::{anyhow, Result};
