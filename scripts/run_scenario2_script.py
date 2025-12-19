@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from edgeagent import EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import create_scheduler
-from edgeagent.metrics import MetricsCollector, MetricsConfig
+from edgeagent.metrics import MetricsCollector, MetricsConfig, print_chain_scheduling_result
 
 
 # Tool Chain 정의 (orchestrated와 동일)
@@ -85,10 +85,6 @@ async def run_log_analysis(
     # ================================================================
     # Step 1: 스케줄러 먼저 실행 (MCP 연결 없이)
     # ================================================================
-    print("=" * 70)
-    print(f"Step 1: Chain Scheduling ({scheduler_type})")
-    print("=" * 70)
-
     registry = ToolRegistry.from_yaml(config_path)
 
     # 모든 scheduler_type에서 create_scheduler()와 schedule_chain() 사용
@@ -100,14 +96,11 @@ async def run_log_analysis(
     )
     scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
 
-    print(f"Total Cost: {scheduling_result.total_score:.4f}")
-    print(f"Search Space: {scheduling_result.search_space_size}")
-    print(f"Decision Time: {scheduling_result.decision_time_ns / 1e6:.2f} ms")
-    print()
-    print("Optimal Placement:")
-    for p in scheduling_result.placements:
-        fixed_mark = "[FIXED]" if p.fixed else ""
-        print(f"  {p.tool_name:25} -> {p.location:6} (cost={p.score:.3f}, comp={p.exec_cost:.3f}, comm={p.trans_cost:.3f}) {fixed_mark}")
+    # Chain Scheduling 결과 출력 (metrics.py 유틸리티 사용)
+    print_chain_scheduling_result(
+        scheduling_result,
+        title=f"Step 1: Chain Scheduling ({scheduler_type})",
+    )
     print()
 
     placement_map = {p.tool_name: p.location for p in scheduling_result.placements}

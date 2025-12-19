@@ -1318,13 +1318,42 @@ def get_all_metrics_entries(partition_results: list[dict]) -> list[dict]:
     return entries
 
 
+def print_chain_scheduling_result(
+    scheduling_result,
+    title: str = "Chain Scheduling Result",
+):
+    """
+    Chain Scheduling 결과 출력 (Script 모드용)
+
+    Args:
+        scheduling_result: ChainSchedulingResult 객체
+        title: 출력 제목
+    """
+    print()
+    print("=" * 70)
+    print(title)
+    print("=" * 70)
+    print(f"Total Cost: {scheduling_result.total_score:.4f}")
+    print(f"Search Space: {scheduling_result.search_space_size}")
+    print(f"Decision Time: {scheduling_result.decision_time_ns / 1e6:.2f} ms")
+    print()
+    print("Optimal Placement:")
+    for p in scheduling_result.placements:
+        fixed_mark = "[FIXED]" if p.fixed else ""
+        # None 값 처리 (static, heuristic 스케줄러는 cost 계산 안 함)
+        score = p.score if p.score is not None else 0.0
+        exec_cost = p.exec_cost if p.exec_cost is not None else 0.0
+        trans_cost = p.trans_cost if p.trans_cost is not None else 0.0
+        print(f"  {p.tool_name:25} -> {p.location:6} (cost={score:.3f}, comp={exec_cost:.3f}, comm={trans_cost:.3f}) {fixed_mark}")
+
+
 def print_execution_trace(
     execution_trace: list[dict],
     scheduler_type: str = "",
     title: str = "Agent Execution Trace",
 ):
     """
-    실행 trace 출력 (Scheduler별 포맷팅)
+    실행 trace 출력 (Agent 모드용, Scheduler별 포맷팅)
 
     Args:
         execution_trace: [{"tool": str, "location": str, "cost": float, ...}, ...]
