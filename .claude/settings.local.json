@@ -53,7 +53,8 @@
       "Bash(cargo tree:*)",
       "Bash(wasm-tools component wit:*)",
       "Bash(timeout 60 python:*)",
-      "Bash(timeout 120 python:*)"
+      "Bash(timeout 120 python:*)",
+      "Bash(xxd:*)"
     ],
     "deny": [],
     "ask": []

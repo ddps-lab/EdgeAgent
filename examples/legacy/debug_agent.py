@@ -18,7 +18,7 @@ async def main():
         "filesystem": {
             "transport": "stdio",
             "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/edgeagent_device"]
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/edgeagent_device_hy"]
         }
     }
 
@@ -34,7 +34,7 @@ async def main():
         print("\n테스트 1: 간단한 요청")
         try:
             result = await agent_executor.ainvoke({
-                "messages": [("user", "List files in /tmp/edgeagent_device")]
+                "messages": [("user", "List files in /tmp/edgeagent_device_hy")]
             })
 
             print(f"\nResult type: {type(result)}")

@@ -27,7 +27,7 @@ tools:
         args:
           - "-y"
           - "@modelcontextprotocol/server-filesystem"
-          - "/tmp/edgeagent_device"
+          - "/tmp/edgeagent_device_hy"
         env: {}
 
       EDGE:
@@ -36,7 +36,7 @@ tools:
         args:
           - "-y"
           - "@modelcontextprotocol/server-filesystem"
-          - "/tmp/edgeagent_edge"
+          - "/tmp/edgeagent_edge_hy"
         env: {}
 
       CLOUD:
@@ -45,7 +45,7 @@ tools:
         args:
           - "-y"
           - "@modelcontextprotocol/server-filesystem"
-          - "/tmp/edgeagent_cloud"
+          - "/tmp/edgeagent_cloud_hy"
         env: {}
 
   # ==========================================================================

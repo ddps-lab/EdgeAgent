@@ -34,9 +34,9 @@ async def main():
     print()
 
     # 각 location별 디렉토리
-    device_dir = Path("/tmp/edgeagent_device")
-    edge_dir = Path("/tmp/edgeagent_edge")
-    cloud_dir = Path("/tmp/edgeagent_cloud")
+    device_dir = Path("/tmp/edgeagent_device_hy")
+    edge_dir = Path("/tmp/edgeagent_edge_hy")
+    cloud_dir = Path("/tmp/edgeagent_cloud_hy")
 
     for dir_path in [device_dir, edge_dir, cloud_dir]:
         dir_path.mkdir(exist_ok=True)

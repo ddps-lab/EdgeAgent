@@ -68,7 +68,7 @@ class TestStaticSchedulerArgsRouting:
         """path에 /edgeagent_device/ 포함 → DEVICE"""
         location = scheduler.get_location_for_call(
             "filesystem",
-            {"path": "/tmp/edgeagent_device/file.txt"}
+            {"path": "/tmp/edgeagent_device_hy/file.txt"}
         )
         assert location == "DEVICE"
 
@@ -76,7 +76,7 @@ class TestStaticSchedulerArgsRouting:
         """path에 /edgeagent_edge/ 포함 → EDGE"""
         location = scheduler.get_location_for_call(
             "filesystem",
-            {"path": "/tmp/edgeagent_edge/file.txt"}
+            {"path": "/tmp/edgeagent_edge_hy/file.txt"}
         )
         assert location == "EDGE"
 
@@ -84,7 +84,7 @@ class TestStaticSchedulerArgsRouting:
         """path에 /edgeagent_cloud/ 포함 → CLOUD"""
         location = scheduler.get_location_for_call(
             "filesystem",
-            {"path": "/tmp/edgeagent_cloud/file.txt"}
+            {"path": "/tmp/edgeagent_cloud_hy/file.txt"}
         )
         assert location == "CLOUD"
 

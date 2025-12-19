@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Scenario 4: Image Processing Pipeline - LLM Agent Version
+Scenario 04: Image Processing Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
 to complete the image processing task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
-
-Comparison with run_scenario4_with_metrics.py:
-- Script version: Hardcoded sequential tool calls (orchestration)
-- Agent version: LLM autonomously selects tools (autonomous agent)
 
 Tool Chain (expected, but LLM decides):
     scan_directory -> compute_image_hash -> compare_hashes -> batch_resize -> aggregate_list -> write_file
     EDGE             EDGE                  EDGE              EDGE           EDGE             DEVICE
 """
 
+import argparse
 import asyncio
 import os
 import shutil
@@ -25,20 +22,24 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
-from scripts.agent_utils import run_agent_with_logging
+from edgeagent.registry import ToolRegistry
+from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
+from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_tracking
 
 
 def load_image_source() -> tuple[Path, str]:
     """Load image source from COCO or sample images.
 
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+
     Returns:
         Tuple of (image_dir_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+    # Use unified path that works across all locations
+    data_dir = Path("/edgeagent/data/scenario4")
     coco_images = data_dir / "coco" / "images"
     sample_images = data_dir / "sample_images"
 
@@ -49,9 +50,8 @@ def load_image_source() -> tuple[Path, str]:
         return sample_images, "Generated test images"
 
     raise FileNotFoundError(
-        f"No image directory found.\n"
-        "Run 'python scripts/download_public_datasets.py -s 4' for COCO 2017, or\n"
-        "Run 'python scripts/generate_test_images.py' for test images"
+        f"No image directory found in {data_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 4' for test data"
     )
 
 
@@ -66,7 +66,7 @@ You have access to the following tools:
 - aggregate_list: Group and aggregate data
 - write_file: Write files to the filesystem
 
-The images are located at /tmp/edgeagent_device/images
+The images are located at /edgeagent/data/scenario4/sample_images
 
 When processing images, follow this workflow:
 1. Scan the image directory using scan_directory (recursive=False, include_info=True)
@@ -74,7 +74,7 @@ When processing images, follow this workflow:
 3. Compare hashes to find duplicates using compare_hashes (threshold=5)
 4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
 5. Aggregate statistics using aggregate_list (group_by="format")
-6. Write a comprehensive report to /tmp/edgeagent_device/agent_image_report.md
+6. Write a comprehensive report to /edgeagent/results/scenario4_agent_image_report.md
 
 Include in your report:
 - Total images scanned
@@ -98,8 +98,9 @@ class AgentImageProcessingScenario(ScenarioRunner):
         output_dir: str | Path = "results/scenario4_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
+        scheduler=None,
     ):
-        super().__init__(config_path, output_dir)
+        super().__init__(config_path, output_dir, scheduler=scheduler)
         self.model = model
         self.temperature = temperature
         self._image_source = None
@@ -116,10 +117,10 @@ class AgentImageProcessingScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Process the images at /tmp/edgeagent_device/images. "
+            "Process the images at /edgeagent/data/scenario4/sample_images. "
             "Scan the directory, compute perceptual hashes, find duplicate images, "
             "create thumbnails for unique images, and generate a comprehensive "
-            "image processing report to /tmp/edgeagent_device/agent_image_report.md"
+            "image processing report to /edgeagent/results/scenario4_agent_image_report.md"
         )
 
     async def execute(
@@ -138,7 +139,7 @@ class AgentImageProcessingScenario(ScenarioRunner):
         self._image_source = image_source
         self._data_source = data_source
 
-        device_images = Path("/tmp/edgeagent_device/images")
+        device_images = Path("/edgeagent/data/scenario4/sample_images")
         device_images.mkdir(parents=True, exist_ok=True)
 
         # Clear and copy images
@@ -161,11 +162,12 @@ class AgentImageProcessingScenario(ScenarioRunner):
         print(f"Available tools: {len(tools)}")
         print()
 
-        # Initialize LLM (gpt-4o-mini doesn't support temperature=0)
-        llm_kwargs = {"model": self.model}
-        if "gpt-5" not in self.model:
-            llm_kwargs["temperature"] = self.temperature
-        llm = ChatOpenAI(**llm_kwargs)
+        # Initialize LLM with latency tracking
+        llm = create_llm_with_latency_tracking(
+            model=self.model,
+            temperature=self.temperature,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Create agent
         agent = create_agent(llm, tools)
@@ -178,8 +180,13 @@ class AgentImageProcessingScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent with logging
-        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
+        # Execute agent with logging (metrics_collector로 LLM latency 추적)
+        result = await run_agent_with_logging(
+            agent,
+            self.user_request,
+            verbose=True,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Extract final response
         final_message = result["messages"][-1].content
@@ -206,7 +213,7 @@ class AgentImageProcessingScenario(ScenarioRunner):
             client.metrics_collector.add_custom_metric("total_input_size", total_input_size)
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device/agent_image_report.md")
+        report_path = Path("/edgeagent/results/scenario4_agent_image_report.md")
         if report_path.exists():
             report_content = report_path.read_text()
             print(f"Report written to: {report_path}")
@@ -220,6 +227,15 @@ class AgentImageProcessingScenario(ScenarioRunner):
 async def main():
     """Run the LLM Agent-based Image Processing scenario"""
 
+    parser = argparse.ArgumentParser(description="Run Scenario 04 with LLM Agent")
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
+    args = parser.parse_args()
+
     # Load environment variables
     load_dotenv()
 
@@ -229,20 +245,30 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 4: Image Processing Pipeline (LLM Agent Version)")
+    print("Scenario 04: Image Processing Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
     print("which tools to call and in what order.")
+    print(f"Scheduler: {args.scheduler}")
     print()
 
     config_path = Path(__file__).parent.parent / "config" / "tools_scenario4.yaml"
+    system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+
+    # Create scheduler
+    registry = ToolRegistry.from_yaml(config_path)
+    if args.scheduler == "brute_force":
+        scheduler = BruteForceChainScheduler(config_path, system_config_path, registry)
+    else:
+        scheduler = create_scheduler(args.scheduler, config_path, registry)
 
     scenario = AgentImageProcessingScenario(
         config_path=config_path,
         output_dir="results/scenario4_agent",
         model="gpt-4o-mini",
         temperature=0,
+        scheduler=scheduler,
     )
 
     result = await scenario.run(
@@ -251,14 +277,22 @@ async def main():
     )
 
     # Additional analysis
-    if result.metrics:
+    if result.execution_trace:
         print()
         print("=" * 70)
-        print("Agent Execution Trace")
+        print("Agent Execution Trace (Scheduler Results)")
         print("=" * 70)
-        for i, trace in enumerate(result.metrics.to_execution_trace(), 1):
-            print(f"  {i}. {trace['tool']} -> {trace['location']}")
+        for i, trace in enumerate(result.execution_trace, 1):
+            fixed_mark = "[FIXED]" if trace.get('fixed') else ""
+            if args.scheduler == "brute_force":
+                cost = trace.get('cost', 0)
+                comp = trace.get('comp', 0)
+                comm = trace.get('comm', 0)
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+            else:
+                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} {fixed_mark}")
 
+    if result.metrics:
         # Export metrics
         csv_path = result.metrics.save_csv("results/scenario4_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")

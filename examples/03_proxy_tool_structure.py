@@ -29,9 +29,9 @@ async def main():
     print("[1] 테스트 환경 준비...")
     print()
 
-    device_dir = Path("/tmp/edgeagent_device")
-    edge_dir = Path("/tmp/edgeagent_edge")
-    cloud_dir = Path("/tmp/edgeagent_cloud")
+    device_dir = Path("/tmp/edgeagent_device_hy")
+    edge_dir = Path("/tmp/edgeagent_edge_hy")
+    cloud_dir = Path("/tmp/edgeagent_cloud_hy")
 
     for dir_path in [device_dir, edge_dir, cloud_dir]:
         dir_path.mkdir(exist_ok=True)
@@ -123,7 +123,7 @@ async def main():
             # 현재 static_mapping에서 filesystem은 DEVICE로 설정되어 있음
             # 따라서 모든 호출이 DEVICE로 routing 되어야 함
             try:
-                result = await read_file_tool.ainvoke({"path": "/tmp/edgeagent_device/test.txt"})
+                result = await read_file_tool.ainvoke({"path": "/tmp/edgeagent_device_hy/test.txt"})
                 print(f"   Read result: {result}")
                 print()
 

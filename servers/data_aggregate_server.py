@@ -18,8 +18,33 @@ from collections import Counter, defaultdict
 from typing import Any
 from statistics import mean, median, stdev
 from fastmcp import FastMCP
+from pydantic import BaseModel, Field, ConfigDict
 
 mcp = FastMCP("data_aggregate")
+
+
+# Pydantic models for proper JSON schema generation (OpenAI requires 'items' in array schemas)
+class DictItem(BaseModel):
+    """Generic dictionary item - allows any fields"""
+    model_config = ConfigDict(extra="allow")
+
+
+class SummaryItem(BaseModel):
+    """Summary dictionary item"""
+    model_config = ConfigDict(extra="allow")
+
+
+class ResearchResult(BaseModel):
+    """Research result item"""
+    model_config = ConfigDict(extra="allow")
+    title: str = Field(default="", description="Title of the result")
+    summary: str = Field(default="", description="Summary text")
+    relevance_score: float | None = Field(default=None, description="Relevance score")
+
+
+class TimeSeriesPoint(BaseModel):
+    """Time series data point"""
+    model_config = ConfigDict(extra="allow")
 
 
 def _safe_numeric(value: Any) -> float | None:
@@ -56,7 +81,7 @@ def _compute_stats(values: list[float]) -> dict:
 
 @mcp.tool()
 def aggregate_list(
-    items: list[dict],
+    items: list[DictItem],
     group_by: str | None = None,
     count_field: str | None = None,
     sum_fields: list[str] | None = None,
@@ -91,6 +116,9 @@ def aggregate_list(
         - field_stats: Statistics for each sum_field (if sum_fields specified)
         - reduction_ratio: Output size / Input size (shows data reduction achieved)
     """
+    # Convert Pydantic models to dicts if needed
+    items = [i.model_dump() if hasattr(i, 'model_dump') else i for i in items]
+
     if not items:
         return {"total_count": 0, "groups": {}}
 
@@ -136,7 +164,7 @@ def aggregate_list(
 
 
 @mcp.tool()
-def merge_summaries(summaries: list[dict], weights: list[float] | None = None) -> dict:
+def merge_summaries(summaries: list[SummaryItem], weights: list[float] | None = None) -> dict:
     """
     Merge multiple summary dictionaries into one.
 
@@ -147,6 +175,9 @@ def merge_summaries(summaries: list[dict], weights: list[float] | None = None) -
     Returns:
         Merged summary
     """
+    # Convert Pydantic models to dicts if needed
+    summaries = [s.model_dump() if hasattr(s, 'model_dump') else s for s in summaries]
+
     if not summaries:
         return {"merged_count": 0}
 
@@ -197,7 +228,7 @@ def merge_summaries(summaries: list[dict], weights: list[float] | None = None) -
 
 @mcp.tool()
 def combine_research_results(
-    results: list[dict],
+    results: list[ResearchResult],
     title_field: str = "title",
     summary_field: str = "summary",
     score_field: str | None = "relevance_score",
@@ -214,6 +245,9 @@ def combine_research_results(
     Returns:
         Combined research summary
     """
+    # Convert Pydantic models to dicts if needed
+    results = [r.model_dump() if hasattr(r, 'model_dump') else r for r in results]
+
     if not results:
         return {"result_count": 0, "combined_summary": ""}
 
@@ -255,7 +289,7 @@ def combine_research_results(
 
 @mcp.tool()
 def deduplicate(
-    items: list[dict], key_fields: list[str], keep: str = "first"
+    items: list[DictItem], key_fields: list[str], keep: str = "first"
 ) -> dict:
     """
     Remove duplicate items based on key fields.
@@ -268,6 +302,9 @@ def deduplicate(
     Returns:
         Deduplicated items with statistics
     """
+    # Convert Pydantic models to dicts if needed
+    items = [i.model_dump() if hasattr(i, 'model_dump') else i for i in items]
+
     if not items:
         return {"original_count": 0, "unique_count": 0, "items": []}
 
@@ -299,7 +336,7 @@ def deduplicate(
 
 @mcp.tool()
 def compute_trends(
-    time_series: list[dict],
+    time_series: list[TimeSeriesPoint],
     time_field: str = "timestamp",
     value_field: str = "value",
     bucket_count: int = 10,
@@ -316,6 +353,9 @@ def compute_trends(
     Returns:
         Trend analysis
     """
+    # Convert Pydantic models to dicts if needed
+    time_series = [t.model_dump() if hasattr(t, 'model_dump') else t for t in time_series]
+
     if not time_series:
         return {"data_points": 0, "trend": "insufficient_data"}
 

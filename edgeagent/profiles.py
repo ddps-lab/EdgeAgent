@@ -10,11 +10,81 @@ from typing import Optional
 from .types import (
     Location,
     Runtime,
-    DataAffinity,
-    ComputeIntensity,
-    DataFlow,
     TransportType,
+    DataLocality,
 )
+
+
+# ============================================================================
+# Network & Tool Measurements (실측 기반 동적 계산)
+# ============================================================================
+
+@dataclass
+class NetworkMeasurements:
+    """
+    네트워크 측정값 (system.yaml에서 로드)
+
+    T_comm = (datasize_mb * 8 / bandwidth_mbps * 1000) + latency_ms
+    """
+    bandwidth_mbps: dict[str, float]  # {"D_E": 943.71, "D_C": 325.66}
+    latency_ms: dict[str, float]      # {"D_E": 0.892, "D_C": 4.329}
+
+    def get_t_comm(self, path: str, datasize_mb: float) -> float:
+        """
+        T_comm 계산 (ms)
+
+        Args:
+            path: "D_E" 또는 "D_C"
+            datasize_mb: 데이터 크기 (MB, 십진)
+        """
+        bw = self.bandwidth_mbps.get(path, 100.0)
+        lat = self.latency_ms.get(path, 1.0)
+        return (datasize_mb * 8 / bw * 1000) + lat
+
+    @classmethod
+    def from_config(cls, config: dict) -> "NetworkMeasurements":
+        """system.yaml의 network_measurements에서 로드"""
+        nm = config.get("network_measurements", {})
+        return cls(
+            bandwidth_mbps=nm.get("bandwidth_mbps", {}),
+            latency_ms=nm.get("latency_ms", {}),
+        )
+
+
+@dataclass
+class ToolMeasurements:
+    """
+    Tool별 실측값 (tools_scenario*.yaml에서 로드)
+
+    α = T_exec / (T_exec + T_comm_in + T_comm_out)
+    """
+    input_datasize_mb: float    # 입력 데이터 크기 (MB)
+    output_datasize_mb: float   # 출력 데이터 크기 (MB)
+    t_exec_ms: dict[str, float] # {"DEVICE": 2.1, "EDGE": 1.5, "CLOUD": 1.0}
+
+    def calculate_alpha(self, network: NetworkMeasurements, path: str) -> float:
+        """
+        α = avg(T_exec) / (avg(T_exec) + T_comm_in + T_comm_out)
+
+        Args:
+            network: 네트워크 측정값
+            path: "D_E" 또는 "D_C"
+        """
+        avg_t_exec = sum(self.t_exec_ms.values()) / len(self.t_exec_ms)
+        t_comm_in = network.get_t_comm(path, self.input_datasize_mb)
+        t_comm_out = network.get_t_comm(path, self.output_datasize_mb)
+        return avg_t_exec / (avg_t_exec + t_comm_in + t_comm_out)
+
+    def calculate_p_exec(self) -> list[float]:
+        """
+        정규화된 P_exec [DEVICE, EDGE, CLOUD]
+        높은 T_exec = 높은 비용 (느림)
+        """
+        max_t = max(self.t_exec_ms.values())
+        return [
+            self.t_exec_ms.get(loc, max_t) / max_t
+            for loc in ["DEVICE", "EDGE", "CLOUD"]
+        ]
 
 
 # ============================================================================
@@ -43,7 +113,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 1: Data Affinity
     # ========================================================================
-    data_affinity: DataAffinity = "EDGE"
+    data_affinity: str = "EDGE"
     """
     Tool이 주로 접근하는 데이터의 위치
 
@@ -56,7 +126,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 2: Compute Intensity
     # ========================================================================
-    compute_intensity: ComputeIntensity = "LOW"
+    compute_intensity: str = "LOW"
     """
     Tool의 연산 복잡도
 
@@ -69,7 +139,7 @@ class ToolProfile:
     # ========================================================================
     # Dimension 3: Data Flow
     # ========================================================================
-    data_flow: DataFlow = "TRANSFORM"
+    data_flow: str = "TRANSFORM"
     """
     Tool의 입출력 데이터 크기 비율
 

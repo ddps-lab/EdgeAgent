@@ -57,8 +57,12 @@ pub fn http_post(url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16
     {
         let stream = outgoing_body.write()
             .map_err(|_| "Failed to get body stream")?;
-        stream.blocking_write_and_flush(body.as_bytes())
-            .map_err(|e| format!("Failed to write body: {:?}", e))?;
+        // Write in chunks due to WASI stream 4KB limit
+        const CHUNK_SIZE: usize = 4096;
+        for chunk in body.as_bytes().chunks(CHUNK_SIZE) {
+            stream.blocking_write_and_flush(chunk)
+                .map_err(|e| format!("Failed to write body: {:?}", e))?;
+        }
     }
 
     OutgoingBody::finish(outgoing_body, None)

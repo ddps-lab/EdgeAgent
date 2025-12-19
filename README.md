@@ -92,7 +92,7 @@ async with EdgeAgentMCPClient("config/tools.yaml") as client:
     read_file = next(t for t in tools if t.name == "read_file")
 
     # path에 따라 자동 routing
-    result = await read_file.ainvoke({"path": "/tmp/edgeagent_device/test.txt"})
+    result = await read_file.ainvoke({"path": "/tmp/edgeagent_device_hy/test.txt"})
 ```
 
 ## Constraint-based Routing

@@ -1,0 +1,49 @@
+# ============================================================================
+# Score-based Scheduling 비용 파라미터
+# ============================================================================
+#
+# Cost 공식:
+#   Cost_k(u, v) = α_i * (P_comp[u] + β_i * P_net[u]) + (1-α_i) * P_comm[(v,u)]
+#
+#   - k: 순서 (Sequence Step)
+#   - i = type(k): k번째 태스크 타입
+#   - u: 현재 노드 {D, E, C}
+#   - v: 이전 노드 {D, E, C}
+#   - α_i: 연산 중요도 (0~1) - tools_scenario*.yaml에서 정의
+#   - β_i: 외부 인터넷 사용 여부 (0 or 1) - tools_scenario*.yaml에서 정의
+
+# P_net: 노드별 외부 네트워크 비용
+p_net:
+  DEVICE: 1.0
+  EDGE: 0.5
+  CLOUD: 0.0
+
+# ============================================================================
+# Network Measurements (실측 기반, 하드웨어별)
+# ============================================================================
+network_measurements:
+  bandwidth_mbps:
+    edge-nuc_device-rpi: 943.71
+    edge-orin_device-rpi: 944.44
+    edge-nuc_cloud: 317.83
+    edge-orin_cloud: 314.88
+    device-rpi_cloud: 325.66
+  latency_ms:
+    edge-nuc_device-rpi: 0.892
+    edge-orin_device-rpi: 0.500
+    edge-nuc_cloud: 4.817
+    edge-orin_cloud: 4.447
+    device-rpi_cloud: 4.329
+
+# Hardware Mapping: 하드웨어 → 티어 매핑
+hardware_mapping:
+  DEVICE: [device-rpi]
+  EDGE: [edge-nuc, edge-orin]
+  CLOUD: [m5.xlarge, c7i.8xlarge, c7i.48xlarge]
+
+# P_comm: 노드 간 통신 비용 (fallback)
+# - network_measurements + tool measurements가 있으면 동적 계산
+p_comm:
+  D_D: 0.0
+  D_E: 0.5
+  D_C: 1.0

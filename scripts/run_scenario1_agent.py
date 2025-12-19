@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Scenario 1: Code Review Pipeline - LLM Agent Version
+Scenario 01: Code Review Pipeline - LLM Agent Version
 
 This script uses an LLM Agent (ReAct pattern) that autonomously selects tools
 to complete the code review task. This demonstrates "true AI Agent" behavior
 where the LLM decides the tool execution flow at runtime.
-
-Comparison with run_scenario1_with_metrics.py:
-- Script version: Hardcoded sequential tool calls (orchestration)
-- Agent version: LLM autonomously selects tools (autonomous agent)
 
 Tool Chain (expected, but LLM decides):
     filesystem -> git -> summarize -> data_aggregate -> filesystem(write)
     DEVICE       DEVICE  EDGE        EDGE             DEVICE
 """
 
+import argparse
 import asyncio
 import os
 import shutil
@@ -25,11 +22,16 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
-from scripts.agent_utils import run_agent_with_logging
+from edgeagent.registry import ToolRegistry
+from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
+from edgeagent.metrics import print_execution_trace
+from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_tracking
+
+# Tool blacklist - 이 도구들은 LLM에게 노출되지 않음
+EXCLUDED_TOOLS = {"directory_tree"}
 
 
 def load_repo_source() -> tuple[Path, str]:
@@ -38,22 +40,17 @@ def load_repo_source() -> tuple[Path, str]:
     Returns:
         Tuple of (repo_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
-    defects4j_dir = data_dir / "defects4j"
-    sample_repo = data_dir / "sample_repo"
+    # Use unified path that works across all locations (DEVICE/EDGE/CLOUD)
+    defects4j_dir = Path("/edgeagent/data/scenario1/defects4j")
 
     if defects4j_dir.exists():
         for subdir in defects4j_dir.iterdir():
             if subdir.is_dir() and (subdir / ".git").exists():
                 return subdir, f"Defects4J ({subdir.name})"
 
-    if sample_repo.exists() and (sample_repo / ".git").exists():
-        return sample_repo, "Generated sample repository"
-
     raise FileNotFoundError(
-        f"No Git repository found in {data_dir}\n"
-        "Run 'python scripts/download_public_datasets.py -s 1' for Defects4J, or\n"
-        "Run 'python scripts/generate_test_repo.py' for sample repository"
+        f"No Git repository found in {defects4j_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 1' for test data"
     )
 
 
@@ -72,7 +69,7 @@ You have access to the following tools:
 
 IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
 
-The repository is located at /tmp/edgeagent_device/repo
+The repository is located at /edgeagent/data/scenario1/defects4j/lang
 
 When conducting code review, follow this workflow:
 1. List the repository files to understand the structure
@@ -80,7 +77,7 @@ When conducting code review, follow this workflow:
 3. Get git log to see recent commits (use max_count=5)
 4. Get git diff to see recent code changes
 5. Summarize the changes
-6. Write a comprehensive code review report to /tmp/edgeagent_device/agent_code_review_report.md
+6. Write a comprehensive code review report to /edgeagent/results/scenario1_agent_code_review_report.md
 
 Include in your report:
 - Repository overview
@@ -104,24 +101,19 @@ class AgentCodeReviewScenario(ScenarioRunner):
         output_dir: str | Path = "results/scenario1_agent",
         model: str = "gpt-4o-mini",
         temperature: float = 0,
+        scheduler=None,
+        exclude_tools: set[str] | None = None,
     ):
-        super().__init__(config_path, output_dir)
+        super().__init__(config_path, output_dir, scheduler=scheduler, exclude_tools=exclude_tools)
         self.model = model
         self.temperature = temperature
         self._repo_source = None
         self._data_source = None
 
-        # Pre-initialize device repo directory for MCP git server
-        # (git server validates repo path on startup)
+        # Load repo source - use /edgeagent/data directly (no copy needed)
         repo_source, data_source = load_repo_source()
         self._repo_source = repo_source
         self._data_source = data_source
-
-        device_repo = Path("/tmp/edgeagent_device/repo")
-        device_repo.parent.mkdir(parents=True, exist_ok=True)
-        if device_repo.exists():
-            shutil.rmtree(device_repo)
-        shutil.copytree(repo_source, device_repo)
 
     @property
     def name(self) -> str:
@@ -134,9 +126,9 @@ class AgentCodeReviewScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Review the Git repository at /tmp/edgeagent_device/repo. "
+            f"Review the Git repository at {self._repo_source}. "
             "Analyze the commit history, code changes, and generate a comprehensive "
-            "code review report to /tmp/edgeagent_device/agent_code_review_report.md"
+            "code review report to /edgeagent/results/scenario1_agent_code_review_report.md"
         )
 
     async def execute(
@@ -146,27 +138,28 @@ class AgentCodeReviewScenario(ScenarioRunner):
     ) -> Any:
         """Execute code review using LLM Agent"""
 
-        device_repo = Path("/tmp/edgeagent_device/repo")
+        # Use repo_source directly (no copy needed)
+        repo_path = self._repo_source
 
-        # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
-        excluded_tools = {"directory_tree"}
-        tools = [t for t in tools if t.name not in excluded_tools]
+        # Tool exclusion은 EdgeAgentMCPClient의 exclude_tools 파라미터로 처리됨
+        # (EXCLUDED_TOOLS 상수 참조)
 
         print("-" * 70)
         print("LLM Agent Code Review")
         print("-" * 70)
         print(f"Data Source: {self._data_source}")
-        print(f"Repository: {device_repo}")
+        print(f"Repository: {repo_path}")
         print(f"Model: {self.model}")
         print(f"Temperature: {self.temperature}")
         print(f"Available tools: {len(tools)}")
         print()
 
-        # Initialize LLM (gpt-4o-mini doesn't support temperature=0)
-        llm_kwargs = {"model": self.model}
-        if "gpt-5" not in self.model:
-            llm_kwargs["temperature"] = self.temperature
-        llm = ChatOpenAI(**llm_kwargs)
+        # Initialize LLM with latency tracking
+        llm = create_llm_with_latency_tracking(
+            model=self.model,
+            temperature=self.temperature,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Create agent
         agent = create_agent(llm, tools)
@@ -179,8 +172,13 @@ class AgentCodeReviewScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent with logging
-        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
+        # Execute agent with logging (metrics_collector로 LLM latency 추적)
+        result = await run_agent_with_logging(
+            agent,
+            self.user_request,
+            verbose=True,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Extract final response
         final_message = result["messages"][-1].content
@@ -192,23 +190,18 @@ class AgentCodeReviewScenario(ScenarioRunner):
         print(final_message[:1000] + "..." if len(final_message) > 1000 else final_message)
         print()
 
-        # Add custom metrics
+        # Add custom metrics (MetricsCollector 유틸리티 사용)
         if client.metrics_collector:
-            tool_counts = {}
-            for entry in client.metrics_collector.entries:
-                tool = entry.tool_name
-                tool_counts[tool] = tool_counts.get(tool, 0) + 1
-
             client.metrics_collector.add_custom_metric("agent_model", self.model)
             client.metrics_collector.add_custom_metric("data_source", self._data_source)
-            client.metrics_collector.add_custom_metric("tool_call_counts", tool_counts)
-            client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
+            client.metrics_collector.add_custom_metric("tool_call_counts", client.metrics_collector.get_tool_call_counts())
+            client.metrics_collector.add_custom_metric("total_tool_calls", client.metrics_collector.total_tool_calls)
 
         # Check if report was written
-        report_path = Path("/tmp/edgeagent_device/agent_code_review_report.md")
-        if report_path.exists():
-            report_content = report_path.read_text()
-            print(f"Report written to: {report_path}")
+        report_file = Path("/edgeagent/results/scenario1_agent_code_review_report.md")
+        if report_file.exists():
+            report_content = report_file.read_text()
+            print(f"Report written to: {report_file}")
             print(f"Report size: {len(report_content)} bytes")
             return report_content
         else:
@@ -219,6 +212,15 @@ class AgentCodeReviewScenario(ScenarioRunner):
 async def main():
     """Run the LLM Agent-based Code Review scenario"""
 
+    parser = argparse.ArgumentParser(description="Run Scenario 01 with LLM Agent")
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
+    args = parser.parse_args()
+
     # Load environment variables
     load_dotenv()
 
@@ -228,20 +230,31 @@ async def main():
         return False
 
     print("=" * 70)
-    print("Scenario 1: Code Review Pipeline (LLM Agent Version)")
+    print("Scenario 01: Code Review Pipeline (LLM Agent Version)")
     print("=" * 70)
     print()
     print("This version uses an LLM Agent that autonomously decides")
     print("which tools to call and in what order.")
+    print(f"Scheduler: {args.scheduler}")
     print()
 
     config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
+    system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+
+    # Create scheduler
+    registry = ToolRegistry.from_yaml(config_path)
+    if args.scheduler == "brute_force":
+        scheduler = BruteForceChainScheduler(config_path, system_config_path, registry)
+    else:
+        scheduler = create_scheduler(args.scheduler, config_path, registry)
 
     scenario = AgentCodeReviewScenario(
         config_path=config_path,
         output_dir="results/scenario1_agent",
         model="gpt-4o-mini",
         temperature=0,
+        scheduler=scheduler,
+        exclude_tools=EXCLUDED_TOOLS,
     )
 
     result = await scenario.run(
@@ -249,15 +262,15 @@ async def main():
         print_summary=True,
     )
 
-    # Additional analysis
-    if result.metrics:
-        print()
-        print("=" * 70)
-        print("Agent Execution Trace")
-        print("=" * 70)
-        for i, trace in enumerate(result.metrics.to_execution_trace(), 1):
-            print(f"  {i}. {trace['tool']} -> {trace['location']}")
+    # Additional analysis (metrics.py 유틸리티 사용)
+    if result.execution_trace:
+        print_execution_trace(
+            result.execution_trace,
+            scheduler_type=args.scheduler,
+            title="Agent Execution Trace (Scheduler Results)",
+        )
 
+    if result.metrics:
         # Export metrics
         csv_path = result.metrics.save_csv("results/scenario1_agent/metrics.csv")
         print(f"\nMetrics CSV saved to: {csv_path}")

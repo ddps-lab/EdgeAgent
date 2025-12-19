@@ -26,9 +26,6 @@ from .proxy_tool import LocationAwareProxyTool
 from .types import (
     Location,
     Runtime,
-    DataAffinity,
-    ComputeIntensity,
-    DataFlow,
     TransportType,
 )
 from .metrics import (
@@ -105,9 +102,6 @@ __all__ = [
     # Types
     "Location",
     "Runtime",
-    "DataAffinity",
-    "ComputeIntensity",
-    "DataFlow",
     "TransportType",
     # Planner
     "Partition",

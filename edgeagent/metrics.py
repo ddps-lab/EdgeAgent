@@ -24,6 +24,74 @@ from typing import Any, Optional
 
 
 @dataclass
+class ChainSchedulingResult:
+    """
+    Chain Scheduling 결과 메트릭
+
+    BruteForceChainScheduler의 결과를 저장합니다.
+    """
+    total_cost: float = 0.0                    # 전체 Tool Chain의 최적 비용
+    search_space_size: int = 0                 # 탐색 공간 크기 (조합 수)
+    valid_combinations: int = 0                # 유효한 조합 수
+    decision_time_ms: float = 0.0              # 스케줄링 결정 시간 (ms)
+    optimization_method: str = "brute_force"   # 최적화 방법
+    tool_chain: list[str] = field(default_factory=list)  # Tool Chain 목록
+    placements: list[dict] = field(default_factory=list)  # 각 Tool의 배치 결과
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "total_cost": self.total_cost,
+            "search_space_size": self.search_space_size,
+            "valid_combinations": self.valid_combinations,
+            "decision_time_ms": self.decision_time_ms,
+            "optimization_method": self.optimization_method,
+            "tool_chain": self.tool_chain,
+            "placements": self.placements,
+        }
+
+
+@dataclass
+class ScenarioMetrics:
+    """
+    시나리오별 커스텀 메트릭
+
+    각 시나리오에서 수집하는 도메인 특화 메트릭
+    """
+    # 공통
+    data_source: str = ""                      # 데이터 소스 (예: "LogHub", "COCO 2017")
+    input_items_count: int = 0                 # 입력 항목 수
+    output_items_count: int = 0                # 출력 항목 수
+
+    # Scenario별 특화 메트릭 (optional)
+    # Log Analysis
+    entries_parsed: int = 0
+    entries_filtered: int = 0
+
+    # Research Assistant
+    articles_fetched: int = 0
+    summaries_generated: int = 0
+
+    # Image Processing
+    images_found: int = 0
+    unique_images: int = 0
+    duplicate_groups: int = 0
+    thumbnails_created: int = 0
+
+    # Code Review
+    commit_count: int = 0
+    diff_lines: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        result = {}
+        for key, value in self.__dict__.items():
+            if value:  # 0이 아닌 값만 포함
+                result[key] = value
+        return result
+
+
+@dataclass
 class MetricEntry:
     """
     단일 도구 호출의 메트릭 (Entry 수준)
@@ -42,6 +110,11 @@ class MetricEntry:
     latency_ms: float  # Tool execution time
     inter_tool_latency_ms: float = 0.0  # Time since previous tool ended
 
+    # === LLM Latency (Agent 모드 전용) ===
+    llm_latency_ms: float = 0.0  # LLM 추론 시간 (이 tool 호출 결정까지)
+    llm_input_tokens: int = 0  # LLM 입력 토큰 수
+    llm_output_tokens: int = 0  # LLM 출력 토큰 수
+
     # === Location & Routing ===
     scheduled_location: str = ""  # What scheduler decided
     actual_location: str = ""  # Where it actually ran
@@ -52,6 +125,12 @@ class MetricEntry:
     scheduling_reason: str = ""  # Why this location
     constraints_checked: list[str] = field(default_factory=list)
     available_locations: list[str] = field(default_factory=list)
+
+    # === Scheduling Cost (BruteForceChainScheduler) ===
+    scheduling_score: float = 0.0  # Total cost
+    exec_cost: float = 0.0  # Computation cost
+    trans_cost: float = 0.0  # Communication cost
+    fixed_location: bool = False  # Node fixed (data_locality)
 
     # === Data Flow ===
     input_size_bytes: int = 0
@@ -100,8 +179,14 @@ class MetricEntry:
             "timing": {
                 "latency_ms": self.latency_ms,
                 "inter_tool_latency_ms": self.inter_tool_latency_ms,
+                "llm_latency_ms": self.llm_latency_ms,
+                "total_latency_ms": self.llm_latency_ms + self.latency_ms,  # LLM + Tool 실행 시간
                 "mcp_serialization_time_ms": self.mcp_serialization_time_ms,
                 "mcp_deserialization_time_ms": self.mcp_deserialization_time_ms,
+            },
+            "llm": {
+                "input_tokens": self.llm_input_tokens,
+                "output_tokens": self.llm_output_tokens,
             },
             "location": {
                 "scheduled_location": self.scheduled_location,
@@ -113,6 +198,10 @@ class MetricEntry:
                 "reason": self.scheduling_reason,
                 "constraints_checked": self.constraints_checked,
                 "available_locations": self.available_locations,
+                "score": self.scheduling_score,
+                "exec_cost": self.exec_cost,
+                "trans_cost": self.trans_cost,
+                "fixed": self.fixed_location,
             },
             "data_flow": {
                 "input_size_bytes": self.input_size_bytes,
@@ -173,10 +262,12 @@ class MetricsCollector:
         config: Optional[MetricsConfig] = None,
         scenario_name: str = "unknown",
         client_location: str = "CLIENT",
+        scheduler_type: str = "unknown",
     ):
         self.config = config or MetricsConfig()
         self.scenario_name = scenario_name
         self.client_location = client_location
+        self.scheduler_type = scheduler_type
         self._entries: list[MetricEntry] = []
         self._custom_metrics: dict[str, Any] = {}
         self._session_id: str = str(uuid.uuid4())[:8]
@@ -185,6 +276,14 @@ class MetricsCollector:
         self._server_startup_time_ms: float = 0.0
         self._last_tool_end_time: Optional[float] = None
         self._pipeline_step: int = 0
+
+        # Chain Scheduling 결과
+        self._chain_scheduling: Optional[ChainSchedulingResult] = None
+        # 시나리오별 메트릭
+        self._scenario_metrics: ScenarioMetrics = ScenarioMetrics()
+        # LLM Latency (Agent 모드용)
+        self._pending_llm_latency: Optional[dict] = None
+        self._pending_llm_consumed: bool = False
 
     # =========================================================================
     # Core Collection API
@@ -229,6 +328,120 @@ class MetricsCollector:
     def set_server_startup_time(self, time_ms: float):
         """Record server startup time (cold start)"""
         self._server_startup_time_ms = time_ms
+
+    def set_chain_scheduling_result(
+        self,
+        total_cost: float,
+        search_space_size: int,
+        valid_combinations: int,
+        decision_time_ms: float,
+        tool_chain: list[str],
+        placements: list[dict],
+        optimization_method: str = "brute_force",
+    ):
+        """
+        Chain Scheduling 결과 기록
+
+        Args:
+            total_cost: 전체 Tool Chain의 최적 비용
+            search_space_size: 탐색 공간 크기 (조합 수)
+            valid_combinations: 유효한 조합 수
+            decision_time_ms: 스케줄링 결정 시간 (ms)
+            tool_chain: Tool Chain 목록
+            placements: 각 Tool의 배치 결과 (dict list)
+            optimization_method: 최적화 방법
+        """
+        self._chain_scheduling = ChainSchedulingResult(
+            total_cost=total_cost,
+            search_space_size=search_space_size,
+            valid_combinations=valid_combinations,
+            decision_time_ms=decision_time_ms,
+            optimization_method=optimization_method,
+            tool_chain=tool_chain,
+            placements=placements,
+        )
+
+    def set_scenario_metrics(self, **kwargs):
+        """
+        시나리오별 메트릭 설정
+
+        사용 예:
+            collector.set_scenario_metrics(
+                data_source="LogHub",
+                entries_parsed=1000,
+                entries_filtered=50,
+            )
+        """
+        for key, value in kwargs.items():
+            if hasattr(self._scenario_metrics, key):
+                setattr(self._scenario_metrics, key, value)
+
+    def set_pending_llm_latency(
+        self,
+        latency_ms: float,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ):
+        """
+        다음 tool call(들)에 연결할 LLM latency 설정 (Agent 모드용)
+
+        Args:
+            latency_ms: LLM 추론 시간 (ms)
+            input_tokens: LLM 입력 토큰 수
+            output_tokens: LLM 출력 토큰 수
+        """
+        self._pending_llm_latency = {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self._pending_llm_consumed = False  # 아직 사용되지 않음
+
+    def get_pending_llm_latency(self) -> Optional[dict]:
+        """
+        pending LLM latency 반환 (병렬 tool call 지원)
+
+        첫 번째 tool이 가져간 후에도 같은 LLM 호출에서 나온
+        병렬 tool들이 같은 latency를 공유할 수 있도록 함.
+        새로운 LLM 호출이 있을 때만 초기화됨.
+
+        Returns:
+            LLM latency 정보 dict 또는 None
+        """
+        if self._pending_llm_latency is None:
+            return None
+
+        # 첫 번째 tool에만 full latency 기록, 나머지는 0 (중복 방지)
+        if not self._pending_llm_consumed:
+            self._pending_llm_consumed = True
+            return self._pending_llm_latency
+        else:
+            # 병렬 tool들은 같은 LLM 호출에서 나왔지만 latency는 0으로 기록
+            # (total 합산 시 중복 방지)
+            return {
+                "latency_ms": 0.0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
+    def get_and_clear_pending_llm_latency(self) -> Optional[dict]:
+        """
+        pending LLM latency 반환 후 초기화 (하위 호환성)
+
+        Returns:
+            LLM latency 정보 dict 또는 None
+        """
+        return self.get_pending_llm_latency()
+
+    @property
+    def chain_scheduling(self) -> Optional[ChainSchedulingResult]:
+        """Get chain scheduling result"""
+        return self._chain_scheduling
+
+    @property
+    def scenario_metrics(self) -> ScenarioMetrics:
+        """Get scenario-specific metrics"""
+        return self._scenario_metrics
 
     def finalize(self):
         """Mark session as complete"""
@@ -281,6 +494,23 @@ class MetricsCollector:
         if self.total_input_bytes == 0:
             return 0.0
         return self.total_output_bytes / self.total_input_bytes
+
+    def get_tool_call_counts(self) -> dict[str, int]:
+        """Tool별 호출 횟수 반환
+
+        Returns:
+            {tool_name: count} 딕셔너리
+        """
+        counts: dict[str, int] = {}
+        for entry in self._entries:
+            tool = entry.tool_name
+            counts[tool] = counts.get(tool, 0) + 1
+        return counts
+
+    @property
+    def total_tool_calls(self) -> int:
+        """전체 tool 호출 횟수"""
+        return len(self._entries)
 
     @property
     def success_rate(self) -> float:
@@ -428,16 +658,25 @@ class MetricsCollector:
         """Export all metrics as dictionary"""
         end_time = self._session_end or time.time()
 
-        return {
+        # chain_scheduling이 없으면 entries에서 합산
+        chain_scheduling_dict = None
+        if self._chain_scheduling:
+            chain_scheduling_dict = self._chain_scheduling.to_dict()
+        elif self._entries:
+            # Agent 모드: entries에서 scheduling 정보 합산
+            chain_scheduling_dict = self._aggregate_scheduling_from_entries()
+
+        result = {
             "session_id": self._session_id,
             "scenario_name": self.scenario_name,
+            "scheduler_type": self.scheduler_type,
             "start_time": self._session_start,
             "start_time_iso": datetime.fromtimestamp(self._session_start).isoformat(),
             "end_time": end_time,
             "end_time_iso": datetime.fromtimestamp(end_time).isoformat(),
             "summary": {
                 "total_calls": len(self._entries),
-                "total_latency_ms": self.total_latency_ms,
+                "total_tool_latency_ms": self.total_latency_ms,
                 "pipeline_depth": self.pipeline_depth,
                 "parallel_calls_count": 0,  # TODO: detect parallel calls
                 "success_rate": self.success_rate,
@@ -462,9 +701,92 @@ class MetricsCollector:
                 },
                 "resource_usage": self.total_resource_usage(),
                 "network": self.network_summary(),
+                "llm_usage": self._aggregate_llm_usage(),
             },
+            "chain_scheduling": chain_scheduling_dict,
+            "scenario_metrics": self._scenario_metrics.to_dict(),
             "custom_metrics": self._custom_metrics,
             "entries": [e.to_dict() for e in self._entries],
+        }
+
+        return result
+
+    def _aggregate_scheduling_from_entries(self) -> dict[str, Any]:
+        """Agent 모드: entries에서 scheduling 정보 합산"""
+        if not self._entries:
+            return None
+
+        total_score = 0.0
+        total_exec_cost = 0.0
+        total_trans_cost = 0.0
+        total_decision_time_ns = 0
+        placements = []
+
+        for entry in self._entries:
+            total_score += entry.scheduling_score or 0.0
+            total_exec_cost += entry.exec_cost or 0.0
+            total_trans_cost += entry.trans_cost or 0.0
+            total_decision_time_ns += entry.scheduling_decision_time_ns or 0
+
+            placements.append({
+                "tool_name": entry.tool_name,
+                "location": entry.actual_location,
+                "reason": entry.scheduling_reason or "unknown",
+                "score": entry.scheduling_score,
+                "exec_cost": entry.exec_cost,
+                "trans_cost": entry.trans_cost,
+                "fixed": entry.fixed_location,
+            })
+
+        return {
+            "total_cost": total_score,
+            "search_space_size": len(self._entries),
+            "valid_combinations": 1,  # Agent 모드는 동적 결정
+            "decision_time_ns": total_decision_time_ns,
+            "decision_time_ms": total_decision_time_ns / 1e6,
+            "optimization_method": self.scheduler_type,
+            "placements": placements,
+        }
+
+    def _aggregate_llm_usage(self) -> dict[str, Any]:
+        """LLM 사용량 합산 (Agent 모드용)"""
+        if not self._entries:
+            return {
+                "total_llm_latency_ms": 0.0,
+                "total_tool_latency_ms": 0.0,
+                "total_combined_latency_ms": 0.0,
+                "total_llm_calls": 0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "avg_llm_latency_ms": 0.0,
+            }
+
+        total_llm_latency_ms = 0.0
+        total_tool_latency_ms = 0.0
+        total_llm_calls = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        for entry in self._entries:
+            total_tool_latency_ms += entry.latency_ms
+            if entry.llm_latency_ms > 0:
+                total_llm_latency_ms += entry.llm_latency_ms
+                total_llm_calls += 1
+                total_input_tokens += entry.llm_input_tokens
+                total_output_tokens += entry.llm_output_tokens
+
+        avg_llm_latency_ms = (
+            total_llm_latency_ms / total_llm_calls if total_llm_calls > 0 else 0.0
+        )
+
+        return {
+            "total_llm_latency_ms": total_llm_latency_ms,
+            "total_tool_latency_ms": total_tool_latency_ms,
+            "total_combined_latency_ms": total_llm_latency_ms + total_tool_latency_ms,
+            "total_llm_calls": total_llm_calls,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "avg_llm_latency_ms": avg_llm_latency_ms,
         }
 
     def save_json(self, output_path: str | Path, pretty: bool = True) -> Path:
@@ -500,6 +822,10 @@ class MetricsCollector:
                     "fallback_occurred": e.fallback_occurred,
                     "scheduling_decision_time_ns": e.scheduling_decision_time_ns,
                     "scheduling_reason": e.scheduling_reason,
+                    "scheduling_score": e.scheduling_score,
+                    "exec_cost": e.exec_cost,
+                    "trans_cost": e.trans_cost,
+                    "fixed_location": e.fixed_location,
                     "input_size_bytes": e.input_size_bytes,
                     "output_size_bytes": e.output_size_bytes,
                     "reduction_ratio": e.reduction_ratio,
@@ -544,6 +870,21 @@ class MetricsCollector:
             f"({self.overall_reduction_ratio * 100:.2f}%)"
         )
 
+        # Chain Scheduling 결과 출력
+        if self._chain_scheduling:
+            print("\nChain Scheduling:")
+            print(f"  Total Cost: {self._chain_scheduling.total_cost:.4f}")
+            print(f"  Search Space: {self._chain_scheduling.search_space_size}")
+            print(f"  Valid Combinations: {self._chain_scheduling.valid_combinations}")
+            print(f"  Decision Time: {self._chain_scheduling.decision_time_ms:.2f} ms")
+            print(f"  Method: {self._chain_scheduling.optimization_method}")
+            if self._chain_scheduling.placements:
+                print("  Placements:")
+                for p in self._chain_scheduling.placements:
+                    fixed = "[FIXED]" if p.get("fixed") else ""
+                    print(f"    {p.get('tool_name', 'N/A'):20} -> {p.get('location', 'N/A'):6} "
+                          f"(cost={p.get('score', 0):.3f}) {fixed}")
+
         print("\nLatency by Location:")
         for loc, latency in self.latency_by_location().items():
             count = self.call_count_by_location()[loc]
@@ -563,6 +904,13 @@ class MetricsCollector:
                 f"{entry.input_size_bytes:,} -> {entry.output_size_bytes:,} bytes "
                 f"({entry.latency_ms:.2f}ms) {status}"
             )
+
+        # Scenario Metrics 출력
+        scenario_dict = self._scenario_metrics.to_dict()
+        if scenario_dict:
+            print("\nScenario Metrics:")
+            for key, value in scenario_dict.items():
+                print(f"  {key}: {value}")
 
         if self._custom_metrics:
             print("\nCustom Metrics:")
@@ -586,10 +934,10 @@ class MetricsCollector:
 
     def to_execution_trace(self) -> list[dict]:
         """
-        Convert to legacy execution_trace format.
+        Convert to execution_trace format with scheduling cost info.
 
-        Maintains backward compatibility with existing code that expects:
-        {"tool": ..., "parent_tool": ..., "location": ..., "args_keys": ...}
+        Includes:
+        {"tool": ..., "location": ..., "cost": ..., "comp": ..., "comm": ..., "fixed": ...}
         """
         return [
             {
@@ -597,7 +945,13 @@ class MetricsCollector:
                 "parent_tool": e.parent_tool_name,
                 "location": e.actual_location,
                 "args_keys": e.args_keys,
-                # Enhanced fields (new code can use these)
+                # Scheduling cost info
+                "cost": e.scheduling_score,
+                "comp": e.exec_cost,
+                "comm": e.trans_cost,
+                "fixed": e.fixed_location,
+                "reason": e.scheduling_reason,
+                # Enhanced fields
                 "latency_ms": e.latency_ms,
                 "input_size": e.input_size_bytes,
                 "output_size": e.output_size_bytes,
@@ -649,6 +1003,12 @@ class CallContext:
         self.available_locations: list[str] = []
         self.fallback_occurred: bool = False
 
+        # Scheduling cost (BruteForceChainScheduler)
+        self.scheduling_score: float = 0.0
+        self.exec_cost: float = 0.0
+        self.trans_cost: float = 0.0
+        self.fixed_location: bool = False
+
         # Data flow info
         self.data_flow_type: str = ""
         self.expected_reduction_ratio: float = 0.0
@@ -663,6 +1023,11 @@ class CallContext:
         self.mcp_serialization_time_ms: float = 0.0
         self.mcp_deserialization_time_ms: float = 0.0
 
+        # LLM latency (Agent 모드용)
+        self.llm_latency_ms: float = 0.0
+        self.llm_input_tokens: int = 0
+        self.llm_output_tokens: int = 0
+
     async def __aenter__(self) -> "CallContext":
         """Start timing and resource tracking"""
         self.timestamp = time.time()
@@ -671,6 +1036,13 @@ class CallContext:
         if self.config.collect_resource:
             self.memory_before = self._get_memory_usage()
             self.cpu_before = self._get_cpu_times()
+
+        # Get pending LLM latency (Agent 모드용)
+        pending_llm = self.collector.get_and_clear_pending_llm_latency()
+        if pending_llm:
+            self.llm_latency_ms = pending_llm.get("latency_ms", 0.0)
+            self.llm_input_tokens = pending_llm.get("input_tokens", 0)
+            self.llm_output_tokens = pending_llm.get("output_tokens", 0)
 
         return self
 
@@ -711,6 +1083,10 @@ class CallContext:
             timestamp=self.timestamp,
             latency_ms=(self.end_time_ns - self.start_time_ns) / 1_000_000,
             inter_tool_latency_ms=inter_tool_latency_ms,
+            # LLM latency (Agent 모드용)
+            llm_latency_ms=self.llm_latency_ms,
+            llm_input_tokens=self.llm_input_tokens,
+            llm_output_tokens=self.llm_output_tokens,
             scheduled_location=self.scheduled_location,
             actual_location=self.actual_location,
             fallback_occurred=self.actual_location != self.scheduled_location,
@@ -718,6 +1094,12 @@ class CallContext:
             scheduling_reason=self.scheduling_reason,
             constraints_checked=self.constraints_checked,
             available_locations=self.available_locations,
+            # Scheduling cost
+            scheduling_score=self.scheduling_score,
+            exec_cost=self.exec_cost,
+            trans_cost=self.trans_cost,
+            fixed_location=self.fixed_location,
+            # Data flow
             input_size_bytes=input_size,
             output_size_bytes=output_size,
             reduction_ratio=reduction_ratio,
@@ -761,12 +1143,20 @@ class CallContext:
         constraints: list[str],
         available: list[str],
         decision_time_ns: int = 0,
+        score: float = 0.0,
+        exec_cost: float = 0.0,
+        trans_cost: float = 0.0,
+        fixed: bool = False,
     ):
         """Add scheduling decision information"""
         self.scheduling_reason = reason
         self.constraints_checked = constraints
         self.available_locations = available
         self.scheduling_decision_time_ns = decision_time_ns
+        self.scheduling_score = score
+        self.exec_cost = exec_cost
+        self.trans_cost = trans_cost
+        self.fixed_location = fixed
 
     def add_data_flow_info(self, data_flow_type: str, expected_ratio: float = 0.0):
         """Add data flow information from tool profile"""
@@ -806,3 +1196,362 @@ class CallContext:
             return (r.ru_utime, r.ru_stime)
         except Exception:
             return (0.0, 0.0)
+
+
+# =============================================================================
+# Partition Metrics Utilities (for SubAgent Orchestration)
+# =============================================================================
+
+def aggregate_metrics_entries(metrics_entries: list[dict]) -> dict:
+    """
+    단일 partition의 metrics_entries를 aggregate
+
+    SubAgent가 응답을 반환할 때 사용합니다.
+
+    Args:
+        metrics_entries: MetricEntry.to_dict() 형태의 entry 목록
+
+    Returns:
+        Aggregated metrics dict:
+        {
+            "latency_ms": float,
+            "inter_tool_latency_ms": float,
+            "llm_latency_ms": float,
+            "total_latency_ms": float,
+            "llm": {"input_tokens": int, "output_tokens": int},
+            "tool_count": int,
+        }
+    """
+    total_latency = 0.0
+    total_inter_tool_latency = 0.0
+    total_llm_latency = 0.0
+    total_total_latency = 0.0
+    total_input_tokens = 0
+    total_output_tokens = 0
+
+    for entry in metrics_entries:
+        timing = entry.get("timing", {})
+        llm = entry.get("llm", {})
+
+        total_latency += timing.get("latency_ms", 0) or 0
+        total_inter_tool_latency += timing.get("inter_tool_latency_ms", 0) or 0
+        total_llm_latency += timing.get("llm_latency_ms", 0) or 0
+        total_total_latency += timing.get("total_latency_ms", 0) or 0
+        total_input_tokens += llm.get("input_tokens", 0) or 0
+        total_output_tokens += llm.get("output_tokens", 0) or 0
+
+    return {
+        "latency_ms": total_latency,
+        "inter_tool_latency_ms": total_inter_tool_latency,
+        "llm_latency_ms": total_llm_latency,
+        "total_latency_ms": total_total_latency,
+        "llm": {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+        },
+        "tool_count": len(metrics_entries),
+    }
+
+
+def aggregate_partition_metrics(partition_results: list[dict]) -> list[dict]:
+    """
+    partition_results에서 각 partition별 aggregated metrics 계산
+
+    Args:
+        partition_results: orchestrator에서 반환된 partition_results
+
+    Returns:
+        partition별 aggregated metrics 목록
+    """
+    details = []
+    for pr in partition_results:
+        metrics_entries = pr.get("metrics_entries", [])
+
+        # Aggregate metrics
+        total_latency = 0.0
+        total_inter_tool_latency = 0.0
+        total_llm_latency = 0.0
+        total_total_latency = 0.0
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        for entry in metrics_entries:
+            timing = entry.get("timing", {})
+            llm = entry.get("llm", {})
+
+            total_latency += timing.get("latency_ms", 0) or 0
+            total_inter_tool_latency += timing.get("inter_tool_latency_ms", 0) or 0
+            total_llm_latency += timing.get("llm_latency_ms", 0) or 0
+            total_total_latency += timing.get("total_latency_ms", 0) or 0
+            total_input_tokens += llm.get("input_tokens", 0) or 0
+            total_output_tokens += llm.get("output_tokens", 0) or 0
+
+        details.append({
+            "partition_index": pr.get("partition_index", 0),
+            "location": pr.get("location", ""),
+            "tools": pr.get("tools", []),
+            "tool_count": len(metrics_entries),
+            "execution_time_ms": pr.get("execution_time_ms", 0),
+            "latency_ms": total_latency,
+            "inter_tool_latency_ms": total_inter_tool_latency,
+            "llm_latency_ms": total_llm_latency,
+            "total_latency_ms": total_total_latency,
+            "llm": {
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+            },
+        })
+
+    return details
+
+
+def get_partition_times(partition_results: list[dict]) -> list[float]:
+    """partition_results에서 실행 시간 목록 추출"""
+    return [pr.get("execution_time_ms", 0) for pr in partition_results if "execution_time_ms" in pr]
+
+
+def get_all_metrics_entries(partition_results: list[dict]) -> list[dict]:
+    """partition_results에서 모든 metrics entries 통합"""
+    entries = []
+    for pr in partition_results:
+        entries.extend(pr.get("metrics_entries", []))
+    return entries
+
+
+def print_chain_scheduling_result(
+    scheduling_result,
+    title: str = "Chain Scheduling Result",
+):
+    """
+    Chain Scheduling 결과 출력 (Script 모드용)
+
+    Args:
+        scheduling_result: ChainSchedulingResult 객체
+        title: 출력 제목
+    """
+    print()
+    print("=" * 70)
+    print(title)
+    print("=" * 70)
+    print(f"Total Cost: {scheduling_result.total_score:.4f}")
+    print(f"Search Space: {scheduling_result.search_space_size}")
+    print(f"Decision Time: {scheduling_result.decision_time_ns / 1e6:.2f} ms")
+    print()
+    print("Optimal Placement:")
+    for p in scheduling_result.placements:
+        fixed_mark = "[FIXED]" if p.fixed else ""
+        # None 값 처리 (static, heuristic 스케줄러는 cost 계산 안 함)
+        score = p.score if p.score is not None else 0.0
+        exec_cost = p.exec_cost if p.exec_cost is not None else 0.0
+        trans_cost = p.trans_cost if p.trans_cost is not None else 0.0
+        print(f"  {p.tool_name:25} -> {p.location:6} (cost={score:.3f}, comp={exec_cost:.3f}, comm={trans_cost:.3f}) {fixed_mark}")
+
+
+def print_execution_trace(
+    execution_trace: list[dict],
+    scheduler_type: str = "",
+    title: str = "Agent Execution Trace",
+):
+    """
+    실행 trace 출력 (Agent 모드용, Scheduler별 포맷팅)
+
+    Args:
+        execution_trace: [{"tool": str, "location": str, "cost": float, ...}, ...]
+        scheduler_type: "brute_force", "static", "heuristic" 등
+        title: 출력 제목
+    """
+    if not execution_trace:
+        return
+
+    print()
+    print("=" * 70)
+    print(title)
+    print("=" * 70)
+
+    for i, trace in enumerate(execution_trace, 1):
+        tool = trace.get("tool", "unknown")
+        location = trace.get("location", "?")
+        fixed_mark = "[FIXED]" if trace.get("fixed") else ""
+
+        if scheduler_type == "brute_force":
+            cost = trace.get("cost", 0)
+            comp = trace.get("comp", 0)
+            comm = trace.get("comm", 0)
+            print(f"  {i}. {tool:25} -> {location:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+        else:
+            print(f"  {i}. {tool:25} -> {location:6} {fixed_mark}")
+
+
+def print_orchestration_summary(
+    result_dict: dict,
+    show_partition_details: bool = True,
+    show_placement_map: bool = True,
+):
+    """
+    Orchestration 결과 요약 출력
+
+    Args:
+        result_dict: OrchestrationResult.to_dict() 또는 동등한 dict
+        show_partition_details: partition 상세 정보 출력 여부
+        show_placement_map: placement map 출력 여부
+    """
+    mode = result_dict.get("mode", "unknown")
+    scheduler_type = result_dict.get("scheduler_type", "")
+    success = result_dict.get("success", False)
+    total_time = result_dict.get("total_time_ms", result_dict.get("execution_time_ms", 0))
+    tool_calls = result_dict.get("tool_calls", result_dict.get("total_tool_calls", 0))
+    metrics_entries = result_dict.get("metrics_entries", [])
+    partitions = result_dict.get("partitions", result_dict.get("partitions_executed", 0))
+    partition_times = result_dict.get("partition_times", [])
+    partition_details = result_dict.get("partition_details", [])
+    placement_map = result_dict.get("placement_map", {})
+    error = result_dict.get("error")
+    final_result = result_dict.get("final_result", result_dict.get("final_result_preview"))
+
+    print(f"\n--- {mode.upper()} Result ---")
+    if scheduler_type:
+        print(f"Scheduler: {scheduler_type}")
+    print(f"Success: {success}")
+    print(f"Total time: {total_time:.0f}ms")
+    print(f"Tool calls: {tool_calls}")
+    print(f"Metrics entries: {len(metrics_entries)}")
+
+    if partitions > 0:
+        print(f"Partitions: {partitions}")
+        if partition_times:
+            print(f"Partition times: {[f'{t:.0f}ms' for t in partition_times]}")
+
+        # Print partition details
+        if show_partition_details and partition_details:
+            print("\nPartition Details:")
+            for pd in partition_details:
+                print(f"  Partition {pd.get('partition_index', 0)} ({pd.get('location', '')}):")
+                print(f"    Tool count: {pd.get('tool_count', 0)}")
+                print(f"    Execution time: {pd.get('execution_time_ms', 0):.2f}ms")
+                print(f"    Latency: {pd.get('latency_ms', 0):.2f}ms")
+                print(f"    Inter-tool latency: {pd.get('inter_tool_latency_ms', 0):.2f}ms")
+                print(f"    LLM latency: {pd.get('llm_latency_ms', 0):.2f}ms")
+                print(f"    Total latency: {pd.get('total_latency_ms', 0):.2f}ms")
+                llm = pd.get('llm', {})
+                print(f"    LLM tokens: input={llm.get('input_tokens', 0)}, output={llm.get('output_tokens', 0)}")
+
+    if show_placement_map and placement_map:
+        print(f"\nPlacement Map:")
+        for tool, location in placement_map.items():
+            print(f"  {tool:25} -> {location}")
+
+    if error:
+        print(f"\nError: {str(error)[:300]}")
+
+    if final_result:
+        print(f"\nResult preview:\n{str(final_result)[:300]}...")
+
+
+def save_orchestration_result(
+    result_dict: dict,
+    output_dir: str,
+    scenario_name: str = "",
+) -> Path:
+    """
+    Orchestration 결과를 JSON 파일로 저장
+
+    Args:
+        result_dict: 저장할 결과 dict
+        output_dir: 출력 디렉토리
+        scenario_name: 시나리오 이름 (파일명에 사용)
+
+    Returns:
+        저장된 파일 경로
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    mode = result_dict.get("mode", "unknown")
+    name = scenario_name or result_dict.get("scenario_name", "result")
+    filename = f"{name}_{mode}_{int(time.time())}.json"
+    file_path = output_path / filename
+
+    with open(file_path, "w") as f:
+        json.dump(result_dict, f, indent=2, default=str)
+
+    print(f"Results saved to: {file_path}")
+    return file_path
+
+
+def save_orchestration_metrics_csv(
+    metrics_entries: list[dict],
+    output_path: str,
+    scenario_name: str = "",
+    session_id: str = "",
+):
+    """
+    Metrics entries를 CSV 파일로 저장
+
+    Args:
+        metrics_entries: metrics entry 목록 (dict 형태)
+        output_path: 출력 파일 경로
+        scenario_name: 시나리오 이름
+        session_id: 세션 ID (없으면 자동 생성)
+    """
+    import csv
+
+    if not metrics_entries:
+        return
+
+    if not session_id:
+        session_id = str(uuid.uuid4())[:8]
+
+    rows = []
+    for e in metrics_entries:
+        timing = e.get("timing", {})
+        location = e.get("location", {})
+        scheduling = e.get("scheduling", {})
+        data_flow = e.get("data_flow", {})
+        resource_info = e.get("resource", {})
+        status = e.get("status", {})
+        llm = e.get("llm", {})
+
+        rows.append({
+            "session_id": session_id,
+            "scenario_name": scenario_name,
+            "tool_name": e.get("tool_name", ""),
+            "parent_tool_name": e.get("parent_tool_name", ""),
+            "pipeline_step": e.get("pipeline_step", 0),
+            "timestamp": e.get("timestamp", 0),
+            "latency_ms": timing.get("latency_ms", 0),
+            "inter_tool_latency_ms": timing.get("inter_tool_latency_ms", 0),
+            "llm_latency_ms": timing.get("llm_latency_ms", 0),
+            "total_latency_ms": timing.get("total_latency_ms", 0),
+            "llm_input_tokens": llm.get("input_tokens", 0),
+            "llm_output_tokens": llm.get("output_tokens", 0),
+            "scheduled_location": location.get("scheduled_location", ""),
+            "actual_location": location.get("actual_location", ""),
+            "fallback_occurred": location.get("fallback_occurred", False),
+            "scheduling_decision_time_ns": scheduling.get("decision_time_ns", 0),
+            "scheduling_reason": scheduling.get("reason", ""),
+            "scheduling_score": scheduling.get("score", 0),
+            "exec_cost": scheduling.get("exec_cost", 0),
+            "trans_cost": scheduling.get("trans_cost", 0),
+            "fixed_location": scheduling.get("fixed", ""),
+            "input_size_bytes": data_flow.get("input_size_bytes", 0),
+            "output_size_bytes": data_flow.get("output_size_bytes", 0),
+            "reduction_ratio": data_flow.get("reduction_ratio", 0),
+            "data_flow_type": data_flow.get("data_flow_type", ""),
+            "mcp_serialization_time_ms": timing.get("mcp_serialization_time_ms", 0),
+            "mcp_deserialization_time_ms": timing.get("mcp_deserialization_time_ms", 0),
+            "memory_delta_bytes": resource_info.get("memory_delta_bytes", 0),
+            "cpu_time_user_ms": resource_info.get("cpu_time_user_ms", 0),
+            "cpu_time_system_ms": resource_info.get("cpu_time_system_ms", 0),
+            "success": status.get("success", True),
+            "retry_count": status.get("retry_count", 0),
+            "error": status.get("error", ""),
+        })
+
+    if rows:
+        csv_path = Path(output_path)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Metrics CSV saved to: {csv_path}")

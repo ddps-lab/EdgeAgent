@@ -11,6 +11,7 @@ LLM에 노출되는 Proxy tool - 호출 시 Scheduler가 location을 결정하�
 """
 
 from typing import Any, Optional, TYPE_CHECKING
+
 from pydantic import Field, ConfigDict
 
 from langchain_core.tools import BaseTool
@@ -76,6 +77,19 @@ class LocationAwareProxyTool(BaseTool):
         description="MetricsCollector instance for unified metrics",
     )
 
+    # Client reference for lazy loading (EdgeAgentMCPClient)
+    client: Optional[Any] = Field(
+        default=None,
+        description="EdgeAgentMCPClient for lazy location connection",
+    )
+
+    # All available locations from config (not just connected ones)
+    # Note: property 'available_locations'와 이름 충돌을 피하기 위해 config_locations 사용
+    config_locations: list[str] = Field(
+        default_factory=list,
+        description="All available locations from config",
+    )
+
     def _run(
         self,
         *args: Any,
@@ -98,56 +112,77 @@ class LocationAwareProxyTool(BaseTool):
         """
         Async execution with location-aware routing
 
-        1. Scheduler가 location 결정 (with reason)
-        2. 해당 location의 backend tool 선택 (fallback 지원)
-        3. Trace 기록 및 메트릭 수집
-        4. 실제 tool 호출
+        1. filter_location이 설정되어 있으면 scheduler 호출 스킵 (SubAgent 모드)
+        2. 그렇지 않으면 Scheduler가 location 결정 (Agent 모드)
+        3. 해당 location의 backend tool 선택
+        4. Trace 기록 및 메트릭 수집
+        5. 실제 tool 호출
         """
-        # 1. Scheduler가 location 결정 (상세 정보 포함)
-        scheduling_result = self._get_location_with_reason(kwargs)
-        location = scheduling_result.location
         fallback_occurred = False
 
-        # 2. 해당 location의 backend tool 선택 (fallback 지원)
+        # 1. filter_location이 설정되어 있으면 scheduler 호출 스킵
+        #    (SubAgent 모드: schedule_chain()으로 이미 결정됨)
+        if self.client and self.client.filter_location:
+            location = self.client.filter_location
+            # chain_scheduling_result에서 해당 tool의 SchedulingResult 조회
+            scheduling_result = self.client.get_scheduling_result_for_tool(self.name)
+            if scheduling_result is None:
+                # fallback: chain_scheduling_result가 없으면 기본값 생성
+                scheduling_result = self._create_fixed_scheduling_result(location)
+        else:
+            # Agent 모드: Scheduler가 location 결정
+            scheduling_result = self._get_location_with_reason(kwargs)
+            location = scheduling_result.location
+
+        # 2. 해당 location의 backend tool 선택 (lazy loading)
         backend_tool = self.backend_tools.get(location)
+
         if not backend_tool:
-            # Scheduler가 결정한 location에 backend이 없으면 fallback
-            # SubAgent가 특정 location만 지원하는 경우 발생
-            available = list(self.backend_tools.keys())
-            if available:
-                location = available[0]  # 첫 번째 available location 사용
-                backend_tool = self.backend_tools[location]
-                fallback_occurred = True
-            else:
+            # Lazy loading: client가 있고 해당 location이 config에 정의되어 있으면 연결
+            if self.client and location in self.config_locations:
+                try:
+                    new_tools = await self.client.ensure_location_connected(
+                        self.name, location
+                    )
+                    if new_tools and self.name in new_tools:
+                        backend_tool = new_tools[self.name]
+                        self.backend_tools[location] = backend_tool
+                except Exception as e:
+                    raise ValueError(
+                        f"Lazy loading failed for '{self.name}' at {location}: {e}"
+                    )
+
+            if not backend_tool:
                 raise ValueError(
                     f"No backend tool available for '{self.name}'. "
-                    f"Scheduled location: {scheduling_result.location}"
+                    f"Scheduled location: {location}, "
+                    f"Available: {list(self.backend_tools.keys())}"
                 )
 
-        # 3. Trace 기록 (backward compatibility)
-        self.execution_trace.append({
-            "tool": self.name,
-            "parent_tool": self.parent_tool_name,
-            "location": location,
-            "fallback": fallback_occurred,
-            "args_keys": list(kwargs.keys()),
-        })
-
-        # 4. 메트릭 수집과 함께 tool 호출
+        # 3. 메트릭 수집과 함께 tool 호출
         if self.metrics_collector is not None:
-            # 통합 메트릭 수집 모드
             async with self.metrics_collector.start_call(
                 tool_name=self.name,
                 parent_tool_name=self.parent_tool_name,
                 location=location,
                 args=kwargs,
             ) as ctx:
-                # Scheduling 정보 추가
+                # Scheduling 정보 추가 (cost 포함)
+                # SchedulingConstraints → list[str] 변환
+                constraints_list = []
+                if scheduling_result.constraints.requires_cloud_api:
+                    constraints_list.append("requires_cloud_api")
+                if scheduling_result.constraints.privacy_sensitive:
+                    constraints_list.append("privacy_sensitive")
                 ctx.add_scheduling_info(
                     reason=scheduling_result.reason,
-                    constraints=scheduling_result.constraints_checked,
+                    constraints=constraints_list,
                     available=scheduling_result.available_locations,
                     decision_time_ns=scheduling_result.decision_time_ns,
+                    score=scheduling_result.score,
+                    exec_cost=scheduling_result.exec_cost,
+                    trans_cost=scheduling_result.trans_cost,
+                    fixed=scheduling_result.fixed,
                 )
                 try:
                     result = await backend_tool.ainvoke(kwargs)
@@ -173,9 +208,9 @@ class LocationAwareProxyTool(BaseTool):
             return list(self.backend_tools.keys())[0]
 
         # Scheduler에게 location 결정 요청
-        # parent_tool_name을 사용 (registry에 등록된 이름)
+        # self.name (개별 tool 이름)을 사용하여 정확한 profile 조회
         return self.scheduler.get_location_for_call(
-            tool_name=self.parent_tool_name,
+            tool_name=self.name,
             args=args,
         )
 
@@ -186,24 +221,51 @@ class LocationAwareProxyTool(BaseTool):
         Returns:
             SchedulingResult: location과 결정 메타데이터
         """
-        from .scheduler import SchedulingResult
+        from .types import SchedulingResult
 
         if self.scheduler is None:
             # Scheduler 없으면 첫 번째 available location
             location = list(self.backend_tools.keys())[0]
             return SchedulingResult(
+                tool_name=self.name,
                 location=location,
                 reason="no_scheduler_default",
-                constraints_checked=[],
                 available_locations=list(self.backend_tools.keys()),
                 decision_time_ns=0,
             )
 
         # Scheduler에게 location 결정 요청 (상세 정보 포함)
-        # parent_tool_name을 사용 (registry에 등록된 이름)
+        # self.name (개별 tool 이름)을 사용하여 정확한 profile 조회
         return self.scheduler.get_location_for_call_with_reason(
-            tool_name=self.parent_tool_name,
+            tool_name=self.name,
             args=args,
+        )
+
+    def _create_fixed_scheduling_result(self, location: str):
+        """
+        filter_location으로 고정된 경우의 SchedulingResult 생성
+
+        SubAgent 모드에서 schedule_chain()으로 이미 결정된 location을 사용하므로
+        scheduler 호출 없이 SchedulingResult를 생성합니다.
+
+        Args:
+            location: 고정된 location (filter_location)
+
+        Returns:
+            SchedulingResult: 고정 location 정보
+        """
+        from .scheduler import SchedulingResult
+
+        return SchedulingResult(
+            tool_name=self.name,
+            location=location,
+            reason="filter_location_fixed",
+            available_locations=[location],
+            decision_time_ns=0,
+            score=0.0,
+            exec_cost=0.0,
+            trans_cost=0.0,
+            fixed=True,
         )
 
     @property

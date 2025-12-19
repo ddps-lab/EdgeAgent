@@ -37,6 +37,27 @@ fn fix_array_items_schema(value: &mut Value) {
     }
 }
 
+/// Ensure object schemas have properties field (required by OpenAI API)
+/// Empty objects without properties cause "object schema missing properties" error
+fn ensure_properties_field(value: &mut Value) {
+    if let Value::Object(map) = value {
+        // If this is an object schema without properties, add empty properties
+        if map.get("type") == Some(&Value::String("object".to_string())) {
+            if !map.contains_key("properties") {
+                map.insert("properties".to_string(), Value::Object(serde_json::Map::new()));
+            }
+        }
+        // Recursively process all fields
+        for (_, v) in map.iter_mut() {
+            ensure_properties_field(v);
+        }
+    } else if let Value::Array(arr) = value {
+        for item in arr.iter_mut() {
+            ensure_properties_field(item);
+        }
+    }
+}
+
 /// Information about a registered tool
 #[derive(Debug, Clone)]
 pub struct ToolInfo {
@@ -113,6 +134,8 @@ where
         let mut value = serde_json::to_value(schema).unwrap_or(Value::Object(serde_json::Map::new()));
         // Fix "items": true to "items": {} for broader LLM compatibility
         fix_array_items_schema(&mut value);
+        // Ensure object schemas have properties field (required by OpenAI API)
+        ensure_properties_field(&mut value);
         value
     }
 

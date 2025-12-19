@@ -30,21 +30,21 @@ tools:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_device"
+          - "/tmp/edgeagent_device_hy"
         env: {}
 
       EDGE:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_edge"
+          - "/tmp/edgeagent_edge_hy"
         env: {}
 
       CLOUD:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_cloud"
+          - "/tmp/edgeagent_cloud_hy"
         env: {}
 
   # git: Git 저장소 관련 작업 (DEVICE에만 배포)

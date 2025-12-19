@@ -34,7 +34,7 @@ async def main():
     print()
 
     # DEVICE: 로컬 데이터
-    device_dir = "/tmp/edgeagent_device"
+    device_dir = "/tmp/edgeagent_device_hy"
     os.makedirs(device_dir, exist_ok=True)
     with open(f"{device_dir}/local_data.txt", "w") as f:
         f.write("This is LOCAL data stored on DEVICE.\n")
@@ -44,7 +44,7 @@ async def main():
     print(f"     - local_data.txt (sensitive)")
 
     # EDGE: 중간 처리 데이터
-    edge_dir = "/tmp/edgeagent_edge"
+    edge_dir = "/tmp/edgeagent_edge_hy"
     os.makedirs(edge_dir, exist_ok=True)
     with open(f"{edge_dir}/processed_data.txt", "w") as f:
         f.write("This is PROCESSED data at EDGE.\n")
@@ -56,7 +56,7 @@ async def main():
     print(f"     - processed_data.txt (logs)")
 
     # CLOUD: 외부 데이터
-    cloud_dir = "/tmp/edgeagent_cloud"
+    cloud_dir = "/tmp/edgeagent_cloud_hy"
     os.makedirs(cloud_dir, exist_ok=True)
     with open(f"{cloud_dir}/cloud_data.txt", "w") as f:
         f.write("This is CLOUD data.\n")
