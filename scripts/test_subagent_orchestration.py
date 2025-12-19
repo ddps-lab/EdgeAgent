@@ -98,7 +98,7 @@ async def test_orchestrator_local():
     print("Orchestrator created", flush=True)
 
     # Log 파일 준비
-    device_log = Path("/tmp/edgeagent_device/server.log")
+    device_log = Path("/tmp/edgeagent_device_hy/server.log")
     device_log.parent.mkdir(parents=True, exist_ok=True)
 
     # 항상 작은 테스트 로그 사용 (토큰 초과 방지)
@@ -123,7 +123,7 @@ async def test_orchestrator_local():
     sys.stdout.flush()
 
     user_request = """
-    Analyze the server log file at /tmp/edgeagent_device/server.log.
+    Analyze the server log file at /tmp/edgeagent_device_hy/server.log.
     1. Read the log file using read_text_file
     2. Parse the logs using parse_logs with format_type='python'
     3. Compute statistics using compute_log_statistics
@@ -168,7 +168,7 @@ async def test_compare_modes():
     tools_config = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
 
     # Log 파일 준비
-    device_log = Path("/tmp/edgeagent_device/server.log")
+    device_log = Path("/tmp/edgeagent_device_hy/server.log")
     if not device_log.exists():
         test_log = """2024-01-01 10:00:00,000 - test - INFO - Application started
 2024-01-01 10:00:01,000 - test - WARNING - High memory usage
@@ -178,7 +178,7 @@ async def test_compare_modes():
         device_log.write_text(test_log)
 
     user_request = """
-    Read the log file at /tmp/edgeagent_device/server.log,
+    Read the log file at /tmp/edgeagent_device_hy/server.log,
     parse it with parse_logs (format_type='python'),
     and compute statistics with compute_log_statistics.
     """

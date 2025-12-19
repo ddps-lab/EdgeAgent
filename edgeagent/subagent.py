@@ -30,9 +30,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from typing import TYPE_CHECKING
+
 from .types import Location, LOCATIONS
 from .registry import ToolRegistry
 from .planner import Partition
+
+if TYPE_CHECKING:
+    from .scheduler import BaseScheduler
 
 
 @dataclass
@@ -118,6 +123,7 @@ class SubAgent:
         model: str = "gpt-4o-mini",
         temperature: float = 0,
         collect_metrics: bool = True,
+        scheduler: "BaseScheduler | None" = None,
     ):
         """
         Args:
@@ -126,12 +132,14 @@ class SubAgent:
             model: LLM 모델 이름
             temperature: LLM temperature
             collect_metrics: 상세 메트릭 수집 여부
+            scheduler: Orchestrator에서 전달받은 scheduler (location 결정에 사용)
         """
         self.location = location
         self.config_path = Path(config_path)
         self.model = model
         self.temperature = temperature
         self.collect_metrics = collect_metrics
+        self.scheduler = scheduler
 
         # Registry 로드
         self.registry = ToolRegistry.from_yaml(config_path)
@@ -140,12 +148,27 @@ class SubAgent:
         self.available_tools = self._get_location_tools()
 
     def _get_location_tools(self) -> list[str]:
-        """이 location에서 사용 가능한 tool 목록 반환"""
+        """
+        이 location에서 사용 가능한 tool 목록 반환
+
+        MCP 서버 이름과 개별 tool 이름 모두 포함합니다.
+        예: ["filesystem", "read_file", "write_file", "log_parser", "parse_logs", ...]
+        """
         tools = []
-        for tool_name in self.registry.list_tools():
-            tool_config = self.registry.get_tool(tool_name)
+        # MCP 서버 이름 추가
+        for server_name in self.registry.list_servers():
+            tool_config = self.registry.get_tool(server_name)
             if tool_config and self.location in tool_config.available_locations():
-                tools.append(tool_name)
+                tools.append(server_name)
+
+        # 개별 tool 이름도 추가 (부모 서버가 이 location에서 사용 가능한 경우)
+        for tool_name in self.registry.list_individual_tools():
+            parent_server = self.registry.get_server_for_tool(tool_name)
+            if parent_server:
+                tool_config = self.registry.get_tool(parent_server)
+                if tool_config and self.location in tool_config.available_locations():
+                    tools.append(tool_name)
+
         return tools
 
     async def execute(
@@ -250,33 +273,34 @@ class SubAgent:
                 collect_metrics=self.collect_metrics,
                 filter_tools=[tool_name],  # 단일 tool만 연결
                 filter_location=self.location,  # 현재 location의 endpoint만 사용
+                scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
             )
             await exit_stack.enter_async_context(client)
 
             all_tools = await client.get_tools()
 
-            # 해당 tool 찾기
-            target_tools = [
-                t for t in all_tools
-                if getattr(t, 'parent_tool_name', None) == tool_name or t.name == tool_name
-            ]
+            # 전달된 tool_name으로 직접 tool 찾기
+            # (기존: MCP 서버 이름 → _select_best_tool로 선택)
+            # (변경: 구체적 tool 이름이 전달됨 → 직접 매칭)
+            target_tool = None
+            for t in all_tools:
+                if t.name == tool_name:
+                    target_tool = t
+                    break
 
-            if not target_tools:
+            if not target_tool:
                 raise ValueError(f"Tool '{tool_name}' not found. Available: {[t.name for t in all_tools]}")
 
-            # Arguments 결정
+            # Arguments 결정 (tool_name이 이제 구체적 tool 이름으로 전달됨)
             if not args:
                 args = self._extract_args_from_context(tool_name, request)
 
-            # 가장 적합한 tool 선택
-            selected_tool = self._select_best_tool(target_tools, args)
-
-            # 직접 호출
-            result = await selected_tool.ainvoke(args)
+            # 직접 호출 (_select_best_tool() 삭제됨)
+            result = await target_tool.ainvoke(args)
             result_str = str(result)
 
             tool_calls.append({
-                "tool": selected_tool.name,
+                "tool": target_tool.name,
                 "input": args,
                 "output": result_str[:500] if len(result_str) > 500 else result_str,
             })
@@ -296,7 +320,12 @@ class SubAgent:
         return result_str, metrics_entries
 
     def _extract_args_from_context(self, tool_name: str, request: SubAgentRequest) -> dict:
-        """Context에서 tool arguments 추출"""
+        """Context에서 tool arguments 추출
+
+        Args:
+            tool_name: 구체적 tool 이름 (예: "read_text_file", "write_file", "parse_logs")
+            request: SubAgentRequest 객체
+        """
         import re
         args = {}
 
@@ -304,113 +333,71 @@ class SubAgent:
         prev_result = request.context.get("previous_result", "")
         task = request.task
 
-        if tool_name == "filesystem":
-            # Path 추출 - 파일 경로 후 마침표/쉼표/공백 등 구분자 제외
-            path_patterns = [
-                r'/tmp/edgeagent_device/[\w\._/-]+(?:\.\w+)?',  # /tmp/edgeagent_device/path/file.ext
-                r'/tmp/[\w\._/-]+(?:\.\w+)?',                    # /tmp/path/file.ext
-            ]
-            for pattern in path_patterns:
-                match = re.search(pattern, task)
-                if match:
-                    path = match.group(0)
-                    # 끝에 불필요한 마침표 제거
-                    path = path.rstrip('.')
-                    args["path"] = path
-                    break
+        # tool_name에서 server_name 매핑 (기존 분기 로직 재사용)
+        server_name = self.registry.get_server_for_tool(tool_name) or tool_name
 
-            if "path" not in args:
-                args["path"] = "/tmp/edgeagent_device"
+        if server_name == "filesystem":
+            # Path 추출 - /edgeagent/{data,repos,results} 경로만 허용
+            path_pattern = r'/edgeagent/[\w\._/-]+(?:\.\w+)?'
+            match = re.search(path_pattern, task)
+            if match:
+                path = match.group(0).rstrip('.')
+                args["path"] = path
+            else:
+                args["path"] = "/edgeagent/data"
 
-            # Write 체크
-            if prev_result and ("write" in task.lower() or "report" in task.lower()):
+            # Write 체크 (tool_name에서 직접 판단)
+            is_write_tool = "write" in tool_name.lower()
+            if prev_result and (is_write_tool or "report" in task.lower()):
                 write_match = re.search(r'(?:to|write)\s+([/\w\._-]+\.(?:md|txt|json))', task, re.IGNORECASE)
                 if write_match:
                     args["path"] = write_match.group(1)
-                    if not args["path"].startswith("/"):
-                        args["path"] = "/tmp/edgeagent_device/" + args["path"]
-                    args["content"] = str(prev_result)
+                    if not args["path"].startswith("/edgeagent"):
+                        args["path"] = "/edgeagent/results/" + args["path"].lstrip("/")
+                elif is_write_tool:
+                    args["path"] = "/edgeagent/results/output.txt"
+                args["content"] = str(prev_result)
 
-        elif tool_name == "log_parser":
+        elif server_name == "log_parser":
             if prev_result:
                 args["text"] = str(prev_result)[:10000]
 
-        elif tool_name == "git":
-            repo_match = re.search(r'/tmp/[^\s\"\'\`]+/repo', task)
-            args["repo_path"] = repo_match.group(0) if repo_match else "/tmp/edgeagent_device/repo"
+        elif server_name == "git":
+            repo_match = re.search(r'/edgeagent/repos/[\w\._/-]+', task)
+            args["repo_path"] = repo_match.group(0) if repo_match else "/edgeagent/repos/scenario1"
 
-        elif tool_name == "summarize":
+        elif server_name == "summarize":
             if prev_result:
                 args["text"] = str(prev_result)[:5000]
                 args["max_length"] = 200
 
-        elif tool_name == "data_aggregate":
+        elif server_name == "data_aggregate":
             if prev_result:
-                if isinstance(prev_result, list):
-                    args["items"] = prev_result
+                # combine_research_results는 'results' 파라미터 사용
+                if tool_name == "combine_research_results":
+                    if isinstance(prev_result, list):
+                        args["results"] = prev_result
+                    else:
+                        args["results"] = [{"title": "Result", "summary": str(prev_result)[:1000]}]
                 else:
-                    args["items"] = [{"data": str(prev_result)[:1000]}]
-                args["group_by"] = "type"
+                    # 다른 data_aggregate tools는 'items' 사용
+                    if isinstance(prev_result, list):
+                        args["items"] = prev_result
+                    else:
+                        args["items"] = [{"data": str(prev_result)[:1000]}]
+                    args["group_by"] = "type"
 
-        elif tool_name == "fetch":
+        elif server_name == "fetch":
             url_match = re.search(r'https?://[^\s\"\'\`]+', task)
             if url_match:
                 args["url"] = url_match.group(0)
 
-        elif tool_name == "image":
-            path_match = re.search(r'/tmp/[^\s\"\'\`]+', task)
+        elif server_name == "image":
+            path_match = re.search(r'/edgeagent/[\w\._/-]+', task)
             if path_match:
                 args["path"] = path_match.group(0)
 
         return args
-
-    def _select_best_tool(self, tools: list, args: dict):
-        """여러 MCP tool 중 가장 적합한 것 선택"""
-        # content가 있으면 write 계열
-        if "content" in args:
-            for t in tools:
-                if "write" in t.name.lower():
-                    return t
-
-        # text가 있으면 parse/analyze 계열
-        if "text" in args:
-            for t in tools:
-                if "parse" in t.name.lower() or "analyze" in t.name.lower():
-                    return t
-
-        # path 기반 선택
-        path = args.get("path", "")
-        if path:
-            filename = path.split("/")[-1]
-            # 파일 확장자가 있으면 파일로 간주
-            file_extensions = {".log", ".txt", ".md", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".csv"}
-            has_file_extension = any(filename.endswith(ext) for ext in file_extensions)
-
-            if has_file_extension:
-                # 파일: read 계열 우선
-                for t in tools:
-                    if "read" in t.name.lower() and "file" in t.name.lower():
-                        return t
-                for t in tools:
-                    if "read" in t.name.lower():
-                        return t
-            else:
-                # 디렉토리: list_directory 우선
-                for t in tools:
-                    if "list_directory" in t.name.lower() or "scan" in t.name.lower():
-                        return t
-
-        # 기본: list_directory 우선 (경로가 없을 때 - 디렉토리 탐색이 많음)
-        for t in tools:
-            if "list_directory" in t.name.lower():
-                return t
-
-        # 그 다음 read 계열
-        for t in tools:
-            if "read" in t.name.lower():
-                return t
-
-        return tools[0]
 
     async def _run_agent(
         self,
@@ -434,6 +421,7 @@ class SubAgent:
         from langchain_openai import ChatOpenAI
         from langchain.agents import create_agent
         from .middleware import EdgeAgentMCPClient
+        from contextlib import AsyncExitStack
 
         # LLM 초기화 (gpt-5-mini는 temperature=0 지원 안 함)
         llm_kwargs = {"model": self.model}
@@ -441,14 +429,22 @@ class SubAgent:
             llm_kwargs["temperature"] = self.temperature
         llm = ChatOpenAI(**llm_kwargs)
         metrics_entries = []
+        result = ({"messages": []}, [])  # 기본값
+        exit_stack = AsyncExitStack()
 
-        # EdgeAgentMCPClient를 사용하여 tools 로드 (요청된 tools만 동적 연결)
-        async with EdgeAgentMCPClient(
-            self.config_path,
-            collect_metrics=self.collect_metrics,
-            filter_tools=valid_tools,  # 요청된 tool만 연결
-            filter_location=self.location,  # 현재 location의 endpoint만 사용
-        ) as client:
+        try:
+            await exit_stack.__aenter__()
+
+            # EdgeAgentMCPClient를 사용하여 tools 로드 (요청된 tools만 동적 연결)
+            client = EdgeAgentMCPClient(
+                self.config_path,
+                collect_metrics=self.collect_metrics,
+                filter_tools=valid_tools,  # 요청된 tool만 연결
+                filter_location=self.location,  # 현재 location의 endpoint만 사용
+                scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
+            )
+            await exit_stack.enter_async_context(client)
+
             # 필터링된 tools 가져오기
             all_tools = await client.get_tools()
 
@@ -471,11 +467,15 @@ class SubAgent:
                 parent_name = getattr(t, 'parent_tool_name', None)
                 mcp_tool_name = t.name
 
-                # parent_tool_name이 valid_tools에 있으면 포함
-                if parent_name and parent_name in valid_tools:
+                # 1. MCP tool 이름이 valid_tools에 있으면 포함 (개별 tool 이름 매칭)
+                if mcp_tool_name in valid_tools:
+                    tools.append(t)
+                    tool_name_mapping[mcp_tool_name] = parent_name or mcp_tool_name
+                # 2. parent_tool_name이 valid_tools에 있으면 포함 (서버 이름 매칭)
+                elif parent_name and parent_name in valid_tools:
                     tools.append(t)
                     tool_name_mapping[mcp_tool_name] = parent_name
-                # parent_tool_name이 없으면 tool 이름 자체로 매칭 시도
+                # 3. parent_tool_name이 없으면 tool 이름 자체로 매칭 시도
                 elif parent_name is None:
                     # MCP tool 이름에서 parent를 추론 (예: read_text_file -> filesystem)
                     for vt in valid_tools:
@@ -514,11 +514,13 @@ class SubAgent:
                 f"2. ALWAYS provide ALL required parameters when calling a tool.\n"
                 f"3. IMPORTANT: Pass the output from one tool as input to the next tool.\n"
                 f"   - For log analysis: parse_logs returns 'entries', pass these entries to compute_log_statistics(entries=...)\n"
-                f"   - Example: If parse_logs returns {{'entries': [...]}}, call compute_log_statistics(entries=[...])\n"
+                f"   - For image processing: batch_resize returns results, pass these to aggregate_list(items=...)\n"
+                f"   - aggregate_list REQUIRES 'items' parameter (a list of objects to aggregate)\n"
+                f"   - Example: aggregate_list(items=[...results from previous tool...], group_by='format')\n"
                 f"4. Do NOT use merge_summaries or combine_research_results unless explicitly asked.\n"
                 f"5. Execute ALL steps mentioned in the task. Do NOT stop early.\n"
                 f"6. If processing multiple items, process ALL of them.\n"
-                f"7. When a tool returns data, use that data as input for subsequent tools.\n"
+                f"7. NEVER call a tool with missing required parameters.\n"
                 f"{context_str}"
             )
 
@@ -563,9 +565,20 @@ class SubAgent:
             if all_messages:
                 final_msg = all_messages[-1]
                 if hasattr(final_msg, "content"):
-                    return final_msg.content, metrics_entries
+                    result = (final_msg.content, metrics_entries)
+                else:
+                    result = ({"messages": all_messages}, metrics_entries)
+            else:
+                result = ({"messages": all_messages}, metrics_entries)
 
-            return {"messages": all_messages}, metrics_entries
+        finally:
+            # MCP STDIO 클라이언트 종료 시 TaskGroup 에러 무시
+            try:
+                await exit_stack.__aexit__(None, None, None)
+            except (BaseExceptionGroup, ExceptionGroup):
+                pass  # MCP STDIO cleanup errors
+
+        return result
 
 
 def create_subagent_server(

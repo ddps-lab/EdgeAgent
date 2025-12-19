@@ -24,6 +24,74 @@ from typing import Any, Optional
 
 
 @dataclass
+class ChainSchedulingResult:
+    """
+    Chain Scheduling 결과 메트릭
+
+    BruteForceChainScheduler의 결과를 저장합니다.
+    """
+    total_cost: float = 0.0                    # 전체 Tool Chain의 최적 비용
+    search_space_size: int = 0                 # 탐색 공간 크기 (조합 수)
+    valid_combinations: int = 0                # 유효한 조합 수
+    decision_time_ms: float = 0.0              # 스케줄링 결정 시간 (ms)
+    optimization_method: str = "brute_force"   # 최적화 방법
+    tool_chain: list[str] = field(default_factory=list)  # Tool Chain 목록
+    placements: list[dict] = field(default_factory=list)  # 각 Tool의 배치 결과
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "total_cost": self.total_cost,
+            "search_space_size": self.search_space_size,
+            "valid_combinations": self.valid_combinations,
+            "decision_time_ms": self.decision_time_ms,
+            "optimization_method": self.optimization_method,
+            "tool_chain": self.tool_chain,
+            "placements": self.placements,
+        }
+
+
+@dataclass
+class ScenarioMetrics:
+    """
+    시나리오별 커스텀 메트릭
+
+    각 시나리오에서 수집하는 도메인 특화 메트릭
+    """
+    # 공통
+    data_source: str = ""                      # 데이터 소스 (예: "LogHub", "COCO 2017")
+    input_items_count: int = 0                 # 입력 항목 수
+    output_items_count: int = 0                # 출력 항목 수
+
+    # Scenario별 특화 메트릭 (optional)
+    # Log Analysis
+    entries_parsed: int = 0
+    entries_filtered: int = 0
+
+    # Research Assistant
+    articles_fetched: int = 0
+    summaries_generated: int = 0
+
+    # Image Processing
+    images_found: int = 0
+    unique_images: int = 0
+    duplicate_groups: int = 0
+    thumbnails_created: int = 0
+
+    # Code Review
+    commit_count: int = 0
+    diff_lines: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        result = {}
+        for key, value in self.__dict__.items():
+            if value:  # 0이 아닌 값만 포함
+                result[key] = value
+        return result
+
+
+@dataclass
 class MetricEntry:
     """
     단일 도구 호출의 메트릭 (Entry 수준)
@@ -52,6 +120,12 @@ class MetricEntry:
     scheduling_reason: str = ""  # Why this location
     constraints_checked: list[str] = field(default_factory=list)
     available_locations: list[str] = field(default_factory=list)
+
+    # === Scheduling Cost (BruteForceChainScheduler) ===
+    scheduling_score: float = 0.0  # Total cost
+    exec_cost: float = 0.0  # Computation cost
+    trans_cost: float = 0.0  # Communication cost
+    fixed_location: bool = False  # Node fixed (data_locality)
 
     # === Data Flow ===
     input_size_bytes: int = 0
@@ -113,6 +187,10 @@ class MetricEntry:
                 "reason": self.scheduling_reason,
                 "constraints_checked": self.constraints_checked,
                 "available_locations": self.available_locations,
+                "score": self.scheduling_score,
+                "exec_cost": self.exec_cost,
+                "trans_cost": self.trans_cost,
+                "fixed": self.fixed_location,
             },
             "data_flow": {
                 "input_size_bytes": self.input_size_bytes,
@@ -186,6 +264,11 @@ class MetricsCollector:
         self._last_tool_end_time: Optional[float] = None
         self._pipeline_step: int = 0
 
+        # Chain Scheduling 결과
+        self._chain_scheduling: Optional[ChainSchedulingResult] = None
+        # 시나리오별 메트릭
+        self._scenario_metrics: ScenarioMetrics = ScenarioMetrics()
+
     # =========================================================================
     # Core Collection API
     # =========================================================================
@@ -229,6 +312,63 @@ class MetricsCollector:
     def set_server_startup_time(self, time_ms: float):
         """Record server startup time (cold start)"""
         self._server_startup_time_ms = time_ms
+
+    def set_chain_scheduling_result(
+        self,
+        total_cost: float,
+        search_space_size: int,
+        valid_combinations: int,
+        decision_time_ms: float,
+        tool_chain: list[str],
+        placements: list[dict],
+        optimization_method: str = "brute_force",
+    ):
+        """
+        Chain Scheduling 결과 기록
+
+        Args:
+            total_cost: 전체 Tool Chain의 최적 비용
+            search_space_size: 탐색 공간 크기 (조합 수)
+            valid_combinations: 유효한 조합 수
+            decision_time_ms: 스케줄링 결정 시간 (ms)
+            tool_chain: Tool Chain 목록
+            placements: 각 Tool의 배치 결과 (dict list)
+            optimization_method: 최적화 방법
+        """
+        self._chain_scheduling = ChainSchedulingResult(
+            total_cost=total_cost,
+            search_space_size=search_space_size,
+            valid_combinations=valid_combinations,
+            decision_time_ms=decision_time_ms,
+            optimization_method=optimization_method,
+            tool_chain=tool_chain,
+            placements=placements,
+        )
+
+    def set_scenario_metrics(self, **kwargs):
+        """
+        시나리오별 메트릭 설정
+
+        사용 예:
+            collector.set_scenario_metrics(
+                data_source="LogHub",
+                entries_parsed=1000,
+                entries_filtered=50,
+            )
+        """
+        for key, value in kwargs.items():
+            if hasattr(self._scenario_metrics, key):
+                setattr(self._scenario_metrics, key, value)
+
+    @property
+    def chain_scheduling(self) -> Optional[ChainSchedulingResult]:
+        """Get chain scheduling result"""
+        return self._chain_scheduling
+
+    @property
+    def scenario_metrics(self) -> ScenarioMetrics:
+        """Get scenario-specific metrics"""
+        return self._scenario_metrics
 
     def finalize(self):
         """Mark session as complete"""
@@ -428,7 +568,7 @@ class MetricsCollector:
         """Export all metrics as dictionary"""
         end_time = self._session_end or time.time()
 
-        return {
+        result = {
             "session_id": self._session_id,
             "scenario_name": self.scenario_name,
             "start_time": self._session_start,
@@ -463,9 +603,13 @@ class MetricsCollector:
                 "resource_usage": self.total_resource_usage(),
                 "network": self.network_summary(),
             },
+            "chain_scheduling": self._chain_scheduling.to_dict() if self._chain_scheduling else None,
+            "scenario_metrics": self._scenario_metrics.to_dict(),
             "custom_metrics": self._custom_metrics,
             "entries": [e.to_dict() for e in self._entries],
         }
+
+        return result
 
     def save_json(self, output_path: str | Path, pretty: bool = True) -> Path:
         """Save metrics to JSON file"""
@@ -500,6 +644,10 @@ class MetricsCollector:
                     "fallback_occurred": e.fallback_occurred,
                     "scheduling_decision_time_ns": e.scheduling_decision_time_ns,
                     "scheduling_reason": e.scheduling_reason,
+                    "scheduling_score": e.scheduling_score,
+                    "exec_cost": e.exec_cost,
+                    "trans_cost": e.trans_cost,
+                    "fixed_location": e.fixed_location,
                     "input_size_bytes": e.input_size_bytes,
                     "output_size_bytes": e.output_size_bytes,
                     "reduction_ratio": e.reduction_ratio,
@@ -544,6 +692,21 @@ class MetricsCollector:
             f"({self.overall_reduction_ratio * 100:.2f}%)"
         )
 
+        # Chain Scheduling 결과 출력
+        if self._chain_scheduling:
+            print("\nChain Scheduling:")
+            print(f"  Total Cost: {self._chain_scheduling.total_cost:.4f}")
+            print(f"  Search Space: {self._chain_scheduling.search_space_size}")
+            print(f"  Valid Combinations: {self._chain_scheduling.valid_combinations}")
+            print(f"  Decision Time: {self._chain_scheduling.decision_time_ms:.2f} ms")
+            print(f"  Method: {self._chain_scheduling.optimization_method}")
+            if self._chain_scheduling.placements:
+                print("  Placements:")
+                for p in self._chain_scheduling.placements:
+                    fixed = "[FIXED]" if p.get("fixed") else ""
+                    print(f"    {p.get('tool_name', 'N/A'):20} -> {p.get('location', 'N/A'):6} "
+                          f"(cost={p.get('score', 0):.3f}) {fixed}")
+
         print("\nLatency by Location:")
         for loc, latency in self.latency_by_location().items():
             count = self.call_count_by_location()[loc]
@@ -563,6 +726,13 @@ class MetricsCollector:
                 f"{entry.input_size_bytes:,} -> {entry.output_size_bytes:,} bytes "
                 f"({entry.latency_ms:.2f}ms) {status}"
             )
+
+        # Scenario Metrics 출력
+        scenario_dict = self._scenario_metrics.to_dict()
+        if scenario_dict:
+            print("\nScenario Metrics:")
+            for key, value in scenario_dict.items():
+                print(f"  {key}: {value}")
 
         if self._custom_metrics:
             print("\nCustom Metrics:")
@@ -586,10 +756,10 @@ class MetricsCollector:
 
     def to_execution_trace(self) -> list[dict]:
         """
-        Convert to legacy execution_trace format.
+        Convert to execution_trace format with scheduling cost info.
 
-        Maintains backward compatibility with existing code that expects:
-        {"tool": ..., "parent_tool": ..., "location": ..., "args_keys": ...}
+        Includes:
+        {"tool": ..., "location": ..., "cost": ..., "comp": ..., "comm": ..., "fixed": ...}
         """
         return [
             {
@@ -597,7 +767,13 @@ class MetricsCollector:
                 "parent_tool": e.parent_tool_name,
                 "location": e.actual_location,
                 "args_keys": e.args_keys,
-                # Enhanced fields (new code can use these)
+                # Scheduling cost info
+                "cost": e.scheduling_score,
+                "comp": e.exec_cost,
+                "comm": e.trans_cost,
+                "fixed": e.fixed_location,
+                "reason": e.scheduling_reason,
+                # Enhanced fields
                 "latency_ms": e.latency_ms,
                 "input_size": e.input_size_bytes,
                 "output_size": e.output_size_bytes,
@@ -648,6 +824,12 @@ class CallContext:
         self.constraints_checked: list[str] = []
         self.available_locations: list[str] = []
         self.fallback_occurred: bool = False
+
+        # Scheduling cost (BruteForceChainScheduler)
+        self.scheduling_score: float = 0.0
+        self.exec_cost: float = 0.0
+        self.trans_cost: float = 0.0
+        self.fixed_location: bool = False
 
         # Data flow info
         self.data_flow_type: str = ""
@@ -718,6 +900,12 @@ class CallContext:
             scheduling_reason=self.scheduling_reason,
             constraints_checked=self.constraints_checked,
             available_locations=self.available_locations,
+            # Scheduling cost
+            scheduling_score=self.scheduling_score,
+            exec_cost=self.exec_cost,
+            trans_cost=self.trans_cost,
+            fixed_location=self.fixed_location,
+            # Data flow
             input_size_bytes=input_size,
             output_size_bytes=output_size,
             reduction_ratio=reduction_ratio,
@@ -761,12 +949,20 @@ class CallContext:
         constraints: list[str],
         available: list[str],
         decision_time_ns: int = 0,
+        score: float = 0.0,
+        exec_cost: float = 0.0,
+        trans_cost: float = 0.0,
+        fixed: bool = False,
     ):
         """Add scheduling decision information"""
         self.scheduling_reason = reason
         self.constraints_checked = constraints
         self.available_locations = available
         self.scheduling_decision_time_ns = decision_time_ns
+        self.scheduling_score = score
+        self.exec_cost = exec_cost
+        self.trans_cost = trans_cost
+        self.fixed_location = fixed
 
     def add_data_flow_info(self, data_flow_type: str, expected_ratio: float = 0.0):
         """Add data flow information from tool profile"""

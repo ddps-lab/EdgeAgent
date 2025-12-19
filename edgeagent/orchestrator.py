@@ -29,7 +29,7 @@ import yaml
 
 from .types import Location, LOCATIONS
 from .registry import ToolRegistry
-from .scheduler import StaticScheduler
+from .scheduler import create_scheduler
 from .planner import ToolSequencePlanner, ExecutionPlan, Partition
 from .subagent import SubAgentRequest, SubAgentResponse
 
@@ -130,17 +130,34 @@ class SubAgentOrchestrator:
         self,
         tools_config_path: str | Path,
         orchestration_config: Optional[OrchestrationConfig] = None,
+        system_config_path: Optional[str | Path] = None,
+        scheduler_type: str = "static",
     ):
         """
         Args:
             tools_config_path: Tool 설정 YAML 경로
             orchestration_config: Orchestration 설정 (None이면 기본값)
+            system_config_path: System 설정 YAML 경로 (BruteForceChainScheduler 사용 시 필요)
+            scheduler_type: 스케줄러 타입
+                - "brute_force": 전체 chain 최적화 (기본값)
+                - "static": YAML static_mapping 기반
+                - "all_device": 모든 tool → DEVICE
+                - "all_edge": 모든 tool → EDGE
+                - "all_cloud": 모든 tool → CLOUD
+                - "heuristic": Profile 기반 휴리스틱
         """
         self.tools_config_path = Path(tools_config_path)
+        self.scheduler_type = scheduler_type
 
         # Tool 관련 초기화
         self.registry = ToolRegistry.from_yaml(tools_config_path)
-        self.scheduler = StaticScheduler(tools_config_path, self.registry)
+        self.system_config_path = system_config_path or (Path(tools_config_path).parent / "system.yaml")
+
+        # 모든 스케줄러를 create_scheduler로 통일 생성 (brute_force 방식으로 schedule_chain 사용)
+        self.scheduler = create_scheduler(
+            scheduler_type, tools_config_path, self.registry, self.system_config_path
+        )
+
         self.planner = ToolSequencePlanner(self.scheduler, self.registry)
 
         # Orchestration 설정
@@ -220,9 +237,15 @@ class SubAgentOrchestrator:
         각 Sub-Agent에게 순차적으로 작업을 위임합니다.
 
         최적화: 단일 tool partition은 LLM 없이 직접 tool call
+
+        Scheduler 선택:
+        - use_chain_scheduler=True: BruteForceChainScheduler로 전체 chain 최적화
+        - use_chain_scheduler=False: StaticScheduler로 개별 tool location 결정
         """
-        # 실행 계획 생성
-        plan = self.planner.create_execution_plan(tool_sequence, preserve_order=True)
+        # 실행 계획 생성 (모든 스케줄러가 schedule_chain 사용)
+        plan = self.planner.create_execution_plan_with_chain_scheduler(
+            tool_sequence, self.scheduler
+        )
 
         if not plan.partitions:
             return OrchestrationResult(
@@ -518,6 +541,7 @@ class SubAgentOrchestrator:
             config_path=self.tools_config_path,
             model=self.config.model,
             temperature=self.config.temperature,
+            scheduler=self.scheduler,  # Orchestrator의 scheduler 전달
         )
 
         request = SubAgentRequest(
@@ -551,9 +575,15 @@ class SubAgentOrchestrator:
         """
         import re
 
-        # user_request에서 번호 매겨진 단계들 추출 (1. xxx 2. xxx 등)
-        step_pattern = r'(\d+)\.\s*([^\n\d]+(?:\n(?!\d+\.).*)*)'
+        # user_request에서 번호 매겨진 단계들 추출
+        # 지원 형식: "Step N:" 또는 "N. xxx"
+        step_pattern = r'Step\s+(\d+)[:\s]+([^\n]+(?:\n(?!Step\s+\d).*)*)'
         steps = re.findall(step_pattern, user_request)
+
+        # "Step N:" 형식이 없으면 "N. xxx" 형식 시도
+        if not steps:
+            step_pattern = r'(\d+)\.\s*([^\n\d]+(?:\n(?!\d+\.).*)*)'
+            steps = re.findall(step_pattern, user_request)
 
         # 단계가 없으면 전체를 하나의 작업으로 취급
         if not steps:
@@ -582,8 +612,13 @@ class SubAgentOrchestrator:
         partition_tasks = []
         assigned_steps = set()  # 이미 할당된 step 추적
 
+        # tool이 filesystem 서버에 속하는지 확인하는 헬퍼 함수
+        def get_tool_server(tool_name: str) -> str:
+            server = self.registry.get_server_for_tool(tool_name)
+            return server if server else tool_name
+
         # filesystem partition 수 계산 (첫번째는 read, 마지막은 write)
-        filesystem_partitions = [i for i, p in enumerate(partitions) if "filesystem" in p.tools]
+        filesystem_partitions = [i for i, p in enumerate(partitions) if any(get_tool_server(t) == "filesystem" for t in p.tools)]
         first_filesystem = filesystem_partitions[0] if filesystem_partitions else -1
         last_filesystem = filesystem_partitions[-1] if filesystem_partitions else -1
 
@@ -605,7 +640,8 @@ class SubAgentOrchestrator:
 
                 # 이 partition의 각 tool에 대해 키워드 매칭
                 for tool in partition.tools:
-                    if tool == "filesystem":
+                    tool_server = get_tool_server(tool)
+                    if tool_server == "filesystem":
                         # filesystem의 경우 read/write 구분
                         if p_idx == first_filesystem and first_filesystem != last_filesystem:
                             # 첫 번째 filesystem partition: read 관련만
@@ -642,18 +678,25 @@ class SubAgentOrchestrator:
                 )
             else:
                 # 매칭된 단계가 없으면 도구 기반으로 일반적인 지시 생성
-                if "filesystem" in partition.tools:
+                # Tool 이름 집합으로 카테고리 매칭
+                filesystem_tools = {"read_file", "write_file", "read_multiple_files", "list_directory", "search_files", "get_file_info", "read_text_file"}
+                fetch_tools = {"fetch"}
+                summarize_tools = {"summarize_text", "summarize_code", "extract_key_points"}
+                data_aggregate_tools = {"aggregate_list", "merge_summaries", "combine_research_results", "deduplicate", "compute_trends"}
+
+                partition_tool_set = set(partition.tools)
+                if partition_tool_set & filesystem_tools:
                     if p_idx == first_filesystem and first_filesystem != last_filesystem:
                         sub_task = f"Read the required input data using: {', '.join(partition.tools)}"
                     elif p_idx == last_filesystem:
                         sub_task = f"Write the final results/report using: {', '.join(partition.tools)}"
                     else:
                         sub_task = f"Process file operations using: {', '.join(partition.tools)}"
-                elif "fetch" in partition.tools:
+                elif partition_tool_set & fetch_tools:
                     sub_task = f"Fetch all required data using: {', '.join(partition.tools)}"
-                elif "summarize" in partition.tools:
+                elif partition_tool_set & summarize_tools:
                     sub_task = f"Summarize the input data using: {', '.join(partition.tools)}"
-                elif "data_aggregate" in partition.tools:
+                elif partition_tool_set & data_aggregate_tools:
                     sub_task = f"Aggregate and analyze the data using: {', '.join(partition.tools)}"
                 else:
                     sub_task = f"Process using tools: {', '.join(partition.tools)}"
@@ -665,23 +708,48 @@ class SubAgentOrchestrator:
     def get_execution_plan(
         self,
         tool_sequence: list[str],
-        preserve_order: bool = True,
     ) -> ExecutionPlan:
         """
         실행 계획 미리보기
 
         Args:
             tool_sequence: Tool 목록
-            preserve_order: 순서 유지 여부
 
         Returns:
             ExecutionPlan
         """
-        return self.planner.create_execution_plan(tool_sequence, preserve_order)
+        return self.planner.create_execution_plan_with_chain_scheduler(
+            tool_sequence, self.scheduler
+        )
 
     def print_execution_plan(self, tool_sequence: list[str]):
         """실행 계획 출력"""
         plan = self.get_execution_plan(tool_sequence)
+
+        # Chain Scheduling 결과 출력
+        if plan.chain_scheduling_result:
+            result = plan.chain_scheduling_result
+            print("\n" + "=" * 80)
+            print(f"Chain Scheduling ({result.optimization_method})")
+            print("=" * 80)
+
+            # brute_force 전용 필드는 값이 있을 때만 출력
+            if result.total_score is not None:
+                print(f"Total Cost: {result.total_score:.4f}")
+            if result.search_space_size is not None:
+                print(f"Search Space: {result.search_space_size}")
+            print(f"Decision Time: {result.decision_time_ns / 1_000_000:.2f} ms")
+            print()
+            print("Placement:")
+            for p in result.placements:
+                fixed_mark = "[FIXED]" if p.fixed else ""
+                # score, exec_cost, trans_cost가 있을 때만 상세 출력
+                if p.score is not None:
+                    print(f"  {p.tool_name:20} -> {p.location:6} "
+                          f"(cost={p.score:.3f}, comp={p.exec_cost:.3f}, comm={p.trans_cost:.3f}) {fixed_mark}")
+                else:
+                    print(f"  {p.tool_name:20} -> {p.location:6} ({p.reason}) {fixed_mark}")
+            print()
 
         print("\n" + "=" * 70)
         print("Execution Plan")

@@ -1,75 +1,292 @@
-# EdgeAgent Tool Configuration - Scenario 4: Image Processing
+# EdgeAgent Tool Configuration - Scenario 04: Image Processing Pipeline
 #
-# Tool Chain: filesystem → image_resize → data_aggregate → filesystem
-# Locations:  DEVICE     → EDGE         → EDGE           → DEVICE
+# Score-based Scheduling:
+#   Cost_i(u, v) = α * (P_exec[i][u] + β * P_net[u]) + (1-α) * P_comm[(v,u)]
 #
-# Use Case: Process local images, create thumbnails, find duplicates, generate report
+#   - α (alpha): 연산 중요도 (0~1), 높을수록 연산 비용 중시
+#   - β: data_locality == external_data일 때 자동으로 1 (scoring.py에서 처리)
+#   - P_exec: Tool별 노드 연산 비용 [D, E, C] (0.0=빠름, 1.0=느림)
+#   - P_net, P_comm: system.yaml에서 정의
+#
+# Data Locality Types:
+#   - args_only (Type A): 데이터가 args로 전달됨 → Score 기반 노드 선택
+#   - external_data (Type B): 외부 API 접근 → β=1 자동 적용
+#   - local_data (Type C): 로컬 파일 접근 → 경로 기반 노드 결정 (Score 무시)
 
 tools:
-  # filesystem: 파일시스템 접근 (DEVICE에만 필요)
+  # ============================================================
+  # filesystem server tools
+  # ============================================================
   filesystem:
-    profile:
-      description: "Read, write, and search files on the filesystem"
-      data_affinity: DEVICE
-      compute_intensity: LOW
-      data_flow: EXPANSION
-      reduction_ratio: 10.0
-      requires_cloud_api: false
-      privacy_sensitive: false
-      wasi_compatible: true
-      requires_gpu: false
-
     endpoints:
       DEVICE:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_device"
+          - "/edgeagent"
         env: {}
-
-  # image_resize: 이미지 처리 (리사이즈, 썸네일, 중복 검출)
-  image_resize:
-    profile:
-      description: "Resize images, create thumbnails, and detect duplicates"
-      data_affinity: EDGE
-      compute_intensity: MEDIUM
-      data_flow: REDUCTION
-      reduction_ratio: 0.1
-      requires_cloud_api: false
-      privacy_sensitive: false
-      wasi_compatible: false  # Pillow is not WASI compatible
-      requires_gpu: false
-
-    endpoints:
       EDGE:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      # 파일 읽기: path 인자로 로컬 파일 경로 지정
+      read_file:
+        description: "Read file contents from filesystem"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 쓰기: path 인자로 로컬 파일 경로 지정
+      write_file:
+        description: "Write content to a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 다중 파일 읽기: paths 인자로 로컬 파일 경로들 지정
+      read_multiple_files:
+        description: "Read multiple files at once"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 디렉토리 목록: path 인자로 로컬 디렉토리 경로 지정
+      list_directory:
+        description: "List directory contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 디렉토리 목록(크기 포함): path 인자로 로컬 디렉토리 경로 지정
+      list_directory_with_sizes:
+        description: "List directory with file sizes"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 디렉토리 트리: path 인자로 로컬 디렉토리 경로 지정
+      directory_tree:
+        description: "Get directory tree structure"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 검색: path 인자로 검색 시작 경로 지정
+      search_files:
+        description: "Search for files by pattern"
+        data_locality: local_data
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 정보: path 인자로 로컬 파일 경로 지정
+      get_file_info:
+        description: "Get file metadata"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 디렉토리 생성: path 인자로 생성할 로컬 경로 지정
+      create_directory:
+        description: "Create a new directory"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 이동: source/destination 인자로 로컬 경로 지정
+      move_file:
+        description: "Move or rename a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 파일 편집: path 인자로 로컬 파일 경로 지정
+      edit_file:
+        description: "Edit file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 텍스트 파일 읽기: path 인자로 로컬 파일 경로 지정
+      read_text_file:
+        description: "Read text file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 미디어 파일 읽기: path 인자로 로컬 파일 경로 지정
+      read_media_file:
+        description: "Read media file as base64"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      # 허용 디렉토리 목록: 서버 설정 정보 반환, 인자 없음
+      list_allowed_directories:
+        description: "List allowed directories for access"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ============================================================
+  # image_resize server tools
+  # ============================================================
+  image_resize:
+    endpoints:
+      DEVICE:
         transport: stdio
         command: python
         args:
           - "servers/image_resize_server.py"
         env: {}
-
-  # data_aggregate: 데이터 집계 및 병합
-  data_aggregate:
-    profile:
-      description: "Aggregate, merge, and summarize structured data"
-      data_affinity: EDGE
-      compute_intensity: LOW
-      data_flow: REDUCTION
-      reduction_ratio: 0.01
-      requires_cloud_api: false
-      privacy_sensitive: false
-      wasi_compatible: true
-      requires_gpu: false
-
-    endpoints:
       EDGE:
+        transport: streamable_http
+        url: "http://mcp-image-resize.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-image-resize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      scan_directory:
+        description: "Scan directory for images and get metadata"
+        data_locality: local_data
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      get_image_info:
+        description: "Get detailed image metadata"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      resize_image:
+        description: "Resize a single image"
+        data_locality: local_data
+        alpha: 0.8
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      batch_resize:
+        description: "Resize multiple images at once (thumbnails)"
+        data_locality: args_only
+        alpha: 0.9
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_image_hash:
+        description: "Compute perceptual hash for duplicate detection"
+        data_locality: local_data
+        alpha: 0.7
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compare_hashes:
+        description: "Compare image hashes to find duplicates"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ============================================================
+  # data_aggregate server tools (D, E, C)
+  # ============================================================
+  data_aggregate:
+    endpoints:
+      DEVICE:
         transport: stdio
         command: python
         args:
           - "servers/data_aggregate_server.py"
         env: {}
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
+
+    tool_profiles:
+      aggregate_list:
+        description: "Aggregate list of items by grouping/counting/summing"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      merge_summaries:
+        description: "Merge multiple summary dictionaries"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      combine_research_results:
+        description: "Combine research/search results into summary"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      deduplicate:
+        description: "Remove duplicate items based on key fields"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_trends:
+        description: "Compute trends from time-series data"
+        data_locality: args_only
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
 
 
+# Static mapping (StaticScheduler용) - MCP Server 이름으로 location 지정
 static_mapping:
   filesystem: DEVICE
   image_resize: EDGE

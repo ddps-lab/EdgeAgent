@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Scenario 1: Code Review Pipeline - Orchestration Mode Comparison
+Scenario 1: Code Review Pipeline - SubAgent Mode
 
 This script supports both execution modes:
 1. legacy: Single Agent with all tools (current approach)
 2. subagent: Sub-Agent Orchestration (location-aware partitioning)
 
 Usage:
-    python scripts/run_scenario1_orchestrated.py --mode legacy
-    python scripts/run_scenario1_orchestrated.py --mode subagent
-    python scripts/run_scenario1_orchestrated.py --compare  # Run both and compare
+    python scripts/run_scenario1_subagent.py --mode legacy
+    python scripts/run_scenario1_subagent.py --mode subagent
+    python scripts/run_scenario1_subagent.py --compare  # Run both and compare
 
 Tool Chain:
     filesystem(list) -> git(log,diff) -> summarize -> data_aggregate -> filesystem(write)
@@ -18,6 +18,7 @@ Tool Chain:
 
 import argparse
 import asyncio
+import json
 import os
 import shutil
 import sys
@@ -49,6 +50,9 @@ class ExecutionResult:
     partition_times: list[float] = field(default_factory=list)
     final_result: str = ""
     error: str = ""
+    scheduler_type: str = ""
+    metrics_entries: list[dict] = field(default_factory=list)
+    placement_map: dict = field(default_factory=dict)
 
 
 def load_repo_source() -> tuple[Path, str]:
@@ -74,17 +78,17 @@ def load_repo_source() -> tuple[Path, str]:
 
 
 def prepare_repo() -> tuple[Path, str]:
-    """Prepare repository at device location (required before MCP git server starts)"""
+    """Prepare repository (same path structure exists on all locations)"""
     repo_source, data_source = load_repo_source()
 
-    device_repo = Path("/tmp/edgeagent_device/repo")
-    device_repo.parent.mkdir(parents=True, exist_ok=True)
+    repo_path = Path("/edgeagent/repos/scenario1")
+    repo_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if device_repo.exists():
-        shutil.rmtree(device_repo)
-    shutil.copytree(repo_source, device_repo)
+    if repo_path.exists():
+        shutil.rmtree(repo_path)
+    shutil.copytree(repo_source, repo_path)
 
-    return device_repo, data_source
+    return repo_path, data_source
 
 
 # Prepare repo at module load time (before MCP client starts)
@@ -92,18 +96,36 @@ REPO_PATH, DATA_SOURCE = prepare_repo()
 
 
 USER_REQUEST = """
-Review the Git repository at /tmp/edgeagent_device/repo.
-1. List repository files using list_directory to understand the structure
-2. Get git log to see recent commits (max_count=5)
-3. Get git diff to see recent code changes
-4. Summarize the key changes using summarize_text
-5. Write a code review report to /tmp/edgeagent_device/code_review_report.md
+Review the Git repository at /edgeagent/repos/scenario1.
+
+Execute the following tool calls with EXACT parameters:
+
+Step 1: read_file
+  - path: "/edgeagent/repos/scenario1/README.md"
+
+Step 2: git_diff
+  - repo_path: "/edgeagent/repos/scenario1"
+  - target: "HEAD~1"
+
+Step 3: summarize_text
+  - text: (use content from steps 1 and 2)
+
+Step 4: merge_summaries
+  - summaries: (use results from step 3)
+
+Step 5: write_file
+  - path: "/edgeagent/results/scenario1_code_review_report.md"
+  - content: (final review report)
+
+CRITICAL: Use the EXACT paths shown above. Do NOT modify or shorten them.
+The repository path is "/edgeagent/repos/scenario1" (ends with "1").
 
 Return a summary of the code review.
 """
 
 # Tool sequence for Sub-Agent mode (order matters)
-TOOL_SEQUENCE = ["filesystem", "git", "summarize", "data_aggregate", "filesystem"]
+# 개별 tool 이름 사용 (서버 이름 아님) - Scheduler가 정확한 profile 참조 가능
+TOOL_SEQUENCE = ["read_file", "git_diff", "summarize_text", "merge_summaries", "write_file"]
 
 
 async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
@@ -171,10 +193,10 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
         )
 
 
-async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
+async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "brute_force") -> ExecutionResult:
     """Run with Sub-Agent Orchestration mode"""
     print("\n" + "=" * 70)
-    print("SUBAGENT MODE: Location-Aware Orchestration")
+    print(f"SUBAGENT MODE: Location-Aware Orchestration (scheduler={scheduler})")
     print("=" * 70)
 
     start_time = time.time()
@@ -188,7 +210,13 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             max_iterations=10,
         )
 
-        orchestrator = SubAgentOrchestrator(config_path, config)
+        system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
+        orchestrator = SubAgentOrchestrator(
+            config_path,
+            config,
+            system_config_path=system_config_path,
+            scheduler_type=scheduler,
+        )
 
         # Show execution plan
         print("\nExecution Plan:")
@@ -205,12 +233,26 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
 
         elapsed = (time.time() - start_time) * 1000
 
-        # Extract partition times
+        # Extract partition times and metrics
         partition_times = []
+        metrics_entries = []
         if result.partition_results:
             for pr in result.partition_results:
                 if "execution_time_ms" in pr:
                     partition_times.append(pr["execution_time_ms"])
+                if "metrics_entries" in pr:
+                    metrics_entries.extend(pr["metrics_entries"])
+
+        # Get placement map from execution plan
+        placement_map = {}
+        plan = orchestrator.get_execution_plan(TOOL_SEQUENCE)
+        if plan.chain_scheduling_result:
+            placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
+        else:
+            # Fallback: extract from partitions
+            for partition in plan.partitions:
+                for tool in partition.tools:
+                    placement_map[tool] = partition.location
 
         return ExecutionResult(
             mode="subagent",
@@ -221,6 +263,9 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
             partition_times=partition_times,
             final_result=str(result.final_result)[:500] if result.final_result else "",
             error=result.error or "",
+            scheduler_type=scheduler,
+            metrics_entries=metrics_entries,
+            placement_map=placement_map,
         )
 
     except Exception as e:
@@ -238,20 +283,117 @@ async def run_subagent_mode(config_path: Path, model: str) -> ExecutionResult:
 def print_result(result: ExecutionResult):
     """Print execution result"""
     print(f"\n--- {result.mode.upper()} Result ---")
+    if result.scheduler_type:
+        print(f"Scheduler: {result.scheduler_type}")
     print(f"Success: {result.success}")
     print(f"Total time: {result.total_time_ms:.0f}ms")
     print(f"Tool calls: {result.tool_calls}")
+    print(f"Metrics entries: {len(result.metrics_entries)}")
 
     if result.partitions > 0:
         print(f"Partitions: {result.partitions}")
         if result.partition_times:
             print(f"Partition times: {[f'{t:.0f}ms' for t in result.partition_times]}")
 
+    if result.placement_map:
+        print(f"\nPlacement Map:")
+        for tool, location in result.placement_map.items():
+            print(f"  {tool:25} -> {location}")
+
     if result.error:
-        print(f"Error: {result.error[:300]}")
+        print(f"\nError: {result.error[:300]}")
 
     if result.final_result:
         print(f"\nResult preview:\n{result.final_result[:300]}...")
+
+
+def save_metrics_csv(metrics_entries: list[dict], output_path: Path, scenario_name: str = ""):
+    """Save metrics entries to CSV file (flattened format)"""
+    import csv
+    import uuid
+
+    if not metrics_entries:
+        return
+
+    session_id = str(uuid.uuid4())[:8]
+    rows = []
+
+    for e in metrics_entries:
+        timing = e.get("timing", {})
+        location = e.get("location", {})
+        scheduling = e.get("scheduling", {})
+        data_flow = e.get("data_flow", {})
+        resource = e.get("resource", {})
+        status = e.get("status", {})
+
+        rows.append({
+            "session_id": session_id,
+            "scenario_name": scenario_name,
+            "tool_name": e.get("tool_name", ""),
+            "parent_tool_name": e.get("parent_tool_name", ""),
+            "pipeline_step": e.get("pipeline_step", 0),
+            "timestamp": e.get("timestamp", 0),
+            "latency_ms": timing.get("latency_ms", 0),
+            "inter_tool_latency_ms": timing.get("inter_tool_latency_ms", 0),
+            "scheduled_location": location.get("scheduled_location", ""),
+            "actual_location": location.get("actual_location", ""),
+            "fallback_occurred": location.get("fallback_occurred", False),
+            "scheduling_decision_time_ns": scheduling.get("decision_time_ns", 0),
+            "scheduling_reason": scheduling.get("reason", ""),
+            "scheduling_score": scheduling.get("score", 0),
+            "exec_cost": scheduling.get("exec_cost", 0),
+            "trans_cost": scheduling.get("trans_cost", 0),
+            "fixed_location": scheduling.get("fixed", ""),
+            "input_size_bytes": data_flow.get("input_size_bytes", 0),
+            "output_size_bytes": data_flow.get("output_size_bytes", 0),
+            "reduction_ratio": data_flow.get("reduction_ratio", 0),
+            "data_flow_type": data_flow.get("data_flow_type", ""),
+            "mcp_serialization_time_ms": timing.get("mcp_serialization_time_ms", 0),
+            "mcp_deserialization_time_ms": timing.get("mcp_deserialization_time_ms", 0),
+            "memory_delta_bytes": resource.get("memory_delta_bytes", 0),
+            "cpu_time_user_ms": resource.get("cpu_time_user_ms", 0),
+            "cpu_time_system_ms": resource.get("cpu_time_system_ms", 0),
+            "success": status.get("success", True),
+            "retry_count": status.get("retry_count", 0),
+            "error": status.get("error", ""),
+        })
+
+    if rows:
+        with open(output_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+def save_result(result: ExecutionResult, output_dir: str = "results/scenario1_subagent"):
+    """Save execution result to JSON and CSV files"""
+    import time as time_module
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    result_dict = {
+        "scenario_name": "code_review",
+        "mode": result.mode,
+        "scheduler_type": result.scheduler_type,
+        "success": result.success,
+        "total_time_ms": result.total_time_ms,
+        "tool_calls": result.tool_calls,
+        "partitions": result.partitions,
+        "partition_times": result.partition_times,
+        "placement_map": result.placement_map,
+        "metrics_entries": result.metrics_entries,
+        "tool_call_count": len(result.metrics_entries),
+        "error": result.error if result.error else None,
+    }
+
+    output_path = Path(output_dir) / f"code_review_{result.mode}_{int(time_module.time())}.json"
+    with open(output_path, "w") as f:
+        json.dump(result_dict, f, indent=2)
+    print(f"Results saved to: {output_path}")
+
+    # Save CSV
+    csv_path = Path(output_dir) / "metrics.csv"
+    save_metrics_csv(result.metrics_entries, csv_path, scenario_name="code_review")
+    print(f"Metrics CSV saved to: {csv_path}")
 
 
 def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
@@ -298,6 +440,12 @@ async def main():
         default="gpt-4o-mini",
         help="LLM model to use (default: gpt-4o-mini)",
     )
+    parser.add_argument(
+        "--scheduler",
+        choices=["brute_force", "static", "all_device", "all_edge", "all_cloud", "heuristic"],
+        default="brute_force",
+        help="Scheduler type (default: brute_force)",
+    )
 
     args = parser.parse_args()
 
@@ -313,6 +461,7 @@ async def main():
     print(f"Data Source: {DATA_SOURCE}")
     print(f"Repository: {REPO_PATH}")
     print(f"Model: {args.model}")
+    print(f"Scheduler: {args.scheduler}")
 
     config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
 
@@ -320,12 +469,14 @@ async def main():
         # Run both modes
         legacy_result = await run_legacy_mode(config_path, args.model)
         print_result(legacy_result)
+        save_result(legacy_result)
 
         # Re-prepare repo for subagent mode
         prepare_repo()
 
-        subagent_result = await run_subagent_mode(config_path, args.model)
+        subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(subagent_result)
+        save_result(subagent_result)
 
         compare_results(legacy_result, subagent_result)
 
@@ -334,11 +485,13 @@ async def main():
     elif args.mode == "legacy":
         result = await run_legacy_mode(config_path, args.model)
         print_result(result)
+        save_result(result)
         return result.success
 
     else:  # subagent
-        result = await run_subagent_mode(config_path, args.model)
+        result = await run_subagent_mode(config_path, args.model, args.scheduler)
         print_result(result)
+        save_result(result)
         return result.success
 
 

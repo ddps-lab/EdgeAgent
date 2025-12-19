@@ -25,7 +25,7 @@ tools:
       DEVICE:
         transport: stdio
         command: mcp-server-filesystem
-        args: ["/home/mhsong/edgeagent", "/tmp/edgeagent_device"]
+        args: ["/home/mhsong/edgeagent", "/tmp/edgeagent_device_hy"]
 
   git:
     profile:

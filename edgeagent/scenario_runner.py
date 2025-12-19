@@ -58,6 +58,9 @@ class ScenarioResult:
     validation: Optional[ValidationResult] = None
     validation_context: dict = field(default_factory=dict)
 
+    # Execution trace with scheduling cost info
+    execution_trace: list = field(default_factory=list)
+
     @property
     def total_latency_ms(self) -> float:
         """Total end-to-end latency"""
@@ -158,16 +161,19 @@ class ScenarioRunner(ABC):
         config_path: str | Path,
         output_dir: str | Path = "results",
         metrics_config: Optional[MetricsConfig] = None,
+        scheduler: Optional[Any] = None,
     ):
         """
         Args:
             config_path: Path to tools YAML config
             output_dir: Directory for saving results
             metrics_config: Metrics collection configuration
+            scheduler: Scheduler instance (None이면 기본 BruteForceChainScheduler 사용)
         """
         self.config_path = Path(config_path)
         self.output_dir = Path(output_dir)
         self.metrics_config = metrics_config
+        self.scheduler = scheduler
 
     @property
     @abstractmethod
@@ -243,12 +249,14 @@ class ScenarioRunner(ABC):
         error = None
         final_output = None
         metrics_collector = None
+        execution_trace = []
 
         try:
             async with EdgeAgentMCPClient(
                 self.config_path,
                 metrics_config=self.metrics_config,
                 collect_metrics=True,
+                scheduler=self.scheduler,
             ) as client:
                 # Load tools
                 tools = await client.get_tools()
@@ -258,6 +266,10 @@ class ScenarioRunner(ABC):
 
                 # Get metrics collector
                 metrics_collector = client.get_metrics()
+
+                # Get execution trace from metrics (includes scheduling cost info)
+                if metrics_collector:
+                    execution_trace = metrics_collector.to_execution_trace()
 
         except Exception as e:
             success = False
@@ -282,6 +294,7 @@ class ScenarioRunner(ABC):
             metrics=metrics_collector,
             final_output=final_output,
             validation_context=validation_context,
+            execution_trace=execution_trace,
         )
 
         # Validate output if requested and execution succeeded

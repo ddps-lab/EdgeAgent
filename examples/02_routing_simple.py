@@ -29,9 +29,9 @@ async def main():
     # ========================================================================
     print("[1] 테스트 환경 준비...")
 
-    device_dir = Path("/tmp/edgeagent_device")
-    edge_dir = Path("/tmp/edgeagent_edge")
-    cloud_dir = Path("/tmp/edgeagent_cloud")
+    device_dir = Path("/tmp/edgeagent_device_hy")
+    edge_dir = Path("/tmp/edgeagent_edge_hy")
+    cloud_dir = Path("/tmp/edgeagent_cloud_hy")
 
     for dir_path in [device_dir, edge_dir, cloud_dir]:
         dir_path.mkdir(exist_ok=True)

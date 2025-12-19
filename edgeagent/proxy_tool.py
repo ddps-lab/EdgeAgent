@@ -10,7 +10,51 @@ LLM에 노출되는 Proxy tool - 호출 시 Scheduler가 location을 결정하�
 - 리소스 사용량 추적
 """
 
+import re
 from typing import Any, Optional, TYPE_CHECKING
+
+
+# EDGE 서버 중 camelCase 파라미터를 사용하는 서버 목록
+EDGE_CAMELCASE_SERVERS = {"log_parser", "data_aggregate"}
+
+# snake_case → camelCase 변환이 필요한 파라미터 매핑
+SNAKE_TO_CAMEL_MAP = {
+    # log_parser
+    "log_content": "logContent",
+    "format_type": "formatType",
+    "max_entries": "maxEntries",
+    "min_level": "minLevel",
+    "include_levels": "includeLevels",
+    "case_sensitive": "caseSensitive",
+    # data_aggregate
+    "group_by": "groupBy",
+    "count_field": "countField",
+    "sum_fields": "sumFields",
+    "title_field": "titleField",
+    "summary_field": "summaryField",
+    "score_field": "scoreField",
+    "key_fields": "keyFields",
+    "time_series": "timeSeries",
+    "time_field": "timeField",
+    "value_field": "valueField",
+    "bucket_count": "bucketCount",
+}
+
+
+def convert_args_to_camelcase(args: dict[str, Any]) -> dict[str, Any]:
+    """
+    snake_case 파라미터를 camelCase로 변환
+
+    EDGE 서버 중 일부(log_parser, data_aggregate)가 camelCase를 사용하므로
+    호출 전 파라미터명 변환이 필요
+    """
+    converted = {}
+    for key, value in args.items():
+        new_key = SNAKE_TO_CAMEL_MAP.get(key, key)
+        converted[new_key] = value
+    return converted
+
+
 from pydantic import Field, ConfigDict
 
 from langchain_core.tools import BaseTool
@@ -76,6 +120,19 @@ class LocationAwareProxyTool(BaseTool):
         description="MetricsCollector instance for unified metrics",
     )
 
+    # Client reference for lazy loading (EdgeAgentMCPClient)
+    client: Optional[Any] = Field(
+        default=None,
+        description="EdgeAgentMCPClient for lazy location connection",
+    )
+
+    # All available locations from config (not just connected ones)
+    # Note: property 'available_locations'와 이름 충돌을 피하기 위해 config_locations 사용
+    config_locations: list[str] = Field(
+        default_factory=list,
+        description="All available locations from config",
+    )
+
     def _run(
         self,
         *args: Any,
@@ -108,49 +165,63 @@ class LocationAwareProxyTool(BaseTool):
         location = scheduling_result.location
         fallback_occurred = False
 
-        # 2. 해당 location의 backend tool 선택 (fallback 지원)
+        # 2. 해당 location의 backend tool 선택 (lazy loading)
         backend_tool = self.backend_tools.get(location)
+
         if not backend_tool:
-            # Scheduler가 결정한 location에 backend이 없으면 fallback
-            # SubAgent가 특정 location만 지원하는 경우 발생
-            available = list(self.backend_tools.keys())
-            if available:
-                location = available[0]  # 첫 번째 available location 사용
-                backend_tool = self.backend_tools[location]
-                fallback_occurred = True
-            else:
+            # Lazy loading: client가 있고 해당 location이 config에 정의되어 있으면 연결
+            if self.client and location in self.config_locations:
+                try:
+                    new_tools = await self.client.ensure_location_connected(
+                        self.name, location
+                    )
+                    if new_tools and self.name in new_tools:
+                        backend_tool = new_tools[self.name]
+                        self.backend_tools[location] = backend_tool
+                except Exception as e:
+                    raise ValueError(
+                        f"Lazy loading failed for '{self.name}' at {location}: {e}"
+                    )
+
+            if not backend_tool:
                 raise ValueError(
                     f"No backend tool available for '{self.name}'. "
-                    f"Scheduled location: {scheduling_result.location}"
+                    f"Scheduled location: {location}, "
+                    f"Available: {list(self.backend_tools.keys())}"
                 )
 
-        # 3. Trace 기록 (backward compatibility)
-        self.execution_trace.append({
-            "tool": self.name,
-            "parent_tool": self.parent_tool_name,
-            "location": location,
-            "fallback": fallback_occurred,
-            "args_keys": list(kwargs.keys()),
-        })
+        # 3. EDGE camelCase 서버용 파라미터 변환
+        invoke_kwargs = kwargs
+        if location == "EDGE" and self.parent_tool_name in EDGE_CAMELCASE_SERVERS:
+            invoke_kwargs = convert_args_to_camelcase(kwargs)
 
         # 4. 메트릭 수집과 함께 tool 호출
         if self.metrics_collector is not None:
-            # 통합 메트릭 수집 모드
             async with self.metrics_collector.start_call(
                 tool_name=self.name,
                 parent_tool_name=self.parent_tool_name,
                 location=location,
-                args=kwargs,
+                args=kwargs,  # 원본 args 기록 (snake_case)
             ) as ctx:
-                # Scheduling 정보 추가
+                # Scheduling 정보 추가 (cost 포함)
+                # SchedulingConstraints → list[str] 변환
+                constraints_list = []
+                if scheduling_result.constraints.requires_cloud_api:
+                    constraints_list.append("requires_cloud_api")
+                if scheduling_result.constraints.privacy_sensitive:
+                    constraints_list.append("privacy_sensitive")
                 ctx.add_scheduling_info(
                     reason=scheduling_result.reason,
-                    constraints=scheduling_result.constraints_checked,
+                    constraints=constraints_list,
                     available=scheduling_result.available_locations,
                     decision_time_ns=scheduling_result.decision_time_ns,
+                    score=scheduling_result.score,
+                    exec_cost=scheduling_result.exec_cost,
+                    trans_cost=scheduling_result.trans_cost,
+                    fixed=scheduling_result.fixed,
                 )
                 try:
-                    result = await backend_tool.ainvoke(kwargs)
+                    result = await backend_tool.ainvoke(invoke_kwargs)
                     ctx.set_result(result)
                     ctx.set_actual_location(location, fallback=fallback_occurred)
                     return result
@@ -159,7 +230,7 @@ class LocationAwareProxyTool(BaseTool):
                     raise
         else:
             # 기존 동작 유지 (메트릭 수집 없음)
-            return await backend_tool.ainvoke(kwargs)
+            return await backend_tool.ainvoke(invoke_kwargs)
 
     def _get_location(self, args: dict[str, Any]) -> Location:
         """
@@ -173,9 +244,9 @@ class LocationAwareProxyTool(BaseTool):
             return list(self.backend_tools.keys())[0]
 
         # Scheduler에게 location 결정 요청
-        # parent_tool_name을 사용 (registry에 등록된 이름)
+        # self.name (개별 tool 이름)을 사용하여 정확한 profile 조회
         return self.scheduler.get_location_for_call(
-            tool_name=self.parent_tool_name,
+            tool_name=self.name,
             args=args,
         )
 
@@ -200,9 +271,9 @@ class LocationAwareProxyTool(BaseTool):
             )
 
         # Scheduler에게 location 결정 요청 (상세 정보 포함)
-        # parent_tool_name을 사용 (registry에 등록된 이름)
+        # self.name (개별 tool 이름)을 사용하여 정확한 profile 조회
         return self.scheduler.get_location_for_call_with_reason(
-            tool_name=self.parent_tool_name,
+            tool_name=self.name,
             args=args,
         )
 
