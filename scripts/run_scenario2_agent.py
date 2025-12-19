@@ -177,8 +177,13 @@ class AgentLogAnalysisScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent with logging
-        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
+        # Execute agent with logging (metrics_collector로 LLM latency 추적)
+        result = await run_agent_with_logging(
+            agent,
+            self.user_request,
+            verbose=True,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Extract final response
         final_message = result["messages"][-1].content

@@ -3,12 +3,86 @@ Agent Utilities for LLM Agent scenarios
 
 Provides common utilities for agent execution including:
 - Tool call logging callback
+- LLM latency tracking callback
 - Streaming agent execution with progress
 """
 
-from typing import Any
+import time
+from typing import Any, Optional
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.agents import AgentAction, AgentFinish
+from langchain_core.outputs import LLMResult
+
+
+class LLMLatencyTracker(BaseCallbackHandler):
+    """
+    LLM 호출 시간 및 토큰 사용량을 추적하는 콜백 핸들러.
+
+    Agent 모드에서 LLM 추론 시간을 측정하여 MetricsCollector에 전달합니다.
+    """
+
+    def __init__(self, metrics_collector=None):
+        """
+        Args:
+            metrics_collector: MetricsCollector 인스턴스 (optional)
+        """
+        self.metrics_collector = metrics_collector
+        self._llm_start_time: Optional[float] = None
+        self._llm_latencies: list[dict] = []
+        self._current_llm_latency: Optional[dict] = None
+
+    def on_llm_start(self, serialized: dict, prompts: list[str], **kwargs) -> None:
+        """LLM 호출 시작"""
+        self._llm_start_time = time.perf_counter()
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        """LLM 호출 종료 - latency 및 토큰 사용량 기록"""
+        if self._llm_start_time is None:
+            return
+
+        end_time = time.perf_counter()
+        latency_ms = (end_time - self._llm_start_time) * 1000
+
+        # 토큰 정보 추출
+        input_tokens = 0
+        output_tokens = 0
+
+        # LLMResult에서 토큰 정보 추출 시도
+        if response.llm_output:
+            token_usage = response.llm_output.get("token_usage", {})
+            input_tokens = token_usage.get("prompt_tokens", 0)
+            output_tokens = token_usage.get("completion_tokens", 0)
+
+        self._current_llm_latency = {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self._llm_latencies.append(self._current_llm_latency)
+
+        # MetricsCollector에 pending latency 설정
+        if self.metrics_collector:
+            self.metrics_collector.set_pending_llm_latency(
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
+        self._llm_start_time = None
+
+    def get_total_llm_latency_ms(self) -> float:
+        """총 LLM latency 반환"""
+        return sum(l.get("latency_ms", 0) for l in self._llm_latencies)
+
+    def get_total_tokens(self) -> tuple[int, int]:
+        """총 토큰 사용량 반환 (input, output)"""
+        input_tokens = sum(l.get("input_tokens", 0) for l in self._llm_latencies)
+        output_tokens = sum(l.get("output_tokens", 0) for l in self._llm_latencies)
+        return input_tokens, output_tokens
+
+    def get_llm_call_count(self) -> int:
+        """LLM 호출 횟수 반환"""
+        return len(self._llm_latencies)
 
 
 class ToolCallLogger(BaseCallbackHandler):
@@ -56,20 +130,29 @@ class ToolCallLogger(BaseCallbackHandler):
             print(f"  [FINISH] Agent completed with {len(self.tool_calls)} tool calls")
 
 
-async def run_agent_with_logging(agent, user_request: str, verbose: bool = True) -> dict:
+async def run_agent_with_logging(
+    agent,
+    user_request: str,
+    verbose: bool = True,
+    metrics_collector=None,
+) -> dict:
     """
-    Run agent with tool call logging.
+    Run agent with tool call logging and LLM latency tracking.
 
     Args:
         agent: LangGraph agent (CompiledStateGraph)
         user_request: The user's request string
         verbose: Whether to print tool calls
+        metrics_collector: MetricsCollector 인스턴스 (optional, LLM latency 추적용)
 
     Returns:
         Agent result dictionary with messages
     """
     if verbose:
         print()
+
+    # LLM Latency Tracker 생성
+    llm_tracker = LLMLatencyTracker(metrics_collector=metrics_collector)
 
     # For LangGraph agents, we use astream with "values" mode to get full state
     # This avoids duplicate execution that happens with ainvoke after astream
@@ -79,6 +162,7 @@ async def run_agent_with_logging(agent, user_request: str, verbose: bool = True)
     async for chunk in agent.astream(
         {"messages": [("user", user_request)]},
         stream_mode="values",
+        config={"callbacks": [llm_tracker]},
     ):
         # In "values" mode, chunk contains the full state
         if "messages" in chunk:

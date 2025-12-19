@@ -110,6 +110,11 @@ class MetricEntry:
     latency_ms: float  # Tool execution time
     inter_tool_latency_ms: float = 0.0  # Time since previous tool ended
 
+    # === LLM Latency (Agent 모드 전용) ===
+    llm_latency_ms: float = 0.0  # LLM 추론 시간 (이 tool 호출 결정까지)
+    llm_input_tokens: int = 0  # LLM 입력 토큰 수
+    llm_output_tokens: int = 0  # LLM 출력 토큰 수
+
     # === Location & Routing ===
     scheduled_location: str = ""  # What scheduler decided
     actual_location: str = ""  # Where it actually ran
@@ -174,8 +179,14 @@ class MetricEntry:
             "timing": {
                 "latency_ms": self.latency_ms,
                 "inter_tool_latency_ms": self.inter_tool_latency_ms,
+                "llm_latency_ms": self.llm_latency_ms,
+                "total_latency_ms": self.llm_latency_ms + self.latency_ms,  # LLM + Tool 실행 시간
                 "mcp_serialization_time_ms": self.mcp_serialization_time_ms,
                 "mcp_deserialization_time_ms": self.mcp_deserialization_time_ms,
+            },
+            "llm": {
+                "input_tokens": self.llm_input_tokens,
+                "output_tokens": self.llm_output_tokens,
             },
             "location": {
                 "scheduled_location": self.scheduled_location,
@@ -270,6 +281,9 @@ class MetricsCollector:
         self._chain_scheduling: Optional[ChainSchedulingResult] = None
         # 시나리오별 메트릭
         self._scenario_metrics: ScenarioMetrics = ScenarioMetrics()
+        # LLM Latency (Agent 모드용)
+        self._pending_llm_latency: Optional[dict] = None
+        self._pending_llm_consumed: bool = False
 
     # =========================================================================
     # Core Collection API
@@ -361,6 +375,63 @@ class MetricsCollector:
         for key, value in kwargs.items():
             if hasattr(self._scenario_metrics, key):
                 setattr(self._scenario_metrics, key, value)
+
+    def set_pending_llm_latency(
+        self,
+        latency_ms: float,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ):
+        """
+        다음 tool call(들)에 연결할 LLM latency 설정 (Agent 모드용)
+
+        Args:
+            latency_ms: LLM 추론 시간 (ms)
+            input_tokens: LLM 입력 토큰 수
+            output_tokens: LLM 출력 토큰 수
+        """
+        self._pending_llm_latency = {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self._pending_llm_consumed = False  # 아직 사용되지 않음
+
+    def get_pending_llm_latency(self) -> Optional[dict]:
+        """
+        pending LLM latency 반환 (병렬 tool call 지원)
+
+        첫 번째 tool이 가져간 후에도 같은 LLM 호출에서 나온
+        병렬 tool들이 같은 latency를 공유할 수 있도록 함.
+        새로운 LLM 호출이 있을 때만 초기화됨.
+
+        Returns:
+            LLM latency 정보 dict 또는 None
+        """
+        if self._pending_llm_latency is None:
+            return None
+
+        # 첫 번째 tool에만 full latency 기록, 나머지는 0 (중복 방지)
+        if not self._pending_llm_consumed:
+            self._pending_llm_consumed = True
+            return self._pending_llm_latency
+        else:
+            # 병렬 tool들은 같은 LLM 호출에서 나왔지만 latency는 0으로 기록
+            # (total 합산 시 중복 방지)
+            return {
+                "latency_ms": 0.0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
+    def get_and_clear_pending_llm_latency(self) -> Optional[dict]:
+        """
+        pending LLM latency 반환 후 초기화 (하위 호환성)
+
+        Returns:
+            LLM latency 정보 dict 또는 None
+        """
+        return self.get_pending_llm_latency()
 
     @property
     def chain_scheduling(self) -> Optional[ChainSchedulingResult]:
@@ -613,6 +684,7 @@ class MetricsCollector:
                 },
                 "resource_usage": self.total_resource_usage(),
                 "network": self.network_summary(),
+                "llm_usage": self._aggregate_llm_usage(),
             },
             "chain_scheduling": chain_scheduling_dict,
             "scenario_metrics": self._scenario_metrics.to_dict(),
@@ -657,6 +729,47 @@ class MetricsCollector:
             "decision_time_ms": total_decision_time_ns / 1e6,
             "optimization_method": self.scheduler_type,
             "placements": placements,
+        }
+
+    def _aggregate_llm_usage(self) -> dict[str, Any]:
+        """LLM 사용량 합산 (Agent 모드용)"""
+        if not self._entries:
+            return {
+                "total_llm_latency_ms": 0.0,
+                "total_tool_latency_ms": 0.0,
+                "total_combined_latency_ms": 0.0,
+                "total_llm_calls": 0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "avg_llm_latency_ms": 0.0,
+            }
+
+        total_llm_latency_ms = 0.0
+        total_tool_latency_ms = 0.0
+        total_llm_calls = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        for entry in self._entries:
+            total_tool_latency_ms += entry.latency_ms
+            if entry.llm_latency_ms > 0:
+                total_llm_latency_ms += entry.llm_latency_ms
+                total_llm_calls += 1
+                total_input_tokens += entry.llm_input_tokens
+                total_output_tokens += entry.llm_output_tokens
+
+        avg_llm_latency_ms = (
+            total_llm_latency_ms / total_llm_calls if total_llm_calls > 0 else 0.0
+        )
+
+        return {
+            "total_llm_latency_ms": total_llm_latency_ms,
+            "total_tool_latency_ms": total_tool_latency_ms,
+            "total_combined_latency_ms": total_llm_latency_ms + total_tool_latency_ms,
+            "total_llm_calls": total_llm_calls,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "avg_llm_latency_ms": avg_llm_latency_ms,
         }
 
     def save_json(self, output_path: str | Path, pretty: bool = True) -> Path:
@@ -893,6 +1006,11 @@ class CallContext:
         self.mcp_serialization_time_ms: float = 0.0
         self.mcp_deserialization_time_ms: float = 0.0
 
+        # LLM latency (Agent 모드용)
+        self.llm_latency_ms: float = 0.0
+        self.llm_input_tokens: int = 0
+        self.llm_output_tokens: int = 0
+
     async def __aenter__(self) -> "CallContext":
         """Start timing and resource tracking"""
         self.timestamp = time.time()
@@ -901,6 +1019,13 @@ class CallContext:
         if self.config.collect_resource:
             self.memory_before = self._get_memory_usage()
             self.cpu_before = self._get_cpu_times()
+
+        # Get pending LLM latency (Agent 모드용)
+        pending_llm = self.collector.get_and_clear_pending_llm_latency()
+        if pending_llm:
+            self.llm_latency_ms = pending_llm.get("latency_ms", 0.0)
+            self.llm_input_tokens = pending_llm.get("input_tokens", 0)
+            self.llm_output_tokens = pending_llm.get("output_tokens", 0)
 
         return self
 
@@ -941,6 +1066,10 @@ class CallContext:
             timestamp=self.timestamp,
             latency_ms=(self.end_time_ns - self.start_time_ns) / 1_000_000,
             inter_tool_latency_ms=inter_tool_latency_ms,
+            # LLM latency (Agent 모드용)
+            llm_latency_ms=self.llm_latency_ms,
+            llm_input_tokens=self.llm_input_tokens,
+            llm_output_tokens=self.llm_output_tokens,
             scheduled_location=self.scheduled_location,
             actual_location=self.actual_location,
             fallback_occurred=self.actual_location != self.scheduled_location,
