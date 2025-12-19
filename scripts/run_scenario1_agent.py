@@ -22,13 +22,16 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
-from scripts.agent_utils import run_agent_with_logging
+from edgeagent.metrics import print_execution_trace
+from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_tracking
+
+# Tool blacklist - 이 도구들은 LLM에게 노출되지 않음
+EXCLUDED_TOOLS = {"directory_tree"}
 
 
 def load_repo_source() -> tuple[Path, str]:
@@ -99,8 +102,9 @@ class AgentCodeReviewScenario(ScenarioRunner):
         model: str = "gpt-4o-mini",
         temperature: float = 0,
         scheduler=None,
+        exclude_tools: set[str] | None = None,
     ):
-        super().__init__(config_path, output_dir, scheduler=scheduler)
+        super().__init__(config_path, output_dir, scheduler=scheduler, exclude_tools=exclude_tools)
         self.model = model
         self.temperature = temperature
         self._repo_source = None
@@ -137,9 +141,8 @@ class AgentCodeReviewScenario(ScenarioRunner):
         # Use repo_source directly (no copy needed)
         repo_path = self._repo_source
 
-        # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
-        excluded_tools = {"directory_tree"}
-        tools = [t for t in tools if t.name not in excluded_tools]
+        # Tool exclusion은 EdgeAgentMCPClient의 exclude_tools 파라미터로 처리됨
+        # (EXCLUDED_TOOLS 상수 참조)
 
         print("-" * 70)
         print("LLM Agent Code Review")
@@ -151,11 +154,12 @@ class AgentCodeReviewScenario(ScenarioRunner):
         print(f"Available tools: {len(tools)}")
         print()
 
-        # Initialize LLM (gpt-4o-mini doesn't support temperature=0)
-        llm_kwargs = {"model": self.model}
-        if "gpt-5" not in self.model:
-            llm_kwargs["temperature"] = self.temperature
-        llm = ChatOpenAI(**llm_kwargs)
+        # Initialize LLM with latency tracking
+        llm = create_llm_with_latency_tracking(
+            model=self.model,
+            temperature=self.temperature,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Create agent
         agent = create_agent(llm, tools)
@@ -168,8 +172,13 @@ class AgentCodeReviewScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent with logging
-        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
+        # Execute agent with logging (metrics_collector로 LLM latency 추적)
+        result = await run_agent_with_logging(
+            agent,
+            self.user_request,
+            verbose=True,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Extract final response
         final_message = result["messages"][-1].content
@@ -181,17 +190,12 @@ class AgentCodeReviewScenario(ScenarioRunner):
         print(final_message[:1000] + "..." if len(final_message) > 1000 else final_message)
         print()
 
-        # Add custom metrics
+        # Add custom metrics (MetricsCollector 유틸리티 사용)
         if client.metrics_collector:
-            tool_counts = {}
-            for entry in client.metrics_collector.entries:
-                tool = entry.tool_name
-                tool_counts[tool] = tool_counts.get(tool, 0) + 1
-
             client.metrics_collector.add_custom_metric("agent_model", self.model)
             client.metrics_collector.add_custom_metric("data_source", self._data_source)
-            client.metrics_collector.add_custom_metric("tool_call_counts", tool_counts)
-            client.metrics_collector.add_custom_metric("total_tool_calls", len(client.metrics_collector.entries))
+            client.metrics_collector.add_custom_metric("tool_call_counts", client.metrics_collector.get_tool_call_counts())
+            client.metrics_collector.add_custom_metric("total_tool_calls", client.metrics_collector.total_tool_calls)
 
         # Check if report was written
         report_file = Path("/edgeagent/results/scenario1_agent_code_review_report.md")
@@ -250,6 +254,7 @@ async def main():
         model="gpt-4o-mini",
         temperature=0,
         scheduler=scheduler,
+        exclude_tools=EXCLUDED_TOOLS,
     )
 
     result = await scenario.run(
@@ -257,21 +262,13 @@ async def main():
         print_summary=True,
     )
 
-    # Additional analysis
+    # Additional analysis (metrics.py 유틸리티 사용)
     if result.execution_trace:
-        print()
-        print("=" * 70)
-        print("Agent Execution Trace (Scheduler Results)")
-        print("=" * 70)
-        for i, trace in enumerate(result.execution_trace, 1):
-            fixed_mark = "[FIXED]" if trace.get('fixed') else ""
-            if args.scheduler == "brute_force":
-                cost = trace.get('cost', 0)
-                comp = trace.get('comp', 0)
-                comm = trace.get('comm', 0)
-                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
-            else:
-                print(f"  {i}. {trace['tool']:25} -> {trace['location']:6} {fixed_mark}")
+        print_execution_trace(
+            result.execution_trace,
+            scheduler_type=args.scheduler,
+            title="Agent Execution Trace (Scheduler Results)",
+        )
 
     if result.metrics:
         # Export metrics

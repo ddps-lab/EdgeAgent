@@ -21,13 +21,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from edgeagent import ScenarioRunner, EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
 from edgeagent.scheduler import create_scheduler, BruteForceChainScheduler
-from scripts.agent_utils import run_agent_with_logging
+from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_tracking
 
 
 # Default URLs (fallback if S2ORC not available)
@@ -157,11 +156,12 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         print(f"Available tools: {len(tools)}")
         print()
 
-        # Initialize LLM (gpt-4o-mini doesn't support temperature=0)
-        llm_kwargs = {"model": self.model}
-        if "gpt-5" not in self.model:
-            llm_kwargs["temperature"] = self.temperature
-        llm = ChatOpenAI(**llm_kwargs)
+        # Initialize LLM with latency tracking
+        llm = create_llm_with_latency_tracking(
+            model=self.model,
+            temperature=self.temperature,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Create agent using langchain.agents.create_agent
         agent = create_agent(llm, tools)
@@ -174,8 +174,13 @@ class AgentResearchAssistantScenario(ScenarioRunner):
         print("Agent Execution (tool calls will be shown)")
         print("-" * 70)
 
-        # Execute agent with logging
-        result = await run_agent_with_logging(agent, self.user_request, verbose=True)
+        # Execute agent with logging (metrics_collector로 LLM latency 추적)
+        result = await run_agent_with_logging(
+            agent,
+            self.user_request,
+            verbose=True,
+            metrics_collector=client.metrics_collector,
+        )
 
         # Extract final response
         final_message = result["messages"][-1].content

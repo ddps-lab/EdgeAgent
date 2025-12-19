@@ -26,18 +26,88 @@ Usage (클라이언트):
 import asyncio
 import json
 import os
+import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from typing import TYPE_CHECKING
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
 
-from .types import Location, LOCATIONS
+from .types import Location, LOCATIONS, ChainSchedulingResult
 from .registry import ToolRegistry
 from .planner import Partition
+from .metrics import aggregate_metrics_entries
 
 if TYPE_CHECKING:
     from .scheduler import BaseScheduler
+
+
+class LLMLatencyTracker(BaseCallbackHandler):
+    """
+    SubAgent용 LLM 호출 시간 및 토큰 사용량 추적 콜백 핸들러.
+
+    LLM 추론 시간을 측정하여 MetricsCollector에 전달합니다.
+    """
+
+    def __init__(self, metrics_collector=None):
+        self.metrics_collector = metrics_collector
+        self._llm_start_time: Optional[float] = None
+        self._llm_latencies: list[dict] = []
+
+    def on_llm_start(self, serialized: dict, prompts: list[str], **kwargs) -> None:
+        """LLM 호출 시작"""
+        self._llm_start_time = time.perf_counter()
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        """LLM 호출 종료 - latency 및 토큰 사용량 기록"""
+        if self._llm_start_time is None:
+            return
+
+        end_time = time.perf_counter()
+        latency_ms = (end_time - self._llm_start_time) * 1000
+
+        # 토큰 정보 추출
+        input_tokens = 0
+        output_tokens = 0
+
+        if response.llm_output:
+            token_usage = response.llm_output.get("token_usage", {})
+            input_tokens = token_usage.get("prompt_tokens", 0)
+            output_tokens = token_usage.get("completion_tokens", 0)
+
+        llm_latency = {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self._llm_latencies.append(llm_latency)
+
+        # MetricsCollector에 pending latency 설정
+        if self.metrics_collector:
+            self.metrics_collector.set_pending_llm_latency(
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
+        self._llm_start_time = None
+
+    def get_total_llm_latency_ms(self) -> float:
+        """총 LLM latency 반환"""
+        return sum(l.get("latency_ms", 0) for l in self._llm_latencies)
+
+    def get_total_tokens(self) -> tuple[int, int]:
+        """총 토큰 사용량 반환 (input, output)"""
+        input_tokens = sum(l.get("input_tokens", 0) for l in self._llm_latencies)
+        output_tokens = sum(l.get("output_tokens", 0) for l in self._llm_latencies)
+        return input_tokens, output_tokens
+
+    def get_llm_call_count(self) -> int:
+        """LLM 호출 횟수 반환"""
+        return len(self._llm_latencies)
 
 
 @dataclass
@@ -86,6 +156,8 @@ class SubAgentResponse:
     tool_calls: list[dict] = field(default_factory=list)    # 실행된 tool 호출 목록
     execution_time_ms: float = 0.0               # 실행 시간 (ms)
     metrics_entries: list[dict] = field(default_factory=list)  # 상세 메트릭 (MetricEntry.to_dict())
+    # Aggregated metrics (이 partition의 합산 정보)
+    aggregated: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -95,6 +167,7 @@ class SubAgentResponse:
             "tool_calls": self.tool_calls,
             "execution_time_ms": self.execution_time_ms,
             "metrics_entries": self.metrics_entries,
+            "aggregated": self.aggregated,
         }
 
     @classmethod
@@ -106,6 +179,7 @@ class SubAgentResponse:
             tool_calls=data.get("tool_calls", []),
             execution_time_ms=data.get("execution_time_ms", 0.0),
             metrics_entries=data.get("metrics_entries", []),
+            aggregated=data.get("aggregated", {}),
         )
 
 
@@ -124,6 +198,7 @@ class SubAgent:
         temperature: float = 0,
         collect_metrics: bool = True,
         scheduler: "BaseScheduler | None" = None,
+        chain_scheduling_result: Optional[ChainSchedulingResult] = None,
     ):
         """
         Args:
@@ -133,6 +208,7 @@ class SubAgent:
             temperature: LLM temperature
             collect_metrics: 상세 메트릭 수집 여부
             scheduler: Orchestrator에서 전달받은 scheduler (location 결정에 사용)
+            chain_scheduling_result: schedule_chain() 결과 (각 tool의 SchedulingResult 포함)
         """
         self.location = location
         self.config_path = Path(config_path)
@@ -140,6 +216,7 @@ class SubAgent:
         self.temperature = temperature
         self.collect_metrics = collect_metrics
         self.scheduler = scheduler
+        self.chain_scheduling_result = chain_scheduling_result
 
         # Registry 로드
         self.registry = ToolRegistry.from_yaml(config_path)
@@ -215,12 +292,16 @@ class SubAgent:
                 result, collected_metrics = await self._run_agent(request, valid_tools, tool_calls)
                 metrics_entries.extend(collected_metrics)
 
+            # Aggregate metrics before returning
+            aggregated = aggregate_metrics_entries(metrics_entries)
+
             return SubAgentResponse(
                 success=True,
                 result=result,
                 tool_calls=tool_calls,
                 execution_time_ms=(time.time() - start_time) * 1000,
                 metrics_entries=metrics_entries,
+                aggregated=aggregated,
             )
 
         except Exception as e:
@@ -231,6 +312,7 @@ class SubAgent:
                 error=error_detail,
                 tool_calls=tool_calls,
                 execution_time_ms=(time.time() - start_time) * 1000,
+                aggregated={},  # 실패 시 빈 dict
             )
 
     async def _run_direct_tool_call(
@@ -270,6 +352,9 @@ class SubAgent:
                 filter_location=self.location,  # 현재 location의 endpoint만 사용
                 scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
             )
+            # Chain Scheduling 결과 설정 (원래 계산된 score, reason 등 사용)
+            if self.chain_scheduling_result:
+                client.set_chain_scheduling_result(self.chain_scheduling_result)
             await exit_stack.enter_async_context(client)
 
             all_tools = await client.get_tools()
@@ -418,11 +503,6 @@ class SubAgent:
         from .middleware import EdgeAgentMCPClient
         from contextlib import AsyncExitStack
 
-        # LLM 초기화 (gpt-5-mini는 temperature=0 지원 안 함)
-        llm_kwargs = {"model": self.model}
-        if "gpt-5" not in self.model:
-            llm_kwargs["temperature"] = self.temperature
-        llm = ChatOpenAI(**llm_kwargs)
         metrics_entries = []
         result = ({"messages": []}, [])  # 기본값
         exit_stack = AsyncExitStack()
@@ -438,7 +518,21 @@ class SubAgent:
                 filter_location=self.location,  # 현재 location의 endpoint만 사용
                 scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
             )
+            # Chain Scheduling 결과 설정 (원래 계산된 score, reason 등 사용)
+            if self.chain_scheduling_result:
+                client.set_chain_scheduling_result(self.chain_scheduling_result)
             await exit_stack.enter_async_context(client)
+
+            # LLM latency tracker 생성 (MetricsCollector 연결)
+            llm_tracker = LLMLatencyTracker(
+                metrics_collector=client.get_metrics() if self.collect_metrics else None
+            )
+
+            # LLM 초기화 (gpt-5-mini는 temperature=0 지원 안 함)
+            llm_kwargs = {"model": self.model, "callbacks": [llm_tracker]}
+            if "gpt-5" not in self.model:
+                llm_kwargs["temperature"] = self.temperature
+            llm = ChatOpenAI(**llm_kwargs)
 
             # 필터링된 tools 가져오기
             all_tools = await client.get_tools()

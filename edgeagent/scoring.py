@@ -1,20 +1,30 @@
 """
 Score 기반 스케줄링을 위한 비용 계산 모듈
 
-Cost_i(u, v) = α_i * (P_comp[i][u] + β_i * P_net[u]) + (1 - α_i) * P_comm[(v, u)]
+Score(i, u, v) = ExecCost(i, u) + TransCost(v -> u)
 
-- i: Tool 인덱스
-- u: 현재 노드 {DEVICE, EDGE, CLOUD}
-- v: 이전 노드 {DEVICE, EDGE, CLOUD}
-- α_i: Tool i의 연산 중요도 (0 ~ 1)
-- β_i: Tool i의 외부 인터넷 사용 여부 (0 or 1)
-- P_comp[i][u]: Tool i의 노드 u에서의 연산 비용 (tools_scenario*.yaml)
-- P_net[u]: 노드 u의 외부 네트워크 비용 (system.yaml)
-- P_comm[(v,u)]: 노드 v→u 통신 비용 (system.yaml)
+- i: 실행하고자 하는 tool
+- u: task i가 실행되는 노드 {DEVICE, EDGE, CLOUD}
+- v: tool chain에서 task i 이전 task가 실행된 노드
 
-Job 시작/종료 비용 (is_first, is_last 플래그로 처리):
-- Job 시작: + (1-α) * P_comm[(D, u)]
-- Job 종료: + (1-α) * P_comm[(u, D)]
+ExecCost(i, u) = α * (P_comp[i][u] + β * P_net[u])
+- α: Tool i의 연산 중요도 (0 ~ 1)
+- β: 외부 인터넷 사용 여부 (data_locality가 external_data일 때 1)
+- P_comp[i][u]: Tool i의 노드 u에서의 연산 비용
+- P_net[u]: 노드 u의 외부 네트워크 비용
+
+TransCost(v -> u) = (1-α) * 통신비용
+- 데이터 이동 비용은 미들웨어를 경유하느냐에 따라 결정
+- 미들웨어는 DEVICE에 위치
+
+통신비용 계산:
+- Job 시작: P^{in}(u) - 미들웨어 → 실행노드 업로드
+- 노드 변경 (v≠u): P^{out}(v) + P^{in}(u) - 이전노드 → 미들웨어 → 현재노드
+- 노드 유지 (v==u): 0 - 미들웨어 경유 안 함
+- Job 종료: + P^{out}(u) - 최종 결과 반환
+
+P^{in}(u) = P_comm[(DEVICE, u)]  # 미들웨어 → 노드 업로드 비용
+P^{out}(v) = P_comm[(v, DEVICE)]  # 노드 → 미들웨어 다운로드 비용
 """
 
 from pathlib import Path
@@ -22,16 +32,17 @@ from typing import Optional
 import yaml
 
 from .types import Location, SchedulingResult, LOCATIONS
+from .profiles import NetworkMeasurements
 
 
 class ScoringEngine:
     """
-    Cost_i(u, v) = α * (P_comp[i][u] + β * P_net[u]) + (1-α) * TransCost
+    Score(i, u, v) = ExecCost(i, u) + TransCost(v -> u)
 
-    TransCost 계산 방식:
-      subagent_mode=True (기본값, SubAgent 간 직접 통신):
-        - P_comm[(v, u)] 사용
-      subagent_mode=False (Direct 실행, middleware 경유):
+    ExecCost(i, u) = α * (P_comp[i][u] + β * P_net[u])
+    TransCost(v -> u) = (1-α) * 통신비용
+
+    통신비용 (미들웨어 경유):
         - Job 시작: P^{in}(u)
         - 노드 변경 (v≠u): P^{out}(v) + P^{in}(u)
         - 노드 유지 (v==u): 0
@@ -43,23 +54,20 @@ class ScoringEngine:
     FULL_TO_SHORT = {"DEVICE": "D", "EDGE": "E", "CLOUD": "C"}
     LOCATION_TO_IDX = {"DEVICE": 0, "EDGE": 1, "CLOUD": 2}
 
-    def __init__(self, system_config_path: str | Path, registry, subagent_mode: bool = True):
+    def __init__(self, system_config_path: str | Path, registry):
         """
         Args:
             system_config_path: system.yaml 경로
             registry: ToolRegistry 인스턴스
-            subagent_mode: True면 SubAgent 직접 통신 (기본값), False면 middleware 경유 모델
         """
         self.registry = registry
-        self.subagent_mode = subagent_mode
         self.system_config = self._load_system_config(system_config_path)
         self.p_net = self._load_p_net()
         self.p_comm = self._load_p_comm()
-
-        # Middleware In/Out 비용 로드 (subagent_mode=False일 때)
-        if not subagent_mode:
-            self.p_comm_in = self._load_p_comm_in()
-            self.p_comm_out = self._load_p_comm_out()
+        self.p_comm_in = self._load_p_comm_in()
+        self.p_comm_out = self._load_p_comm_out()
+        # 실측 기반 동적 계산용
+        self.network = NetworkMeasurements.from_config(self.system_config)
 
     def _load_system_config(self, path: str | Path) -> dict:
         with open(path, "r") as f:
@@ -109,15 +117,22 @@ class ScoringEngine:
         """
         return {loc: self.p_comm[(loc, "DEVICE")] for loc in LOCATIONS}
 
-    def _get_p_comp(self, tool_name: str, u: Location) -> float:
-        """Tool별 P_comp[u] 가져오기"""
+    def _get_p_exec(self, tool_name: str, u: Location) -> float:
+        """Tool별 P_exec[u] 가져오기 (실측 기반 또는 fallback)"""
         profile = self.registry.get_profile(tool_name)
-        if profile and hasattr(profile, 'P_comp') and profile.P_comp:
-            idx = self.LOCATION_TO_IDX[u]
-            return float(profile.P_comp[idx])
-        # 기본값: system.yaml의 p_comp 또는 0.5
-        default_p_comp = self.system_config.get("p_comp", {})
-        return float(default_p_comp.get(u, 0.5))
+        idx = self.LOCATION_TO_IDX[u]
+
+        # 1. 실측 기반 measurements가 있으면 동적 계산
+        if profile and hasattr(profile, 'measurements') and profile.measurements:
+            p_exec_list = profile.measurements.calculate_p_exec()
+            return float(p_exec_list[idx])
+
+        # 2. Fallback: profile의 P_exec
+        if profile and hasattr(profile, 'P_exec') and profile.P_exec:
+            return float(profile.P_exec[idx])
+
+        # 3. 기본값
+        return 0.5
 
     def compute_cost(
         self,
@@ -144,52 +159,40 @@ class ScoringEngine:
         """
         profile = self.registry.get_profile(tool_name)
 
-        # Tool Profile에서 α 가져오기 (기본값: α=0.5)
-        alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5
-
         # β는 data_locality가 external_data일 때 자동으로 1
         data_locality = getattr(profile, 'data_locality', 'args_only') if profile else 'args_only'
         beta = 1 if data_locality == "external_data" else 0
 
-        # 연산 비용: P_comp[i][u] + β * P_net[u]
-        p_comp_u = self._get_p_comp(tool_name, u)
-        comp_cost = p_comp_u + beta * self.p_net.get(u, 0.5)
+        # α 결정: 실측 기반 또는 fallback
+        if profile and hasattr(profile, 'measurements') and profile.measurements:
+            # 실측 기반 동적 계산: α = T_exec / (T_exec + T_comm_in + T_comm_out)
+            path = f"D_{self.FULL_TO_SHORT[u]}"  # "DEVICE" → "D_E" 등
+            alpha = profile.measurements.calculate_alpha(self.network, path)
+        else:
+            # Fallback: profile의 alpha
+            alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5
 
-        # 통신 비용 계산
+        # 연산 비용: P_exec[i][u] + β * P_net[u]
+        p_exec_u = self._get_p_exec(tool_name, u)
+        comp_cost = p_exec_u + beta * self.p_net.get(u, 0.5)
+
+        # === Middleware 경유 모드: P^{in}(u) + P^{out}(v) ===
         comm_cost = 0.0
 
-        if self.subagent_mode:
-            # === SubAgent 직접 통신 모드 (기존 방식) ===
-            if is_first:
-                # Job 시작: P_comm[(D, u)]
-                comm_cost = self.p_comm[("DEVICE", u)]
-            elif v is not None:
-                if v == u:
-                    # 노드 유지: 0
-                    comm_cost = 0.0
-                else:
-                    # 노드 변경: P_comm[(v, u)]
-                    comm_cost = self.p_comm[(v, u)]
+        if is_first:
+            # Job 시작: P^{in}(u)
+            comm_cost = self.p_comm_in[u]
+        elif v is not None:
+            if v == u:
+                # 노드 유지: 0 (middleware 경유 안 함)
+                comm_cost = 0.0
+            else:
+                # 노드 변경: P^{out}(v) + P^{in}(u)
+                comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
 
-            if is_last:
-                # Job 종료: + P_comm[(u, D)]
-                comm_cost += self.p_comm[(u, "DEVICE")]
-        else:
-            # === Middleware 경유 모드 (Direct 실행) ===
-            if is_first:
-                # Job 시작: P^{in}(u)
-                comm_cost = self.p_comm_in[u]
-            elif v is not None:
-                if v == u:
-                    # 노드 유지: 0 (middleware 경유 안 함)
-                    comm_cost = 0.0
-                else:
-                    # 노드 변경: P^{out}(v) + P^{in}(u)
-                    comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
-
-            if is_last:
-                # Job 종료: + P^{out}(u)
-                comm_cost += self.p_comm_out[u]
+        if is_last:
+            # Job 종료: + P^{out}(u)
+            comm_cost += self.p_comm_out[u]
 
         # 총 비용: α * comp_cost + (1-α) * comm_cost
         total_cost = alpha * comp_cost + (1 - alpha) * comm_cost
