@@ -32,6 +32,7 @@ from typing import Optional
 import yaml
 
 from .types import Location, SchedulingResult, LOCATIONS
+from .profiles import NetworkMeasurements
 
 
 class ScoringEngine:
@@ -65,6 +66,8 @@ class ScoringEngine:
         self.p_comm = self._load_p_comm()
         self.p_comm_in = self._load_p_comm_in()
         self.p_comm_out = self._load_p_comm_out()
+        # 실측 기반 동적 계산용
+        self.network = NetworkMeasurements.from_config(self.system_config)
 
     def _load_system_config(self, path: str | Path) -> dict:
         with open(path, "r") as f:
@@ -114,15 +117,22 @@ class ScoringEngine:
         """
         return {loc: self.p_comm[(loc, "DEVICE")] for loc in LOCATIONS}
 
-    def _get_p_comp(self, tool_name: str, u: Location) -> float:
-        """Tool별 P_comp[u] 가져오기"""
+    def _get_p_exec(self, tool_name: str, u: Location) -> float:
+        """Tool별 P_exec[u] 가져오기 (실측 기반 또는 fallback)"""
         profile = self.registry.get_profile(tool_name)
-        if profile and hasattr(profile, 'P_comp') and profile.P_comp:
-            idx = self.LOCATION_TO_IDX[u]
-            return float(profile.P_comp[idx])
-        # 기본값: system.yaml의 p_comp 또는 0.5
-        default_p_comp = self.system_config.get("p_comp", {})
-        return float(default_p_comp.get(u, 0.5))
+        idx = self.LOCATION_TO_IDX[u]
+
+        # 1. 실측 기반 measurements가 있으면 동적 계산
+        if profile and hasattr(profile, 'measurements') and profile.measurements:
+            p_exec_list = profile.measurements.calculate_p_exec()
+            return float(p_exec_list[idx])
+
+        # 2. Fallback: profile의 P_exec
+        if profile and hasattr(profile, 'P_exec') and profile.P_exec:
+            return float(profile.P_exec[idx])
+
+        # 3. 기본값
+        return 0.5
 
     def compute_cost(
         self,
@@ -149,16 +159,22 @@ class ScoringEngine:
         """
         profile = self.registry.get_profile(tool_name)
 
-        # Tool Profile에서 α 가져오기 (기본값: α=0.5)
-        alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5
-
         # β는 data_locality가 external_data일 때 자동으로 1
         data_locality = getattr(profile, 'data_locality', 'args_only') if profile else 'args_only'
         beta = 1 if data_locality == "external_data" else 0
 
-        # 연산 비용: P_comp[i][u] + β * P_net[u]
-        p_comp_u = self._get_p_comp(tool_name, u)
-        comp_cost = p_comp_u + beta * self.p_net.get(u, 0.5)
+        # α 결정: 실측 기반 또는 fallback
+        if profile and hasattr(profile, 'measurements') and profile.measurements:
+            # 실측 기반 동적 계산: α = T_exec / (T_exec + T_comm_in + T_comm_out)
+            path = f"D_{self.FULL_TO_SHORT[u]}"  # "DEVICE" → "D_E" 등
+            alpha = profile.measurements.calculate_alpha(self.network, path)
+        else:
+            # Fallback: profile의 alpha
+            alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5
+
+        # 연산 비용: P_exec[i][u] + β * P_net[u]
+        p_exec_u = self._get_p_exec(tool_name, u)
+        comp_cost = p_exec_u + beta * self.p_net.get(u, 0.5)
 
         # === Middleware 경유 모드: P^{in}(u) + P^{out}(v) ===
         comm_cost = 0.0

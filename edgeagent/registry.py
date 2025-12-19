@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from .types import Location
-from .profiles import ToolProfile, EndpointConfig, ToolConfig
+from .profiles import ToolProfile, EndpointConfig, ToolConfig, ToolMeasurements
 
 
 def _expand_env_vars(value: str) -> str:
@@ -143,11 +143,20 @@ class ToolRegistry:
                     description=individual_profile_data.get("description", ""),
                 )
 
-                # Score-based Scheduling 파라미터
+                # Score-based Scheduling 파라미터 (fallback)
                 individual_profile.data_locality = individual_profile_data.get("data_locality", "args_only")
                 individual_profile.alpha = float(individual_profile_data.get("alpha", 0.5))
-                if "P_comp" in individual_profile_data:
-                    individual_profile.P_comp = [float(x) for x in individual_profile_data["P_comp"]]
+                if "P_exec" in individual_profile_data:
+                    individual_profile.P_exec = [float(x) for x in individual_profile_data["P_exec"]]
+
+                # 실측 기반 measurements (동적 계산용)
+                if "measurements" in individual_profile_data:
+                    m = individual_profile_data["measurements"]
+                    individual_profile.measurements = ToolMeasurements(
+                        input_datasize_mb=float(m.get("input_datasize_mb", 0.001)),
+                        output_datasize_mb=float(m.get("output_datasize_mb", 0.001)),
+                        t_exec_ms=m.get("T_exec_ms", {}),
+                    )
 
                 # 개별 Tool 등록 (endpoints는 서버와 공유)
                 individual_tool_config = ToolConfig(
