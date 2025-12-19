@@ -167,7 +167,8 @@ async def run_image_processing(
         print("Step 3: Prepare data")
         print("=" * 70)
 
-        data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+        # Use unified path that works across all locations (DEVICE/EDGE/CLOUD)
+        data_dir = Path("/edgeagent/data/scenario4")
         coco_images = data_dir / "coco" / "images"
         sample_images = data_dir / "sample_images"
 
@@ -179,9 +180,8 @@ async def run_image_processing(
             data_source = "Generated test images"
         else:
             raise FileNotFoundError(
-                f"No image directory found.\n"
-                "Run 'python scripts/download_public_datasets.py -s 4' for COCO 2017, or\n"
-                "Run 'python scripts/generate_test_images.py' for test images"
+                f"No image directory found in {data_dir}\n"
+                "Run 'python scripts/setup_test_data.py -s 4' for test data"
             )
 
         print(f"  Data Source: {data_source}")
@@ -189,9 +189,17 @@ async def run_image_processing(
         device_images = Path(input_dir)
         device_images.mkdir(parents=True, exist_ok=True)
 
-        for img in image_source.glob("*"):
-            if img.is_file():
-                shutil.copyfile(img, device_images / img.name)
+        # Copy images to target location if different from source
+        # Skip if target already has files (from previous run)
+        if image_source != device_images:
+            existing_files = set(f.name for f in device_images.glob("*") if f.is_file())
+            for img in image_source.glob("*"):
+                if img.is_file() and img.name not in existing_files:
+                    try:
+                        shutil.copyfile(img, device_images / img.name)
+                    except PermissionError:
+                        # Skip if permission denied (already exists from another user)
+                        pass
 
         total_input_size = sum(f.stat().st_size for f in device_images.glob("*") if f.is_file())
         print(f"  Prepared {len(list(device_images.glob('*')))} images ({total_input_size:,} bytes)")

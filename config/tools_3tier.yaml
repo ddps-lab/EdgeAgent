@@ -26,6 +26,12 @@ tools:
         transport: stdio
         command: mcp-server-filesystem
         args: ["/home/mhsong/edgeagent", "/tmp/edgeagent_device_hy"]
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   git:
     profile:
@@ -41,6 +47,12 @@ tools:
         transport: stdio
         command: mcp-server-git
         args: []
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-git.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+      CLOUD:
+        transport: streamable_http
+        url: "http://mcp-git.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   # ==========================================================================
   # EDGE Tools (Knative WASM - edge.edgeagent.ddps.cloud)
@@ -56,10 +68,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-time.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-time.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-time.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-time.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   log_parser:
     profile:
@@ -73,10 +85,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   data_aggregate:
     profile:
@@ -90,10 +102,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   fetch:
     profile:
@@ -107,10 +119,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-fetch.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-fetch.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-fetch.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-fetch.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   image_resize:
     profile:
@@ -124,10 +136,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-image-resize.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-image-resize.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-image-resize.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-image-resize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   sequentialthinking:
     profile:
@@ -139,10 +151,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-sequentialthinking.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-sequentialthinking.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-sequentialthinking.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-sequentialthinking.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
   # ==========================================================================
   # CLOUD 전용 Tools (Knative Container - cloud.edgeagent.ddps.cloud)
@@ -160,10 +172,10 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-summarize.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-summarize.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-summarize.edgeagent.cloud.edgeagent.ddps.cloud"
+        url: "http://mcp-summarize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
 
 # ==========================================================================
 # SubAgent Endpoints (for Orchestrator)

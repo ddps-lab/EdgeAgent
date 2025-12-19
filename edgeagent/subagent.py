@@ -149,19 +149,14 @@ class SubAgent:
 
     def _get_location_tools(self) -> list[str]:
         """
-        이 location에서 사용 가능한 tool 목록 반환
+        이 location에서 사용 가능한 개별 tool 목록 반환
 
-        MCP 서버 이름과 개별 tool 이름 모두 포함합니다.
-        예: ["filesystem", "read_file", "write_file", "log_parser", "parse_logs", ...]
+        개별 tool 이름만 포함합니다 (서버 이름 제외).
+        예: ["read_file", "write_file", "parse_logs", ...]
         """
         tools = []
-        # MCP 서버 이름 추가
-        for server_name in self.registry.list_servers():
-            tool_config = self.registry.get_tool(server_name)
-            if tool_config and self.location in tool_config.available_locations():
-                tools.append(server_name)
 
-        # 개별 tool 이름도 추가 (부모 서버가 이 location에서 사용 가능한 경우)
+        # 개별 tool 이름만 추가 (부모 서버가 이 location에서 사용 가능한 경우)
         for tool_name in self.registry.list_individual_tools():
             parent_server = self.registry.get_server_for_tool(tool_name)
             if parent_server:

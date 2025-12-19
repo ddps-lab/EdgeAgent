@@ -40,13 +40,16 @@ DEFAULT_RESEARCH_URLS = [
 def load_s2orc_urls(max_urls: int = 3) -> tuple[list[str], str]:
     """Load research URLs from S2ORC dataset.
 
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+
     Note: Semantic Scholar paper URLs are automatically converted to API calls
     by the fetch server, avoiding the HTTP 202 issue.
 
     Returns:
         Tuple of (urls, data_source_description)
     """
-    s2orc_dir = Path(__file__).parent.parent / "data" / "scenario3" / "s2orc"
+    # Use unified path that works across all locations
+    s2orc_dir = Path("/edgeagent/data/scenario3/s2orc")
     paper_urls_file = s2orc_dir / "paper_urls.txt"
 
     if paper_urls_file.exists():

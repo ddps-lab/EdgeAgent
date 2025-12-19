@@ -512,7 +512,12 @@ class EdgeAgentMCPClient:
             )
 
             # Tool placement 저장
-            default_location = self.scheduler.get_location(mcp_server)
+            if self.filter_location:
+                # SubAgent: filter_location으로 고정
+                default_location = self.filter_location
+            else:
+                # Orchestrator: scheduler에서 결정
+                default_location = self.scheduler.get_location(mcp_server)
             self.tool_placement[mcp_server] = default_location
 
         # ProxyTool 생성
@@ -525,11 +530,15 @@ class EdgeAgentMCPClient:
             # location → backend tool 매핑
             location_map = tool_data
 
+            # SubAgent (filter_location 설정됨): scheduler 없이 고정 location 사용
+            # Orchestrator: scheduler로 동적 location 결정
+            effective_scheduler = None if self.filter_location else self.scheduler
+
             proxy_tool = LocationAwareProxyTool(
                 name=mcp_tool_name,
                 description=first_tool.description,
                 backend_tools=location_map,
-                scheduler=self.scheduler,
+                scheduler=effective_scheduler,
                 parent_tool_name=parent_tool,
                 execution_trace=[],
                 metrics_collector=self.metrics_collector,

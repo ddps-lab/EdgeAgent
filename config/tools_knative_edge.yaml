@@ -1,0 +1,510 @@
+# EdgeAgent Tools Configuration for Edge Subagent (K3s Cluster)
+#
+# This config is used by edge-subagent running in Edge K3s cluster.
+# MCP servers are accessed via Knative internal DNS within Edge cluster.
+
+tools:
+  # ==========================================================================
+  # Filesystem - Edge Knative MCP Server
+  # ==========================================================================
+  filesystem:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-filesystem.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      read_file:
+        description: "Read file contents from filesystem"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      write_file:
+        description: "Write content to a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      read_multiple_files:
+        description: "Read multiple files at once"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      list_directory:
+        description: "List directory contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      list_directory_with_sizes:
+        description: "List directory with file sizes"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      directory_tree:
+        description: "Get directory tree structure"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      search_files:
+        description: "Search for files by pattern"
+        data_locality: local_data
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      get_file_info:
+        description: "Get file metadata"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      create_directory:
+        description: "Create a new directory"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      move_file:
+        description: "Move or rename a file"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      edit_file:
+        description: "Edit file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      read_text_file:
+        description: "Read text file contents"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      read_media_file:
+        description: "Read media file as base64"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      list_allowed_directories:
+        description: "List allowed directories for access"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Git - Edge Knative MCP Server
+  # ==========================================================================
+  git:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-git.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      git_diff:
+        description: "Show changes between commits, commit and working tree"
+        data_locality: local_data
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_log:
+        description: "Show commit logs"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_status:
+        description: "Show working tree status"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_show:
+        description: "Show various types of objects"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_diff_staged:
+        description: "Show changes staged for commit"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_diff_unstaged:
+        description: "Show changes not staged for commit"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_commit:
+        description: "Commit changes to the repository"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_add:
+        description: "Stage files for commit"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_reset:
+        description: "Unstage files from staging area"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_create_branch:
+        description: "Create a new branch"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_checkout:
+        description: "Switch branches or restore working tree files"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_list_branches:
+        description: "List all branches"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_init:
+        description: "Initialize a new Git repository"
+        data_locality: local_data
+        alpha: 0.2
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+      git_clone:
+        description: "Clone a repository"
+        data_locality: local_data
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: true
+
+  # ==========================================================================
+  # Time - Edge Knative MCP Server
+  # ==========================================================================
+  time:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-time.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      get_current_time:
+        description: "Get current time in a timezone"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Sequential Thinking - Edge Knative MCP Server
+  # ==========================================================================
+  sequentialthinking:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-sequentialthinking.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      sequentialthinking:
+        description: "Step-by-step reasoning and thinking"
+        data_locality: args_only
+        alpha: 0.7
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Fetch - Edge Knative MCP Server
+  # ==========================================================================
+  fetch:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-fetch.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      fetch:
+        description: "Fetch URL content and convert to markdown"
+        data_locality: external_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Log Parser - Edge Knative MCP Server
+  # ==========================================================================
+  log_parser:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-log-parser.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      parse_logs:
+        description: "Parse log file and extract structured data"
+        data_locality: args_only
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      filter_entries:
+        description: "Filter log entries by severity level"
+        data_locality: args_only
+        alpha: 0.4
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_log_statistics:
+        description: "Compute statistics from log data"
+        data_locality: args_only
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      search_entries:
+        description: "Search log entries by regex pattern"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Summarize - Edge Knative MCP Server
+  # ==========================================================================
+  summarize:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-summarize.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      summarize_text:
+        description: "Summarize text using LLM"
+        data_locality: external_data
+        alpha: 0.7
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: true
+        privacy_sensitive: false
+
+      summarize_documents:
+        description: "Summarize multiple documents"
+        data_locality: external_data
+        alpha: 0.7
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: true
+        privacy_sensitive: false
+
+      get_provider_info:
+        description: "Get summarization provider info"
+        data_locality: args_only
+        alpha: 0.1
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Data Aggregate - Edge Knative MCP Server
+  # ==========================================================================
+  data_aggregate:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-data-aggregate.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      aggregate_list:
+        description: "Aggregate list of items by grouping/counting/summing"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      merge_summaries:
+        description: "Merge multiple summary dictionaries"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      combine_research_results:
+        description: "Combine research/search results into summary"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      deduplicate:
+        description: "Remove duplicate items based on key fields"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_trends:
+        description: "Compute trends from time-series data"
+        data_locality: args_only
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+  # ==========================================================================
+  # Image Resize - Edge Knative MCP Server
+  # ==========================================================================
+  image_resize:
+    endpoints:
+      EDGE:
+        transport: streamable_http
+        url: "http://mcp-image-resize.edgeagent.svc.cluster.local/mcp"
+
+    tool_profiles:
+      scan_directory:
+        description: "Scan directory for images and get metadata"
+        data_locality: local_data
+        alpha: 0.6
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      get_image_info:
+        description: "Get detailed image metadata"
+        data_locality: local_data
+        alpha: 0.3
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      resize_image:
+        description: "Resize a single image"
+        data_locality: local_data
+        alpha: 0.8
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      batch_resize:
+        description: "Resize multiple images at once"
+        data_locality: args_only
+        alpha: 0.9
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compute_image_hash:
+        description: "Compute perceptual hash for duplicate detection"
+        data_locality: local_data
+        alpha: 0.7
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+      compare_hashes:
+        description: "Compare image hashes to find duplicates"
+        data_locality: args_only
+        alpha: 0.5
+        P_exec: [1.0, 0.3, 0.0]
+        requires_cloud_api: false
+        privacy_sensitive: false
+
+# ==========================================================================
+# SubAgent Endpoints (for Orchestrator to call)
+# ==========================================================================
+subagent_endpoints:
+  EDGE:
+    host: "edge-subagent.edgeagent.svc.cluster.local"
+    port: 80
+    timeout: 600.0
+
+# ==========================================================================
+# Static Mapping (default location for each tool)
+# ==========================================================================
+static_mapping:
+  filesystem: EDGE
+  git: EDGE
+  time: EDGE
+  sequentialthinking: EDGE
+  fetch: EDGE
+  log_parser: EDGE
+  summarize: EDGE
+  data_aggregate: EDGE
+  image_resize: EDGE

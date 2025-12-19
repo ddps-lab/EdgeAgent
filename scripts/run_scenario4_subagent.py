@@ -55,8 +55,12 @@ class ExecutionResult:
 
 
 def load_image_source() -> tuple[Path, str]:
-    """Load image source directory"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+    """Load image source directory.
+
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+    """
+    # Use unified path that works across all locations
+    data_dir = Path("/edgeagent/data/scenario4")
     coco_images = data_dir / "coco" / "images"
     sample_images = data_dir / "sample_images"
 
@@ -195,13 +199,18 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
     start_time = time.time()
 
     try:
-        config = OrchestrationConfig(
-            mode="subagent",
-            subagent_endpoints={},  # Local execution
-            model=model,
-            temperature=0,
-            max_iterations=15,  # More iterations for multiple images
-        )
+        # Load subagent endpoints from config file
+        config = OrchestrationConfig.from_yaml(config_path)
+        config.mode = "subagent"
+        config.model = model
+        config.temperature = 0
+        config.max_iterations = 15  # More iterations for multiple images
+
+        # Print loaded endpoints for verification
+        if config.subagent_endpoints:
+            print(f"\nLoaded SubAgent Endpoints:")
+            for loc, ep in config.subagent_endpoints.items():
+                print(f"  {loc}: {ep.host}:{ep.port}")
 
         system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
         orchestrator = SubAgentOrchestrator(

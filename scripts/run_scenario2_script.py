@@ -74,12 +74,10 @@ async def run_log_analysis(
     """
     start_time = time.time()
 
-    # 경로 설정 (모든 location에서 동일한 구조)
-    log_path = "/edgeagent/data/scenario2/server.log"
+    # 경로 설정
     report_path = "/edgeagent/results/scenario2_log_report.md"
 
     # 디렉토리 생성
-    Path("/edgeagent/data/scenario2").mkdir(parents=True, exist_ok=True)
     Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -168,33 +166,28 @@ async def run_log_analysis(
         print("Step 3: Prepare data")
         print("=" * 70)
 
-        data_dir = Path(__file__).parent.parent / "data" / "scenario2"
-        loghub_dir = data_dir / "loghub_samples"
-        sample_log = data_dir / "server.log"
+        # Use unified path that works across all locations (DEVICE/EDGE/CLOUD)
+        loghub_dir = Path("/edgeagent/data/scenario2/loghub_samples")
 
         log_file = None
         data_source = None
 
         if loghub_dir.exists():
-            for log_name in ["medium_python.log", "small_python.log"]:
+            for log_name in ["apache_small.log", "apache_medium.log"]:
                 candidate = loghub_dir / log_name
                 if candidate.exists():
                     log_file = candidate
                     data_source = f"LogHub ({log_name})"
                     break
 
-        if log_file is None and sample_log.exists():
-            log_file = sample_log
-            data_source = "Sample server.log"
-
         if log_file is None:
-            raise FileNotFoundError(f"No log file found in {data_dir}")
+            raise FileNotFoundError(
+                f"No log file found in {loghub_dir}\n"
+                "Run 'python scripts/setup_test_data.py -s 2' for test data"
+            )
 
         print(f"  Data Source: {data_source}")
         print(f"  Log file size: {log_file.stat().st_size:,} bytes")
-
-        target_log = Path(log_path)
-        target_log.write_text(log_file.read_text())
         print()
 
         # ================================================================
@@ -211,8 +204,16 @@ async def run_log_analysis(
         print(f"\n  [{tool_name}] -> {location}")
 
         read_tool = get_tool("read_text_file")
-        log_content = await read_tool.ainvoke({"path": str(target_log)})
-        print(f"    Read {len(str(log_content))} chars")
+        raw_log_content = await read_tool.ainvoke({"path": str(log_file)})
+        # Extract text content from MCP response
+        log_content_parsed = parse_tool_result(raw_log_content)
+        if isinstance(log_content_parsed, dict) and "raw" in log_content_parsed:
+            log_content_text = log_content_parsed["raw"]
+        elif isinstance(log_content_parsed, str):
+            log_content_text = log_content_parsed
+        else:
+            log_content_text = str(raw_log_content)
+        print(f"    Read {len(log_content_text)} chars")
 
         # 4.2: parse_logs
         tool_name = "parse_logs"
@@ -221,8 +222,8 @@ async def run_log_analysis(
 
         parse_tool = get_tool("parse_logs")
         raw_parsed = await parse_tool.ainvoke({
-            "log_content": str(log_content),
-            "format_type": "python"
+            "log_content": log_content_text,
+            "format_type": "auto"
         })
         parsed = parse_tool_result(raw_parsed)
         print(f"    Parsed {parsed.get('parsed_count', 0)} entries")

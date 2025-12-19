@@ -15,7 +15,9 @@ from typing import Any, Optional, TYPE_CHECKING
 
 
 # EDGE 서버 중 camelCase 파라미터를 사용하는 서버 목록
-EDGE_CAMELCASE_SERVERS = {"log_parser", "data_aggregate"}
+# Note: WASM MCP servers use snake_case (Rust convention), so this is now empty
+# Only JS/TS MCP servers would use camelCase
+EDGE_CAMELCASE_SERVERS: set[str] = set()
 
 # snake_case → camelCase 변환이 필요한 파라미터 매핑
 SNAKE_TO_CAMEL_MAP = {
@@ -257,15 +259,15 @@ class LocationAwareProxyTool(BaseTool):
         Returns:
             SchedulingResult: location과 결정 메타데이터
         """
-        from .scheduler import SchedulingResult
+        from .types import SchedulingResult
 
         if self.scheduler is None:
             # Scheduler 없으면 첫 번째 available location
             location = list(self.backend_tools.keys())[0]
             return SchedulingResult(
+                tool_name=self.name,
                 location=location,
                 reason="no_scheduler_default",
-                constraints_checked=[],
                 available_locations=list(self.backend_tools.keys()),
                 decision_time_ns=0,
             )

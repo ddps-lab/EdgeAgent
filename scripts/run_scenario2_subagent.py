@@ -55,40 +55,32 @@ class ExecutionResult:
 
 
 def load_log_source() -> tuple[Path, str]:
-    """Load log file source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
-    loghub_dir = data_dir / "loghub_samples"
-    sample_log = data_dir / "server.log"
+    """Load log file source.
+
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+    """
+    # Use unified path that works across all locations
+    loghub_dir = Path("/edgeagent/data/scenario2/loghub_samples")
 
     if loghub_dir.exists():
-        for log_name in ["small_python.log", "medium_python.log"]:
+        for log_name in ["apache_small.log", "apache_medium.log"]:
             candidate = loghub_dir / log_name
             if candidate.exists():
                 return candidate, f"LogHub ({log_name})"
 
-    if sample_log.exists():
-        return sample_log, "Sample server.log"
-
-    # Create minimal test log if nothing exists
-    test_log = Path("/edgeagent/data/scenario2/server.log")
-    test_log.parent.mkdir(parents=True, exist_ok=True)
-    test_log.write_text("""2024-01-01 10:00:00,000 - root - INFO - Application started
-2024-01-01 10:00:01,000 - root - WARNING - High memory usage detected
-2024-01-01 10:00:02,000 - root - ERROR - Connection timeout to database
-2024-01-01 10:00:03,000 - root - INFO - Retry attempt 1
-2024-01-01 10:00:04,000 - root - ERROR - Connection failed after retry
-2024-01-01 10:00:05,000 - root - INFO - Graceful shutdown initiated
-""")
-    return test_log, "Generated test log"
+    raise FileNotFoundError(
+        f"No log file found in {loghub_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 2' for test data"
+    )
 
 
 LOG_SOURCE, DATA_SOURCE = load_log_source()
 
 
-USER_REQUEST = """
-Analyze the server log file at /edgeagent/data/scenario2/server.log.
+USER_REQUEST = f"""
+Analyze the server log file at {LOG_SOURCE}.
 1. Read the log file using read_text_file
-2. Parse the logs using parse_logs with format_type='python' to get entries
+2. Parse the logs using parse_logs with format_type='auto' to get entries
 3. Compute statistics using compute_log_statistics with the entries
 4. Write a summary report to /edgeagent/results/scenario2_log_report.md
 
@@ -172,13 +164,18 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
     start_time = time.time()
 
     try:
-        config = OrchestrationConfig(
-            mode="subagent",
-            subagent_endpoints={},  # Local execution
-            model=model,
-            temperature=0,
-            max_iterations=10,
-        )
+        # Load subagent endpoints from config file
+        config = OrchestrationConfig.from_yaml(config_path)
+        config.mode = "subagent"
+        config.model = model
+        config.temperature = 0
+        config.max_iterations = 10
+
+        # Print loaded endpoints for verification
+        if config.subagent_endpoints:
+            print(f"\nLoaded SubAgent Endpoints:")
+            for loc, ep in config.subagent_endpoints.items():
+                print(f"  {loc}: {ep.host}:{ep.port}")
 
         system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
         orchestrator = SubAgentOrchestrator(

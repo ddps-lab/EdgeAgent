@@ -58,11 +58,13 @@ def parse_tool_result(result):
     return {"raw": str(result)}
 
 
-def prepare_repo(repo_path: str) -> tuple[Path, str]:
-    """Prepare Git repository - returns (repo_path, data_source)."""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
-    defects4j_dir = data_dir / "defects4j"
-    sample_repo = data_dir / "sample_repo"
+def prepare_repo() -> tuple[Path, str]:
+    """Prepare Git repository - returns (repo_path, data_source).
+
+    Uses /edgeagent/data/scenario1/defects4j/lang directly (works for DEVICE/EDGE/CLOUD).
+    """
+    # Use unified path that works across all locations
+    defects4j_dir = Path("/edgeagent/data/scenario1/defects4j")
 
     repo_source = None
     data_source = None
@@ -74,23 +76,13 @@ def prepare_repo(repo_path: str) -> tuple[Path, str]:
                 data_source = f"Defects4J ({subdir.name})"
                 break
 
-    if repo_source is None and sample_repo.exists() and (sample_repo / ".git").exists():
-        repo_source = sample_repo
-        data_source = "Generated sample repository"
-
     if repo_source is None:
         raise FileNotFoundError(
-            f"No Git repository found in {data_dir}\n"
+            f"No Git repository found in {defects4j_dir}\n"
             "Run 'python scripts/setup_test_data.py -s 1' for test data"
         )
 
-    device_repo = Path(repo_path)
-    device_repo.parent.mkdir(parents=True, exist_ok=True)
-    if device_repo.exists():
-        shutil.rmtree(device_repo)
-    shutil.copytree(repo_source, device_repo)
-
-    return device_repo, data_source
+    return repo_source, data_source
 
 
 async def run_code_review(
@@ -110,17 +102,15 @@ async def run_code_review(
     """
     start_time = time.time()
 
-    # 경로 설정 (모든 location에서 동일한 구조)
-    repo_path = "/edgeagent/repos/scenario1"
+    # 경로 설정 (모든 location에서 동일한 구조: /edgeagent)
     report_path = "/edgeagent/results/scenario1_code_review_report.md"
 
     # 디렉토리 생성
-    Path("/edgeagent/repos").mkdir(parents=True, exist_ok=True)
     Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Prepare repository first
-    device_repo, data_source = prepare_repo(repo_path)
+    # Prepare repository - use /edgeagent/data/scenario1/defects4j/lang directly
+    repo_path, data_source = prepare_repo()
 
     # ================================================================
     # Step 1: 스케줄러 먼저 실행 (MCP 연결 없이)
@@ -208,7 +198,7 @@ async def run_code_review(
         print("Step 3: Prepare data")
         print("=" * 70)
         print(f"  Data Source: {data_source}")
-        print(f"  Repository: {device_repo}")
+        print(f"  Repository: {repo_path}")
         print()
 
         # ================================================================
@@ -226,11 +216,11 @@ async def run_code_review(
 
         read_tool = get_tool("read_file")
         # 리포지토리의 주요 파일 읽기
-        main_file = device_repo / "src" / "main.py"
+        main_file = repo_path / "src" / "main.py"
         if not main_file.exists():
             # 다른 파일 찾기
-            py_files = list(device_repo.rglob("*.py"))
-            main_file = py_files[0] if py_files else device_repo / "README.md"
+            py_files = list(repo_path.rglob("*.py"))
+            main_file = py_files[0] if py_files else repo_path / "README.md"
 
         file_content = await read_tool.ainvoke({"path": str(main_file)})
         print(f"    Read {len(str(file_content))} chars from {main_file.name}")
@@ -241,7 +231,7 @@ async def run_code_review(
         print(f"\n  [{tool_name}] -> {location}")
 
         diff_tool = get_tool("git_diff")
-        raw_diff = await diff_tool.ainvoke({"repo_path": str(device_repo), "target": "HEAD~1"})
+        raw_diff = await diff_tool.ainvoke({"repo_path": str(repo_path), "target": "HEAD~1"})
         diff_result = parse_tool_result(raw_diff)
         diff_content = diff_result.get("diff", str(raw_diff)) if isinstance(diff_result, dict) else str(raw_diff)
         print(f"    Retrieved diff ({len(str(diff_content))} chars)")
@@ -284,7 +274,7 @@ async def run_code_review(
         report = f"""# Code Review Report
 
 ## Repository
-- Path: {device_repo}
+- Path: {repo_path}
 
 ## Code Summary
 {code_summary.get('summary', str(code_summary)) if isinstance(code_summary, dict) else code_summary}
