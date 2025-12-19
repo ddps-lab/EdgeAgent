@@ -32,11 +32,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from .types import Location
 from .registry import ToolRegistry
 from .scheduler import BaseScheduler, BruteForceChainScheduler
-from .proxy_tool import (
-    LocationAwareProxyTool,
-    EDGE_CAMELCASE_SERVERS,
-    convert_args_to_camelcase,
-)
+from .proxy_tool import LocationAwareProxyTool
 from .metrics import MetricsCollector, MetricsConfig
 
 
@@ -110,17 +106,12 @@ class MetricsWrappedTool(BaseTool):
         # Lazy 초기화
         await self._ensure_initialized()
 
-        # EDGE camelCase 서버용 파라미터 변환
-        invoke_kwargs = kwargs
-        if self.location == "EDGE" and self.parent_tool_name in EDGE_CAMELCASE_SERVERS:
-            invoke_kwargs = convert_args_to_camelcase(kwargs)
-
         if self.metrics_collector is not None:
             async with self.metrics_collector.start_call(
                 tool_name=self.name,
                 parent_tool_name=self.parent_tool_name,
                 location=self.location,
-                args=kwargs,  # 원본 args 기록 (snake_case)
+                args=kwargs,
             ) as ctx:
                 ctx.add_scheduling_info(
                     reason="placement_map_static",
@@ -133,7 +124,7 @@ class MetricsWrappedTool(BaseTool):
                     fixed=True,
                 )
                 try:
-                    result = await self.backend_tool.ainvoke(invoke_kwargs)
+                    result = await self.backend_tool.ainvoke(kwargs)
                     ctx.set_result(result)
                     ctx.set_actual_location(self.location, fallback=False)
                     return result
@@ -141,7 +132,7 @@ class MetricsWrappedTool(BaseTool):
                     ctx.set_error(e)
                     raise
         else:
-            return await self.backend_tool.ainvoke(invoke_kwargs)
+            return await self.backend_tool.ainvoke(kwargs)
 
     def __repr__(self) -> str:
         return f"MetricsWrappedTool({self.name}, location={self.location}, initialized={self._initialized})"

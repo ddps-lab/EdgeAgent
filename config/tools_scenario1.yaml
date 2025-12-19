@@ -170,7 +170,7 @@ tools:
         command: mcp-server-git
         args:
           - "--repository"
-          - "/edgeagent/repos/scenario1"
+          - "/edgeagent/data/scenario1/defects4j/lang"
         env: {}
       EDGE:
         transport: streamable_http

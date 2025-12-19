@@ -10,50 +10,7 @@ LLM에 노출되는 Proxy tool - 호출 시 Scheduler가 location을 결정하�
 - 리소스 사용량 추적
 """
 
-import re
 from typing import Any, Optional, TYPE_CHECKING
-
-
-# EDGE 서버 중 camelCase 파라미터를 사용하는 서버 목록
-EDGE_CAMELCASE_SERVERS = {"log_parser", "data_aggregate"}
-
-# snake_case → camelCase 변환이 필요한 파라미터 매핑
-SNAKE_TO_CAMEL_MAP = {
-    # log_parser
-    "log_content": "logContent",
-    "format_type": "formatType",
-    "max_entries": "maxEntries",
-    "min_level": "minLevel",
-    "include_levels": "includeLevels",
-    "case_sensitive": "caseSensitive",
-    # data_aggregate
-    "group_by": "groupBy",
-    "count_field": "countField",
-    "sum_fields": "sumFields",
-    "title_field": "titleField",
-    "summary_field": "summaryField",
-    "score_field": "scoreField",
-    "key_fields": "keyFields",
-    "time_series": "timeSeries",
-    "time_field": "timeField",
-    "value_field": "valueField",
-    "bucket_count": "bucketCount",
-}
-
-
-def convert_args_to_camelcase(args: dict[str, Any]) -> dict[str, Any]:
-    """
-    snake_case 파라미터를 camelCase로 변환
-
-    EDGE 서버 중 일부(log_parser, data_aggregate)가 camelCase를 사용하므로
-    호출 전 파라미터명 변환이 필요
-    """
-    converted = {}
-    for key, value in args.items():
-        new_key = SNAKE_TO_CAMEL_MAP.get(key, key)
-        converted[new_key] = value
-    return converted
-
 
 from pydantic import Field, ConfigDict
 
@@ -190,18 +147,13 @@ class LocationAwareProxyTool(BaseTool):
                     f"Available: {list(self.backend_tools.keys())}"
                 )
 
-        # 3. EDGE camelCase 서버용 파라미터 변환
-        invoke_kwargs = kwargs
-        if location == "EDGE" and self.parent_tool_name in EDGE_CAMELCASE_SERVERS:
-            invoke_kwargs = convert_args_to_camelcase(kwargs)
-
-        # 4. 메트릭 수집과 함께 tool 호출
+        # 3. 메트릭 수집과 함께 tool 호출
         if self.metrics_collector is not None:
             async with self.metrics_collector.start_call(
                 tool_name=self.name,
                 parent_tool_name=self.parent_tool_name,
                 location=location,
-                args=kwargs,  # 원본 args 기록 (snake_case)
+                args=kwargs,
             ) as ctx:
                 # Scheduling 정보 추가 (cost 포함)
                 # SchedulingConstraints → list[str] 변환
@@ -221,7 +173,7 @@ class LocationAwareProxyTool(BaseTool):
                     fixed=scheduling_result.fixed,
                 )
                 try:
-                    result = await backend_tool.ainvoke(invoke_kwargs)
+                    result = await backend_tool.ainvoke(kwargs)
                     ctx.set_result(result)
                     ctx.set_actual_location(location, fallback=fallback_occurred)
                     return result
@@ -230,7 +182,7 @@ class LocationAwareProxyTool(BaseTool):
                     raise
         else:
             # 기존 동작 유지 (메트릭 수집 없음)
-            return await backend_tool.ainvoke(invoke_kwargs)
+            return await backend_tool.ainvoke(kwargs)
 
     def _get_location(self, args: dict[str, Any]) -> Location:
         """
