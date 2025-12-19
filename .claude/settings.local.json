@@ -54,7 +54,8 @@
       "Bash(wasm-tools component wit:*)",
       "Bash(timeout 60 python:*)",
       "Bash(timeout 120 python:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(timeout 300 python:*)"
     ],
     "deny": [],
     "ask": []
