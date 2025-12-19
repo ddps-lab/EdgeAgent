@@ -37,7 +37,6 @@ spec:
           volumeMounts:
             - name: edgeagent-data
               mountPath: /edgeagent
-              subPath: repos
       volumes:
         - name: edgeagent-data
           persistentVolumeClaim:
