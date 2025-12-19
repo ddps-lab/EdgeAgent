@@ -117,12 +117,8 @@ where
     }
 
     fn invoke(&self, args: Value) -> Result<Value, String> {
-        // Measure deserialization time (Value -> struct)
-        let deser_start = Instant::now();
         let params: P = serde_json::from_value(args)
             .map_err(|e| format!("Invalid parameters: {}", e))?;
-        let deser_ms = deser_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("---DESER---{:.3}", deser_ms);
 
         // Measure tool execution time
         let exec_start = Instant::now();

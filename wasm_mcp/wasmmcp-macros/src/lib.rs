@@ -346,26 +346,11 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                         continue;
                     }
 
-                    // Check if this might be a tools/call request (quick check before full parse)
-                    let is_tools_call = line.contains("\"tools/call\"");
-
-                    // Output cold start time BEFORE JSON parsing
-                    // This is pure WASM loading time (wasmtime startup + module init)
-                    if is_tools_call {
-                        let cold_start_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
-                        eprintln!("---COLD_START---{:.3}", cold_start_ms);
-                    }
-
-                    // Parse JSON-RPC request (first deserialize: string -> Value)
-                    let json_parse_start = Instant::now();
+                    // Parse JSON-RPC request
                     let request: serde_json::Value = match serde_json::from_str(&line) {
                         Ok(v) => v,
                         Err(_) => continue,
                     };
-                    if is_tools_call {
-                        let json_parse_ms = json_parse_start.elapsed().as_secs_f64() * 1000.0;
-                        eprintln!("---JSON_PARSE---{:.3}", json_parse_ms);
-                    }
 
                     let method = request.get("method")
                         .and_then(|v| v.as_str())
