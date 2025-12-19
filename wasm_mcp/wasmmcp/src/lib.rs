@@ -35,6 +35,7 @@ pub mod transport;
 pub mod protocol;
 pub mod registry;
 pub mod builder;
+pub mod timing;
 
 // Re-export macros
 pub use wasmmcp_macros::{mcp_tool, wasmmcp_main, wasmmcp_http, wasmmcp_tool, export_cli, export_http};
@@ -77,6 +78,9 @@ pub mod prelude {
     // Re-exports for derive macros
     pub use crate::schemars;
     pub use crate::serde;
+
+    // Timing utilities
+    pub use crate::timing::{measure_io, ToolTimer};
 }
 
 /// Error type for WasmMCP operations

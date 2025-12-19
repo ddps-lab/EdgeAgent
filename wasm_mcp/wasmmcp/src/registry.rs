@@ -5,6 +5,7 @@
 //! to be used with both stdio and HTTP transports.
 
 use std::collections::HashMap;
+use std::time::Instant;
 use serde_json::Value;
 use schemars::JsonSchema;
 
@@ -139,10 +140,15 @@ where
     }
 
     fn invoke(&self, args: Value) -> Result<Value, String> {
+        // Measure tool execution time (including deserialization)
+        let exec_start = Instant::now();
+
         let params: P = serde_json::from_value(args)
             .map_err(|e| format!("Invalid parameters: {}", e))?;
-
         let result = (self.func)(params)?;
+
+        let exec_ms = exec_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---TOOL_EXEC---{:.3}", exec_ms);
 
         // Try to parse as JSON, otherwise return as string
         match serde_json::from_str(&result) {

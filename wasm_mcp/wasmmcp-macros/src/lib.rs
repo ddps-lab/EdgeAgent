@@ -325,8 +325,13 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
         impl wasi::exports::cli::run::Guest for WasmMcpCliRunner {
             fn run() -> Result<(), ()> {
                 use std::io::{BufRead, Write};
+                use std::time::Instant;
 
+                // Server creation is part of cold start
                 let server = #server_fn();
+
+                // Start timing after server creation (for wasm_total)
+                let wasm_start = Instant::now();
 
                 // Simple stdio JSON-RPC loop
                 let stdin = std::io::stdin();
@@ -342,11 +347,19 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                         continue;
                     }
 
+                    // Check if this is tools/call (for JSON parse timing)
+                    let is_tools_call = line.contains("\"tools/call\"");
+
                     // Parse JSON-RPC request
+                    let json_parse_start = Instant::now();
                     let request: serde_json::Value = match serde_json::from_str(&line) {
                         Ok(v) => v,
                         Err(_) => continue,
                     };
+                    if is_tools_call {
+                        let json_parse_ms = json_parse_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!("---JSON_PARSE---{:.3}", json_parse_ms);
+                    }
 
                     let method = request.get("method")
                         .and_then(|v| v.as_str())
@@ -369,6 +382,12 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                     let response_str = serde_json::to_string(&response).unwrap_or_default();
                     let _ = writeln!(stdout, "{}", response_str);
                     let _ = stdout.flush();
+
+                    // Output WASM total time after tools/call
+                    if method == "tools/call" {
+                        let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!("---WASM_TOTAL---{:.3}", wasm_total_ms);
+                    }
                 }
 
                 Ok(())

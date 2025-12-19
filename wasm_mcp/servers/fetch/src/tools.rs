@@ -3,6 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use url::Url;
+use wasmmcp::timing::measure_io;
 use regex::Regex;
 
 /// Make HTTP request using wasi:http/outgoing-handler
@@ -50,35 +51,40 @@ pub fn http_get(url_str: &str) -> Result<(u16, String), String> {
     request.set_path_with_query(Some(&path_and_query))
         .map_err(|_| "Failed to set path")?;
 
-    let future_response = outgoing_handler::handle(request, None)
-        .map_err(|e| format!("Failed to send request: {:?}", e))?;
+    // Measure the entire HTTP I/O operation
+    let (status, content_str) = measure_io(|| {
+        let future_response = outgoing_handler::handle(request, None)
+            .map_err(|e| format!("Failed to send request: {:?}", e))?;
 
-    let response = loop {
-        if let Some(result) = future_response.get() {
-            break result
-                .map_err(|_| "Response error".to_string())?
-                .map_err(|e| format!("HTTP error: {:?}", e))?;
+        let response = loop {
+            if let Some(result) = future_response.get() {
+                break result
+                    .map_err(|_| "Response error".to_string())?
+                    .map_err(|e| format!("HTTP error: {:?}", e))?;
+            }
+            future_response.subscribe().block();
+        };
+
+        let status = response.status();
+
+        let body = response.consume()
+            .map_err(|_| "Failed to consume response body")?;
+
+        let stream = body.stream()
+            .map_err(|_| "Failed to get body stream")?;
+
+        let mut content = Vec::new();
+        loop {
+            match stream.blocking_read(65536) {
+                Ok(chunk) if !chunk.is_empty() => content.extend_from_slice(&chunk),
+                _ => break,
+            }
         }
-        future_response.subscribe().block();
-    };
 
-    let status = response.status();
+        let content_str = String::from_utf8_lossy(&content).to_string();
 
-    let body = response.consume()
-        .map_err(|_| "Failed to consume response body")?;
-
-    let stream = body.stream()
-        .map_err(|_| "Failed to get body stream")?;
-
-    let mut content = Vec::new();
-    loop {
-        match stream.blocking_read(65536) {
-            Ok(chunk) if !chunk.is_empty() => content.extend_from_slice(&chunk),
-            _ => break,
-        }
-    }
-
-    let content_str = String::from_utf8_lossy(&content).to_string();
+        Ok::<_, String>((status, content_str))
+    })?;
 
     Ok((status, content_str))
 }

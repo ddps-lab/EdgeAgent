@@ -3,6 +3,8 @@
 //! Shared between CLI and HTTP transports.
 
 use serde_json::json;
+#[allow(unused_imports)]
+use wasmmcp::timing::measure_io;
 
 /// Process a sequential thinking step
 ///

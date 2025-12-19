@@ -8,6 +8,7 @@ use std::fs;
 use std::io::Read as IoRead;
 use std::path::{Path, PathBuf};
 use flate2::read::ZlibDecoder;
+use wasmmcp::timing::measure_io;
 
 #[derive(Debug, Serialize)]
 pub struct CommitInfo {
@@ -41,7 +42,7 @@ pub fn git_dir(repo_path: &str) -> Result<PathBuf, String> {
 
 pub fn read_head(git_dir: &Path) -> Result<String, String> {
     let head_path = git_dir.join("HEAD");
-    fs::read_to_string(&head_path)
+    measure_io(|| fs::read_to_string(&head_path))
         .map(|s| s.trim().to_string())
         .map_err(|e| format!("Failed to read HEAD: {}", e))
 }
@@ -50,7 +51,7 @@ pub fn resolve_ref(git_dir: &Path, ref_str: &str) -> Result<String, String> {
     if ref_str.starts_with("ref: ") {
         let ref_name = &ref_str[5..];
         let ref_path = git_dir.join(ref_name);
-        fs::read_to_string(&ref_path)
+        measure_io(|| fs::read_to_string(&ref_path))
             .map(|s| s.trim().to_string())
             .map_err(|e| format!("Failed to resolve ref {}: {}", ref_name, e))
     } else {
@@ -66,7 +67,7 @@ pub fn read_object(git_dir: &Path, sha: &str) -> Result<Vec<u8>, String> {
     // Try loose object first
     let loose_path = git_dir.join("objects").join(&sha[..2]).join(&sha[2..]);
     if loose_path.exists() {
-        let compressed = fs::read(&loose_path)
+        let compressed = measure_io(|| fs::read(&loose_path))
             .map_err(|e| format!("Failed to read object {}: {}", sha, e))?;
         let mut decoder = ZlibDecoder::new(&compressed[..]);
         let mut decompressed = Vec::new();
@@ -153,7 +154,7 @@ pub fn list_branches(git_dir: &Path, branch_type: &str) -> Result<Vec<BranchInfo
     if branch_type == "remote" || branch_type == "all" {
         let remotes_dir = git_dir.join("refs/remotes");
         if remotes_dir.exists() {
-            for entry in fs::read_dir(&remotes_dir).map_err(|e| e.to_string())? {
+            for entry in measure_io(|| fs::read_dir(&remotes_dir)).map_err(|e| e.to_string())? {
                 if let Ok(entry) = entry {
                     let remote_name = entry.file_name().to_string_lossy().to_string();
                     collect_refs(&entry.path(), &remote_name, "remote", &None, &mut branches)?;
@@ -176,7 +177,7 @@ fn collect_refs(
         return Ok(());
     }
 
-    for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+    for entry in measure_io(|| fs::read_dir(dir)).map_err(|e| e.to_string())? {
         if let Ok(entry) = entry {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
@@ -199,7 +200,7 @@ fn collect_refs(
                     .map(|c| c == &branch_name)
                     .unwrap_or(false);
 
-                let sha = fs::read_to_string(&path)
+                let sha = measure_io(|| fs::read_to_string(&path))
                     .map(|s| s.trim().to_string())
                     .unwrap_or_default();
 
@@ -285,7 +286,7 @@ pub fn git_show(repo_path: &str, revision: &str) -> Result<String, String> {
     } else {
         let ref_path = git_dir.join("refs/heads").join(revision);
         if ref_path.exists() {
-            fs::read_to_string(&ref_path)
+            measure_io(|| fs::read_to_string(&ref_path))
                 .map(|s| s.trim().to_string())
                 .map_err(|e| format!("Failed to read ref: {}", e))?
         } else {

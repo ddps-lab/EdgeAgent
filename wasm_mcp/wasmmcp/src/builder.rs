@@ -4,6 +4,7 @@
 //! The builder can be used to create both stdio and HTTP servers.
 
 use crate::registry::{Tool, ToolRegistry};
+use crate::timing::{reset_io_accumulator, get_io_duration};
 use serde_json::{json, Value};
 use schemars::JsonSchema;
 
@@ -128,7 +129,15 @@ impl McpServer {
 
     /// Handle MCP tools/call request
     pub fn handle_tools_call(&self, name: &str, args: Value) -> Result<Value, String> {
+        // Reset I/O accumulator before tool execution
+        reset_io_accumulator();
+
         let result = self.registry.call(name, args)?;
+
+        // Output I/O timing (accumulated during tool execution via measure_io)
+        let io_duration = get_io_duration();
+        let io_ms = io_duration.as_secs_f64() * 1000.0;
+        eprintln!("---IO---{:.3}", io_ms);
 
         // Format as MCP content response
         let text = if result.is_string() {
