@@ -327,10 +327,11 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                 use std::io::{BufRead, Write};
                 use std::time::Instant;
 
-                // Start timing from the very beginning (WASM cold start)
-                let wasm_start = Instant::now();
-
+                // Server creation is part of cold start
                 let server = #server_fn();
+
+                // Start timing after server creation (for wasm_total)
+                let wasm_start = Instant::now();
 
                 // Simple stdio JSON-RPC loop
                 let stdin = std::io::stdin();
@@ -346,11 +347,19 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                         continue;
                     }
 
+                    // Check if this is tools/call (for JSON parse timing)
+                    let is_tools_call = line.contains("\"tools/call\"");
+
                     // Parse JSON-RPC request
+                    let json_parse_start = Instant::now();
                     let request: serde_json::Value = match serde_json::from_str(&line) {
                         Ok(v) => v,
                         Err(_) => continue,
                     };
+                    if is_tools_call {
+                        let json_parse_ms = json_parse_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!("---JSON_PARSE---{:.3}", json_parse_ms);
+                    }
 
                     let method = request.get("method")
                         .and_then(|v| v.as_str())
