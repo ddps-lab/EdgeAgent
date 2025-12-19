@@ -5,6 +5,7 @@
 //! to be used with both stdio and HTTP transports.
 
 use std::collections::HashMap;
+use std::time::Instant;
 use serde_json::Value;
 use schemars::JsonSchema;
 
@@ -116,8 +117,12 @@ where
     }
 
     fn invoke(&self, args: Value) -> Result<Value, String> {
+        // Measure deserialization time
+        let deser_start = Instant::now();
         let params: P = serde_json::from_value(args)
             .map_err(|e| format!("Invalid parameters: {}", e))?;
+        let deser_ms = deser_start.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("---DESER---{:.3}", deser_ms);
 
         let result = (self.func)(params)?;
 

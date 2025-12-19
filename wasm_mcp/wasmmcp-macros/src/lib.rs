@@ -358,6 +358,13 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                     let params = request.get("params").cloned();
                     let id = request.get("id").cloned();
 
+                    // Output cold start time BEFORE tools/call processing
+                    // This is pure WASM loading time (before deserialization & tool execution)
+                    if method == "tools/call" {
+                        let cold_start_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!("---COLD_START---{:.3}", cold_start_ms);
+                    }
+
                     // Handle the request
                     let result = server.handle_jsonrpc(method, params);
 
