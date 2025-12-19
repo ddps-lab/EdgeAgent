@@ -2,10 +2,11 @@
 //!
 //! Reads git repository data directly from .git directory.
 //! No external git command or library dependencies.
+//! Supports both loose objects and pack files.
 
 use serde::Serialize;
-use std::fs;
-use std::io::Read as IoRead;
+use std::fs::{self, File};
+use std::io::{Read as IoRead, Seek, SeekFrom, BufReader};
 use std::path::{Path, PathBuf};
 use flate2::read::ZlibDecoder;
 use wasmmcp::timing::measure_io;
@@ -76,13 +77,348 @@ pub fn read_object(git_dir: &Path, sha: &str) -> Result<Vec<u8>, String> {
         return Ok(decompressed);
     }
 
-    // Try pack files (simplified - just look for the object)
+    // Try pack files
     let pack_dir = git_dir.join("objects/pack");
     if pack_dir.exists() {
-        return Err(format!("Object {} not found in loose objects. Pack file search not implemented.", sha));
+        if let Ok(result) = read_object_from_pack(&pack_dir, sha) {
+            return Ok(result);
+        }
     }
 
     Err(format!("Object {} not found", sha))
+}
+
+// ==========================================
+// Pack file support
+// ==========================================
+
+/// Read object from pack files
+fn read_object_from_pack(pack_dir: &Path, sha: &str) -> Result<Vec<u8>, String> {
+    let sha_bytes = hex::decode(sha).map_err(|e| format!("Invalid SHA: {}", e))?;
+
+    // Find all .idx files
+    let entries = measure_io(|| fs::read_dir(pack_dir))
+        .map_err(|e| format!("Failed to read pack dir: {}", e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "idx") {
+            if let Ok(offset) = find_object_in_idx(&path, &sha_bytes) {
+                // Get corresponding .pack file
+                let pack_path = path.with_extension("pack");
+                if pack_path.exists() {
+                    return read_object_from_packfile(&pack_path, offset);
+                }
+            }
+        }
+    }
+
+    Err(format!("Object {} not found in pack files", sha))
+}
+
+/// Find object offset in .idx file (version 2 format)
+fn find_object_in_idx(idx_path: &Path, sha: &[u8]) -> Result<u64, String> {
+    let file = measure_io(|| File::open(idx_path))
+        .map_err(|e| format!("Failed to open idx: {}", e))?;
+    let mut reader = BufReader::new(file);
+
+    // Read header
+    let mut header = [0u8; 8];
+    reader.read_exact(&mut header).map_err(|e| e.to_string())?;
+
+    // Check for v2 magic
+    if header[0..4] != [0xff, 0x74, 0x4f, 0x63] {
+        return Err("Only idx v2 supported".to_string());
+    }
+
+    let version = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
+    if version != 2 {
+        return Err(format!("Unsupported idx version: {}", version));
+    }
+
+    // Read fanout table (256 entries, 4 bytes each)
+    let mut fanout = [0u32; 256];
+    for i in 0..256 {
+        let mut buf = [0u8; 4];
+        reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
+        fanout[i] = u32::from_be_bytes(buf);
+    }
+
+    let total_objects = fanout[255] as usize;
+    let first_byte = sha[0] as usize;
+
+    // Determine search range
+    let start = if first_byte == 0 { 0 } else { fanout[first_byte - 1] as usize };
+    let end = fanout[first_byte] as usize;
+
+    if start >= end {
+        return Err("Object not in this pack".to_string());
+    }
+
+    // SHA table starts after header (8 bytes) and fanout (256 * 4 = 1024 bytes)
+    let sha_table_offset = 8 + 1024;
+
+    // Binary search in SHA table
+    let mut low = start;
+    let mut high = end;
+
+    while low < high {
+        let mid = (low + high) / 2;
+        let sha_offset = sha_table_offset + (mid * 20);
+
+        reader.seek(SeekFrom::Start(sha_offset as u64)).map_err(|e| e.to_string())?;
+        let mut entry_sha = [0u8; 20];
+        reader.read_exact(&mut entry_sha).map_err(|e| e.to_string())?;
+
+        match sha.cmp(&entry_sha[..]) {
+            std::cmp::Ordering::Less => high = mid,
+            std::cmp::Ordering::Greater => low = mid + 1,
+            std::cmp::Ordering::Equal => {
+                // Found! Now get the offset
+                // CRC table: after SHA table
+                let crc_table_offset = sha_table_offset + (total_objects * 20);
+                // Offset table: after CRC table
+                let offset_table_offset = crc_table_offset + (total_objects * 4);
+
+                let offset_pos = offset_table_offset + (mid * 4);
+                reader.seek(SeekFrom::Start(offset_pos as u64)).map_err(|e| e.to_string())?;
+
+                let mut offset_buf = [0u8; 4];
+                reader.read_exact(&mut offset_buf).map_err(|e| e.to_string())?;
+                let offset = u32::from_be_bytes(offset_buf);
+
+                // Check MSB for large offset
+                if offset & 0x80000000 != 0 {
+                    // Large offset - need to read from 64-bit offset table
+                    let large_offset_idx = (offset & 0x7fffffff) as usize;
+                    let large_offset_table_offset = offset_table_offset + (total_objects * 4);
+                    let large_pos = large_offset_table_offset + (large_offset_idx * 8);
+
+                    reader.seek(SeekFrom::Start(large_pos as u64)).map_err(|e| e.to_string())?;
+                    let mut large_buf = [0u8; 8];
+                    reader.read_exact(&mut large_buf).map_err(|e| e.to_string())?;
+                    return Ok(u64::from_be_bytes(large_buf));
+                }
+
+                return Ok(offset as u64);
+            }
+        }
+    }
+
+    Err("Object not found in idx".to_string())
+}
+
+/// Read object from .pack file at given offset
+fn read_object_from_packfile(pack_path: &Path, offset: u64) -> Result<Vec<u8>, String> {
+    let file = measure_io(|| File::open(pack_path))
+        .map_err(|e| format!("Failed to open pack: {}", e))?;
+    let mut reader = BufReader::new(file);
+
+    reader.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+
+    // Read object header (variable length encoding)
+    let mut byte = [0u8; 1];
+    reader.read_exact(&mut byte).map_err(|e| e.to_string())?;
+
+    let obj_type = (byte[0] >> 4) & 0x07;
+    let mut size = (byte[0] & 0x0f) as u64;
+    let mut shift = 4;
+
+    while byte[0] & 0x80 != 0 {
+        reader.read_exact(&mut byte).map_err(|e| e.to_string())?;
+        size |= ((byte[0] & 0x7f) as u64) << shift;
+        shift += 7;
+    }
+
+    match obj_type {
+        1 | 2 | 3 | 4 => {
+            // commit, tree, blob, tag - deflate compressed
+            read_deflated_object(&mut reader, obj_type, size)
+        }
+        6 => {
+            // OFS_DELTA - offset delta
+            read_ofs_delta(&mut reader, pack_path, offset)
+        }
+        7 => {
+            // REF_DELTA - reference delta
+            read_ref_delta(&mut reader, pack_path)
+        }
+        _ => Err(format!("Unknown object type: {}", obj_type))
+    }
+}
+
+/// Read deflate-compressed object
+fn read_deflated_object<R: IoRead>(reader: &mut R, obj_type: u8, size: u64) -> Result<Vec<u8>, String> {
+    let type_str = match obj_type {
+        1 => "commit",
+        2 => "tree",
+        3 => "blob",
+        4 => "tag",
+        _ => "unknown",
+    };
+
+    // Read remaining data and decompress
+    let mut compressed = Vec::new();
+    reader.read_to_end(&mut compressed).map_err(|e| e.to_string())?;
+
+    let mut decoder = ZlibDecoder::new(&compressed[..]);
+    let mut content = Vec::new();
+    decoder.read_to_end(&mut content).map_err(|e| format!("Decompress error: {}", e))?;
+
+    // Truncate to expected size
+    content.truncate(size as usize);
+
+    // Create git object format: "type size\0content"
+    let header = format!("{} {}\0", type_str, content.len());
+    let mut result = header.into_bytes();
+    result.extend(content);
+
+    Ok(result)
+}
+
+/// Read OFS_DELTA object
+fn read_ofs_delta<R: IoRead + Seek>(reader: &mut R, pack_path: &Path, current_offset: u64) -> Result<Vec<u8>, String> {
+    // Read negative offset (variable length encoding)
+    let mut byte = [0u8; 1];
+    reader.read_exact(&mut byte).map_err(|e| e.to_string())?;
+
+    let mut base_offset = (byte[0] & 0x7f) as u64;
+    while byte[0] & 0x80 != 0 {
+        reader.read_exact(&mut byte).map_err(|e| e.to_string())?;
+        base_offset = ((base_offset + 1) << 7) | ((byte[0] & 0x7f) as u64);
+    }
+
+    let base_pack_offset = current_offset - base_offset;
+
+    // Read and decompress delta
+    let mut compressed = Vec::new();
+    reader.read_to_end(&mut compressed).map_err(|e| e.to_string())?;
+
+    let mut decoder = ZlibDecoder::new(&compressed[..]);
+    let mut delta = Vec::new();
+    decoder.read_to_end(&mut delta).map_err(|e| format!("Delta decompress error: {}", e))?;
+
+    // Read base object recursively
+    let base = read_object_from_packfile(pack_path, base_pack_offset)?;
+
+    // Apply delta
+    apply_delta(&base, &delta)
+}
+
+/// Read REF_DELTA object
+fn read_ref_delta<R: IoRead>(reader: &mut R, pack_path: &Path) -> Result<Vec<u8>, String> {
+    // Read base SHA
+    let mut base_sha = [0u8; 20];
+    reader.read_exact(&mut base_sha).map_err(|e| e.to_string())?;
+    let base_sha_hex = hex::encode(base_sha);
+
+    // Read and decompress delta
+    let mut compressed = Vec::new();
+    reader.read_to_end(&mut compressed).map_err(|e| e.to_string())?;
+
+    let mut decoder = ZlibDecoder::new(&compressed[..]);
+    let mut delta = Vec::new();
+    decoder.read_to_end(&mut delta).map_err(|e| format!("Delta decompress error: {}", e))?;
+
+    // Find base object in pack
+    let pack_dir = pack_path.parent().ok_or("No parent dir")?;
+    let base = read_object_from_pack(pack_dir, &base_sha_hex)?;
+
+    apply_delta(&base, &delta)
+}
+
+/// Apply git delta to base object
+fn apply_delta(base: &[u8], delta: &[u8]) -> Result<Vec<u8>, String> {
+    if delta.is_empty() {
+        return Err("Empty delta".to_string());
+    }
+
+    let mut pos = 0;
+
+    // Read base size (variable length)
+    let (_, new_pos) = read_delta_size(delta, pos)?;
+    pos = new_pos;
+
+    // Read result size (variable length)
+    let (result_size, new_pos) = read_delta_size(delta, pos)?;
+    pos = new_pos;
+
+    // Extract content from base (skip header)
+    let base_content = base.iter()
+        .position(|&b| b == 0)
+        .map(|p| &base[p + 1..])
+        .ok_or("Invalid base object")?;
+
+    // Apply delta instructions
+    let mut result = Vec::with_capacity(result_size as usize);
+
+    while pos < delta.len() {
+        let cmd = delta[pos];
+        pos += 1;
+
+        if cmd & 0x80 != 0 {
+            // Copy from base
+            let mut copy_offset = 0u32;
+            let mut copy_size = 0u32;
+
+            if cmd & 0x01 != 0 { copy_offset |= delta.get(pos).copied().unwrap_or(0) as u32; pos += 1; }
+            if cmd & 0x02 != 0 { copy_offset |= (delta.get(pos).copied().unwrap_or(0) as u32) << 8; pos += 1; }
+            if cmd & 0x04 != 0 { copy_offset |= (delta.get(pos).copied().unwrap_or(0) as u32) << 16; pos += 1; }
+            if cmd & 0x08 != 0 { copy_offset |= (delta.get(pos).copied().unwrap_or(0) as u32) << 24; pos += 1; }
+
+            if cmd & 0x10 != 0 { copy_size |= delta.get(pos).copied().unwrap_or(0) as u32; pos += 1; }
+            if cmd & 0x20 != 0 { copy_size |= (delta.get(pos).copied().unwrap_or(0) as u32) << 8; pos += 1; }
+            if cmd & 0x40 != 0 { copy_size |= (delta.get(pos).copied().unwrap_or(0) as u32) << 16; pos += 1; }
+
+            if copy_size == 0 { copy_size = 0x10000; }
+
+            let start = copy_offset as usize;
+            let end = start + copy_size as usize;
+            if end <= base_content.len() {
+                result.extend_from_slice(&base_content[start..end]);
+            }
+        } else if cmd != 0 {
+            // Insert new data
+            let insert_size = cmd as usize;
+            if pos + insert_size <= delta.len() {
+                result.extend_from_slice(&delta[pos..pos + insert_size]);
+                pos += insert_size;
+            }
+        }
+    }
+
+    // Reconstruct full object with header
+    // Try to determine type from base
+    let base_header = &base[..base.iter().position(|&b| b == 0).unwrap_or(0)];
+    let base_header_str = String::from_utf8_lossy(base_header);
+    let type_str = base_header_str.split_whitespace().next().unwrap_or("blob");
+
+    let header = format!("{} {}\0", type_str, result.len());
+    let mut full_result = header.into_bytes();
+    full_result.extend(result);
+
+    Ok(full_result)
+}
+
+/// Read variable-length size from delta
+fn read_delta_size(delta: &[u8], mut pos: usize) -> Result<(u64, usize), String> {
+    if pos >= delta.len() {
+        return Err("Delta too short".to_string());
+    }
+
+    let mut size = (delta[pos] & 0x7f) as u64;
+    let mut shift = 7;
+
+    while delta[pos] & 0x80 != 0 {
+        pos += 1;
+        if pos >= delta.len() {
+            return Err("Delta size incomplete".to_string());
+        }
+        size |= ((delta[pos] & 0x7f) as u64) << shift;
+        shift += 7;
+    }
+
+    Ok((size, pos + 1))
 }
 
 pub fn parse_commit(data: &[u8]) -> Result<CommitInfo, String> {
