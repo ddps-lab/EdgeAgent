@@ -189,7 +189,7 @@ tools:
         description: "Parse log file and extract structured data"
         data_locality: args_only
         alpha: 0.6
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec: [1.0, 0.6, 0.0]
         requires_cloud_api: false
         privacy_sensitive: false
 
@@ -288,5 +288,5 @@ tools:
 # Static mapping (StaticScheduler용) - MCP Server 이름으로 location 지정
 static_mapping:
   filesystem: DEVICE
-  log_parser: EDGE
+  log_parser: CLOUD
   data_aggregate: EDGE

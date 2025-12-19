@@ -112,15 +112,23 @@ class LocationAwareProxyTool(BaseTool):
         """
         Async execution with location-aware routing
 
-        1. Scheduler가 location 결정 (with reason)
-        2. 해당 location의 backend tool 선택 (fallback 지원)
-        3. Trace 기록 및 메트릭 수집
-        4. 실제 tool 호출
+        1. filter_location이 설정되어 있으면 scheduler 호출 스킵 (SubAgent 모드)
+        2. 그렇지 않으면 Scheduler가 location 결정 (Agent 모드)
+        3. 해당 location의 backend tool 선택
+        4. Trace 기록 및 메트릭 수집
+        5. 실제 tool 호출
         """
-        # 1. Scheduler가 location 결정 (상세 정보 포함)
-        scheduling_result = self._get_location_with_reason(kwargs)
-        location = scheduling_result.location
         fallback_occurred = False
+
+        # 1. filter_location이 설정되어 있으면 scheduler 호출 스킵
+        #    (SubAgent 모드: schedule_chain()으로 이미 결정됨)
+        if self.client and self.client.filter_location:
+            location = self.client.filter_location
+            scheduling_result = self._create_fixed_scheduling_result(location)
+        else:
+            # Agent 모드: Scheduler가 location 결정
+            scheduling_result = self._get_location_with_reason(kwargs)
+            location = scheduling_result.location
 
         # 2. 해당 location의 backend tool 선택 (lazy loading)
         backend_tool = self.backend_tools.get(location)
@@ -227,6 +235,33 @@ class LocationAwareProxyTool(BaseTool):
         return self.scheduler.get_location_for_call_with_reason(
             tool_name=self.name,
             args=args,
+        )
+
+    def _create_fixed_scheduling_result(self, location: str):
+        """
+        filter_location으로 고정된 경우의 SchedulingResult 생성
+
+        SubAgent 모드에서 schedule_chain()으로 이미 결정된 location을 사용하므로
+        scheduler 호출 없이 SchedulingResult를 생성합니다.
+
+        Args:
+            location: 고정된 location (filter_location)
+
+        Returns:
+            SchedulingResult: 고정 location 정보
+        """
+        from .scheduler import SchedulingResult
+
+        return SchedulingResult(
+            tool_name=self.name,
+            location=location,
+            reason="filter_location_fixed",
+            available_locations=[location],
+            decision_time_ns=0,
+            score=0.0,
+            exec_cost=0.0,
+            trans_cost=0.0,
+            fixed=True,
         )
 
     @property
