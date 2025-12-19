@@ -44,55 +44,36 @@ from edgeagent.metrics import (
 
 
 def load_repo_source() -> tuple[Path, str]:
-    """Load Git repository source"""
-    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
-    defects4j_dir = data_dir / "defects4j"
-    sample_repo = data_dir / "sample_repo"
+    """Load Git repository source - use /edgeagent/data directly (works for DEVICE/EDGE/CLOUD)"""
+    defects4j_dir = Path("/edgeagent/data/scenario1/defects4j")
 
-    # Check for Defects4J
     if defects4j_dir.exists():
         for subdir in defects4j_dir.iterdir():
             if subdir.is_dir() and (subdir / ".git").exists():
                 return subdir, f"Defects4J ({subdir.name})"
 
-    # Check for sample repository
-    if sample_repo.exists() and (sample_repo / ".git").exists():
-        return sample_repo, "Generated sample repository"
-
     raise FileNotFoundError(
-        f"No Git repository found in {data_dir}\n"
+        f"No Git repository found in {defects4j_dir}\n"
         "Run 'python scripts/setup_test_data.py -s 1' for test data"
     )
 
 
-def prepare_repo() -> tuple[Path, str]:
-    """Prepare repository (same path structure exists on all locations)"""
-    repo_source, data_source = load_repo_source()
-
-    repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
-    repo_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if repo_path.exists():
-        shutil.rmtree(repo_path)
-    shutil.copytree(repo_source, repo_path)
-
-    return repo_path, data_source
+# Load repo at module load time (no copy needed - use /edgeagent/data directly)
+REPO_PATH, DATA_SOURCE = load_repo_source()
 
 
-# Prepare repo at module load time (before MCP client starts)
-REPO_PATH, DATA_SOURCE = prepare_repo()
-
-
-USER_REQUEST = """
-Review the Git repository at /edgeagent/data/scenario1/defects4j/lang.
+def get_user_request() -> str:
+    """Generate USER_REQUEST with actual repo path"""
+    return f"""
+Review the Git repository at {REPO_PATH}.
 
 Execute the following tool calls with EXACT parameters:
 
 Step 1: read_file
-  - path: "/edgeagent/data/scenario1/defects4j/lang/README.md"
+  - path: "{REPO_PATH}/README.md"
 
 Step 2: git_diff
-  - repo_path: "/edgeagent/data/scenario1/defects4j/lang"
+  - repo_path: "{REPO_PATH}"
   - target: "HEAD~1"
 
 Step 3: summarize_text
@@ -106,10 +87,13 @@ Step 5: write_file
   - content: (final review report)
 
 CRITICAL: Use the EXACT paths shown above. Do NOT modify or shorten them.
-The repository path is "/edgeagent/data/scenario1/defects4j/lang".
+The repository path is "{REPO_PATH}".
 
 Return a summary of the code review.
 """
+
+
+USER_REQUEST = get_user_request()
 
 # Tool sequence for Sub-Agent mode (order matters)
 # 개별 tool 이름 사용 (서버 이름 아님) - Scheduler가 정확한 profile 참조 가능
@@ -217,13 +201,18 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
     start_time = time.time()
 
     try:
-        config = OrchestrationConfig(
-            mode="subagent",
-            subagent_endpoints={},  # Local execution
-            model=model,
-            temperature=0,
-            max_iterations=10,
-        )
+        # Load subagent endpoints from config file
+        config = OrchestrationConfig.from_yaml(config_path)
+        config.mode = "subagent"
+        config.model = model
+        config.temperature = 0
+        config.max_iterations = 10
+
+        # Print loaded endpoints for verification
+        if config.subagent_endpoints:
+            print(f"\nLoaded SubAgent Endpoints:")
+            for loc, ep in config.subagent_endpoints.items():
+                print(f"  {loc}: {ep.host}:{ep.port}")
 
         system_config_path = Path(__file__).parent.parent / "config" / "system.yaml"
         orchestrator = SubAgentOrchestrator(

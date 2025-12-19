@@ -40,22 +40,17 @@ def load_repo_source() -> tuple[Path, str]:
     Returns:
         Tuple of (repo_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario1"
-    defects4j_dir = data_dir / "defects4j"
-    sample_repo = data_dir / "sample_repo"
+    # Use unified path that works across all locations (DEVICE/EDGE/CLOUD)
+    defects4j_dir = Path("/edgeagent/data/scenario1/defects4j")
 
     if defects4j_dir.exists():
         for subdir in defects4j_dir.iterdir():
             if subdir.is_dir() and (subdir / ".git").exists():
                 return subdir, f"Defects4J ({subdir.name})"
 
-    if sample_repo.exists() and (sample_repo / ".git").exists():
-        return sample_repo, "Generated sample repository"
-
     raise FileNotFoundError(
-        f"No Git repository found in {data_dir}\n"
-        "Run 'python scripts/download_public_datasets.py -s 1' for Defects4J, or\n"
-        "Run 'python scripts/generate_test_repo.py' for sample repository"
+        f"No Git repository found in {defects4j_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 1' for test data"
     )
 
 
@@ -115,17 +110,10 @@ class AgentCodeReviewScenario(ScenarioRunner):
         self._repo_source = None
         self._data_source = None
 
-        # Pre-initialize repo directory for MCP git server
-        # (git server validates repo path on startup)
+        # Load repo source - use /edgeagent/data directly (no copy needed)
         repo_source, data_source = load_repo_source()
         self._repo_source = repo_source
         self._data_source = data_source
-
-        repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
-        repo_path.parent.mkdir(parents=True, exist_ok=True)
-        if repo_path.exists():
-            shutil.rmtree(repo_path)
-        shutil.copytree(repo_source, repo_path)
 
     @property
     def name(self) -> str:
@@ -138,7 +126,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Review the Git repository at /edgeagent/data/scenario1/defects4j/lang."
+            f"Review the Git repository at {self._repo_source}. "
             "Analyze the commit history, code changes, and generate a comprehensive "
             "code review report to /edgeagent/results/scenario1_agent_code_review_report.md"
         )
@@ -150,7 +138,8 @@ class AgentCodeReviewScenario(ScenarioRunner):
     ) -> Any:
         """Execute code review using LLM Agent"""
 
-        repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
+        # Use repo_source directly (no copy needed)
+        repo_path = self._repo_source
 
         # Tool exclusion은 EdgeAgentMCPClient의 exclude_tools 파라미터로 처리됨
         # (EXCLUDED_TOOLS 상수 참조)

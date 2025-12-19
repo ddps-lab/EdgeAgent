@@ -221,15 +221,15 @@ class LocationAwareProxyTool(BaseTool):
         Returns:
             SchedulingResult: location과 결정 메타데이터
         """
-        from .scheduler import SchedulingResult
+        from .types import SchedulingResult
 
         if self.scheduler is None:
             # Scheduler 없으면 첫 번째 available location
             location = list(self.backend_tools.keys())[0]
             return SchedulingResult(
+                tool_name=self.name,
                 location=location,
                 reason="no_scheduler_default",
-                constraints_checked=[],
                 available_locations=list(self.backend_tools.keys()),
                 decision_time_ns=0,
             )

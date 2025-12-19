@@ -27,7 +27,7 @@ tools:
         env: {}
       EDGE:
         transport: streamable_http
-        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
         url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
@@ -178,7 +178,7 @@ tools:
         env: {}
       EDGE:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
         url: "http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
@@ -233,7 +233,7 @@ tools:
         env: {}
       EDGE:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud"
+        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud/mcp"
       CLOUD:
         transport: streamable_http
         url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
@@ -290,3 +290,14 @@ static_mapping:
   filesystem: DEVICE
   log_parser: CLOUD
   data_aggregate: EDGE
+
+# SubAgent Endpoints (for Orchestrator to call)
+subagent_endpoints:
+  EDGE:
+    host: "edge-subagent.edgeagent.edge.edgeagent.ddps.cloud"
+    port: 80
+    timeout: 600.0
+  CLOUD:
+    host: "cloud-subagent.edgeagent.cloud.edgeagent.ddps.cloud"
+    port: 80
+    timeout: 600.0

@@ -32,10 +32,10 @@ class LLMClassifier(BaseClassifier):
             from anthropic import Anthropic
             return Anthropic()
         elif self.provider == "google":
-            import google.generativeai as genai
+            from google import genai
             from ..config import GOOGLE_API_KEY
-            genai.configure(api_key=GOOGLE_API_KEY)
-            return genai
+            client = genai.Client(api_key=GOOGLE_API_KEY)
+            return client
         elif self.provider == "upstage":
             from openai import OpenAI
             from ..config import UPSTAGE_API_KEY
@@ -130,13 +130,14 @@ Classify the following {len(servers)} MCP servers into appropriate categories.
             return response.content[0].text
 
         elif self.provider == "google":
-            model = self.client.GenerativeModel(self.config["model"])
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": self.config["temperature"],
-                    "max_output_tokens": self.config["max_tokens"] * (5 if batch else 1),
-                }
+            from google.genai import types
+            response = self.client.models.generate_content(
+                model=self.config["model"],
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=self.config["temperature"],
+                    max_output_tokens=self.config["max_tokens"] * (5 if batch else 1),
+                )
             )
             return response.text
 
@@ -150,6 +151,18 @@ Classify the following {len(servers)} MCP servers into appropriate categories.
             if response.startswith("```"):
                 response = re.sub(r'^```\w*\n?', '', response)
                 response = re.sub(r'\n?```$', '', response)
+
+            # Extract JSON object from response (handle extra text after JSON)
+            # Try to find JSON object with nested braces
+            json_match = re.search(r'\{(?:[^{}]|\{[^{}]*\})*"category_major"(?:[^{}]|\{[^{}]*\})*\}', response, re.DOTALL)
+            if json_match:
+                response = json_match.group(0)
+            else:
+                # Fallback: find first { to last }
+                start = response.find('{')
+                end = response.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    response = response[start:end+1]
 
             data = json.loads(response)
 
@@ -186,6 +199,11 @@ Classify the following {len(servers)} MCP servers into appropriate categories.
             if response.startswith("```"):
                 response = re.sub(r'^```\w*\n?', '', response)
                 response = re.sub(r'\n?```$', '', response)
+
+            # Extract JSON array from response (handle extra text after JSON)
+            json_match = re.search(r'\[[\s\S]*?\](?=\s*$|\s*[^,\]\}\s])', response)
+            if json_match:
+                response = json_match.group(0)
 
             data = json.loads(response)
 

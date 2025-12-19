@@ -37,7 +37,7 @@ LLM_CONFIG = {
         "max_tokens": 1000,
     },
     "google": {
-        "model": "gemini-3-pro-preview",
+        "model": "gemini-2.5-flash",
         "temperature": 0,
         "max_tokens": 1000,
     },

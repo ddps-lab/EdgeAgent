@@ -33,10 +33,13 @@ from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_
 def load_image_source() -> tuple[Path, str]:
     """Load image source from COCO or sample images.
 
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+
     Returns:
         Tuple of (image_dir_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario4"
+    # Use unified path that works across all locations
+    data_dir = Path("/edgeagent/data/scenario4")
     coco_images = data_dir / "coco" / "images"
     sample_images = data_dir / "sample_images"
 
@@ -47,9 +50,8 @@ def load_image_source() -> tuple[Path, str]:
         return sample_images, "Generated test images"
 
     raise FileNotFoundError(
-        f"No image directory found.\n"
-        "Run 'python scripts/download_public_datasets.py -s 4' for COCO 2017, or\n"
-        "Run 'python scripts/generate_test_images.py' for test images"
+        f"No image directory found in {data_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 4' for test data"
     )
 
 

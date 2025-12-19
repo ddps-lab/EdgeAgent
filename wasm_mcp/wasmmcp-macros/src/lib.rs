@@ -473,7 +473,21 @@ pub fn export_http(input: TokenStream) -> TokenStream {
 
                 let response = result.to_response(id);
 
-                let response_body = serde_json::to_vec(&response).unwrap_or_default();
+                let response_body = match serde_json::to_vec(&response) {
+                    Ok(body) => body,
+                    Err(e) => {
+                        // Serialization failed - return error response
+                        let error_response = serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "error": {
+                                "code": -32603,
+                                "message": format!("Internal error: failed to serialize response: {}", e)
+                            },
+                            "id": serde_json::Value::Null
+                        });
+                        serde_json::to_vec(&error_response).unwrap_or_else(|_| b"{}".to_vec())
+                    }
+                };
                 send_response(response_out, 200, headers, &response_body);
             }
         }
@@ -503,7 +517,14 @@ pub fn export_http(input: TokenStream) -> TokenStream {
 
             if !body.is_empty() {
                 if let Ok(stream) = outgoing_body.write() {
-                    let _ = stream.blocking_write_and_flush(body);
+                    // Write in chunks due to WASI stream 4KB limit
+                    // See: https://github.com/bytecodealliance/wasmtime/issues/9653
+                    const CHUNK_SIZE: usize = 4096;
+                    for chunk in body.chunks(CHUNK_SIZE) {
+                        if stream.blocking_write_and_flush(chunk).is_err() {
+                            break;
+                        }
+                    }
                 }
             }
 

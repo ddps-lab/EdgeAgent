@@ -58,9 +58,13 @@ def parse_tool_result(result):
     return {"raw": str(result)}
 
 
-def load_s2orc_papers(data_dir: Path, max_papers: int = 5) -> list[dict]:
-    """Load papers from S2ORC dataset."""
-    s2orc_dir = data_dir / "scenario3" / "s2orc"
+def load_s2orc_papers(max_papers: int = 5) -> list[dict]:
+    """Load papers from S2ORC dataset.
+
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
+    """
+    # Use unified path that works across all locations
+    s2orc_dir = Path("/edgeagent/data/scenario3/s2orc")
     papers_file = s2orc_dir / "papers.json"
 
     if papers_file.exists():
@@ -107,9 +111,8 @@ async def run_research_assistant(
     Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Load research items
-    data_dir = Path(__file__).parent.parent / "data"
-    s2orc_papers = load_s2orc_papers(data_dir, max_urls)
+    # Load research items (uses unified /edgeagent/data path)
+    s2orc_papers = load_s2orc_papers(max_urls)
     if s2orc_papers:
         research_items = s2orc_papers
         data_source = "S2ORC"

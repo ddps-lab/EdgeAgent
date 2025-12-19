@@ -34,17 +34,40 @@ async def _fetch_s2_paper_via_api(paper_id: str, max_length: int) -> str:
     """Fetch Semantic Scholar paper details via their REST API.
 
     API docs: https://api.semanticscholar.org/api-docs/
+    Includes retry with exponential backoff for rate limiting (429).
     """
+    import asyncio
+
     api_url = f"https://api.semanticscholar.org/graph/v1/paper/{paper_id}"
     fields = "title,abstract,year,authors,venue,citationCount,influentialCitationCount,tldr"
 
+    max_retries = 3
+    retry_delay = 1.0  # Start with 1 second
+
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            api_url,
-            params={"fields": fields},
-            headers={"Accept": "application/json"}
-        )
-        response.raise_for_status()
+        for attempt in range(max_retries + 1):
+            response = await client.get(
+                api_url,
+                params={"fields": fields},
+                headers={"Accept": "application/json"}
+            )
+
+            if response.status_code == 429:
+                # Rate limited - retry with backoff
+                if attempt < max_retries:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    raise httpx.HTTPStatusError(
+                        "Rate limited (429). Max retries exceeded.",
+                        request=response.request,
+                        response=response
+                    )
+
+            response.raise_for_status()
+            break
+
         data = response.json()
 
     # Format as readable markdown

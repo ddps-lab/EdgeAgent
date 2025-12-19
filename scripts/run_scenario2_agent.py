@@ -30,18 +30,20 @@ from scripts.agent_utils import run_agent_with_logging, create_llm_with_latency_
 
 
 def load_log_source() -> tuple[Path, str]:
-    """Load log file source from LogHub or sample log.
+    """Load log file source from LogHub.
+
+    Uses unified path /edgeagent/data that works across all locations (DEVICE/EDGE/CLOUD).
 
     Returns:
         Tuple of (log_file_path, data_source_description)
     """
-    data_dir = Path(__file__).parent.parent / "data" / "scenario2"
+    # Use unified path that works across all locations
+    data_dir = Path("/edgeagent/data/scenario2")
     loghub_dir = data_dir / "loghub_samples"
-    sample_log = data_dir / "server.log"
 
     if loghub_dir.exists():
-        # Priority: small_python for agent (faster), medium for script version
-        for log_name in ["small_python.log", "medium_python.log"]:
+        # Priority: apache_small for agent
+        for log_name in ["apache_small.log", "apache_medium.log"]:
             candidate = loghub_dir / log_name
             if candidate.exists():
                 return candidate, f"LogHub ({log_name})"
@@ -50,12 +52,9 @@ def load_log_source() -> tuple[Path, str]:
         if log_files:
             return log_files[0], f"LogHub ({log_files[0].name})"
 
-    if sample_log.exists():
-        return sample_log, "Sample server.log"
-
     raise FileNotFoundError(
-        f"No log file found in {data_dir}\n"
-        "Run 'python scripts/download_public_datasets.py -s 2' for LogHub data"
+        f"No log file found in {loghub_dir}\n"
+        "Run 'python scripts/setup_test_data.py -s 2' for test data"
     )
 
 
@@ -63,7 +62,7 @@ def load_log_source() -> tuple[Path, str]:
 LOG_SOURCE, DATA_SOURCE = load_log_source()
 
 
-# System prompt for the Log Analysis Agent
+# System prompt for the Log Analysis Agent (dynamically includes log path)
 LOG_ANALYSIS_SYSTEM_PROMPT = f"""You are a log analysis assistant. Your task is to analyze server logs and generate a comprehensive error report.
 
 You have access to the following tools:
@@ -73,7 +72,7 @@ You have access to the following tools:
 - compute_log_statistics: Compute statistics on log entries (requires "entries" array)
 - write_file: Write files to the filesystem
 
-The log file is located at /edgeagent/data/scenario2/server.log
+The log file is located at {LOG_SOURCE}
 
 IMPORTANT - Data Flow:
 - parse_logs returns {{"entries": [...]}} - you MUST pass this "entries" array to other tools
@@ -81,8 +80,8 @@ IMPORTANT - Data Flow:
 - compute_log_statistics(entries=<parsed_result>["entries"])
 
 Example workflow:
-1. log_content = read_text_file("/edgeagent/data/scenario2/server.log")
-2. parsed = parse_logs(log_content=log_content, format_type="python")
+1. log_content = read_text_file("{LOG_SOURCE}")
+2. parsed = parse_logs(log_content=log_content, format_type="auto")
 3. stats = compute_log_statistics(entries=parsed["entries"])
 4. filtered = filter_entries(entries=parsed["entries"], min_level="warning")
 5. write_file(path="/edgeagent/results/scenario2_agent_log_report.md", content=report_markdown)
@@ -125,10 +124,10 @@ class AgentLogAnalysisScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Analyze the server log file at /edgeagent/data/scenario2/server.log. "
+            f"Analyze the server log file at {LOG_SOURCE}. "
             "Follow these steps: "
             "1) Read the log file with read_text_file, "
-            "2) Parse using parse_logs with format_type='python' to get entries array, "
+            "2) Parse using parse_logs with format_type='auto' to get entries array, "
             "3) Compute statistics using compute_log_statistics with the entries array, "
             "4) Write a comprehensive analysis report to /edgeagent/results/scenario2_agent_log_report.md"
         )
@@ -143,11 +142,6 @@ class AgentLogAnalysisScenario(ScenarioRunner):
         # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
         excluded_tools = {"directory_tree"}
         tools = [t for t in tools if t.name not in excluded_tools]
-
-        # Prepare log file
-        log_path = Path("/edgeagent/data/scenario2/server.log")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.write_text(LOG_SOURCE.read_text())
 
         print("-" * 70)
         print("LLM Agent Log Analysis")
