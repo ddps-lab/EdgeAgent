@@ -117,12 +117,13 @@ where
     }
 
     fn invoke(&self, args: Value) -> Result<Value, String> {
+        // Measure tool execution time (including deserialization)
+        let exec_start = Instant::now();
+
         let params: P = serde_json::from_value(args)
             .map_err(|e| format!("Invalid parameters: {}", e))?;
-
-        // Measure tool execution time
-        let exec_start = Instant::now();
         let result = (self.func)(params)?;
+
         let exec_ms = exec_start.elapsed().as_secs_f64() * 1000.0;
         eprintln!("---TOOL_EXEC---{:.3}", exec_ms);
 
