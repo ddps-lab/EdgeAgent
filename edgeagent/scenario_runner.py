@@ -162,6 +162,7 @@ class ScenarioRunner(ABC):
         output_dir: str | Path = "results",
         metrics_config: Optional[MetricsConfig] = None,
         scheduler: Optional[Any] = None,
+        exclude_tools: Optional[set[str]] = None,
     ):
         """
         Args:
@@ -169,11 +170,13 @@ class ScenarioRunner(ABC):
             output_dir: Directory for saving results
             metrics_config: Metrics collection configuration
             scheduler: Scheduler instance (None이면 기본 BruteForceChainScheduler 사용)
+            exclude_tools: 제외할 tool 목록 (예: {"directory_tree"})
         """
         self.config_path = Path(config_path)
         self.output_dir = Path(output_dir)
         self.metrics_config = metrics_config
         self.scheduler = scheduler
+        self.exclude_tools = exclude_tools
 
     @property
     @abstractmethod
@@ -256,6 +259,7 @@ class ScenarioRunner(ABC):
                 self.config_path,
                 metrics_config=self.metrics_config,
                 collect_metrics=True,
+                exclude_tools=self.exclude_tools,
                 scheduler=self.scheduler,
                 scenario_name=self.name,
             ) as client:
@@ -348,8 +352,9 @@ class SimpleScenarioRunner(ScenarioRunner):
         execute_fn,
         output_dir: str | Path = "results",
         metrics_config: Optional[MetricsConfig] = None,
+        exclude_tools: Optional[set[str]] = None,
     ):
-        super().__init__(config_path, output_dir, metrics_config)
+        super().__init__(config_path, output_dir, metrics_config, exclude_tools=exclude_tools)
         self._name = scenario_name
         self._description = scenario_description
         self._user_request = scenario_user_request

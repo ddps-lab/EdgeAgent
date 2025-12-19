@@ -184,6 +184,7 @@ class EdgeAgentMCPClient:
         metrics_config: Optional[MetricsConfig] = None,
         collect_metrics: bool = True,
         filter_tools: Optional[list[str]] = None,
+        exclude_tools: Optional[set[str]] = None,
         filter_location: Optional[Location] = None,
         scheduler: Optional[BaseScheduler] = None,
         system_config_path: Optional[str | Path] = None,
@@ -195,6 +196,7 @@ class EdgeAgentMCPClient:
             metrics_config: 메트릭 수집 설정 (None이면 기본값 사용)
             collect_metrics: 메트릭 수집 활성화 여부 (기본: True)
             filter_tools: 연결할 tool 목록 (None이면 모든 tool 연결)
+            exclude_tools: 제외할 tool 목록 (예: {"directory_tree"})
             filter_location: 특정 location의 endpoint만 사용 (None이면 모든 location)
             scheduler: 외부에서 생성한 Scheduler (None이면 BruteForceChainScheduler 사용)
             system_config_path: System 설정 YAML 경로 (BruteForceChainScheduler 사용 시)
@@ -202,6 +204,7 @@ class EdgeAgentMCPClient:
         """
         self.config_path = Path(config_path)
         self.filter_tools = filter_tools
+        self.exclude_tools = exclude_tools or set()
         self.filter_location = filter_location
         self.scenario_name = scenario_name
 
@@ -560,6 +563,10 @@ class EdgeAgentMCPClient:
         # ProxyTool 생성
         proxy_tools = []
         for mcp_tool_name, tool_data in backend_tools_map.items():
+            # exclude_tools 체크
+            if mcp_tool_name in self.exclude_tools:
+                continue
+
             first_tool = tool_data.pop("_first_tool")
             parent_tool = tool_data.pop("_parent_tool")
             available_locs = tool_data.pop("_available_locations")

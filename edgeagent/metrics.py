@@ -495,6 +495,23 @@ class MetricsCollector:
             return 0.0
         return self.total_output_bytes / self.total_input_bytes
 
+    def get_tool_call_counts(self) -> dict[str, int]:
+        """Tool별 호출 횟수 반환
+
+        Returns:
+            {tool_name: count} 딕셔너리
+        """
+        counts: dict[str, int] = {}
+        for entry in self._entries:
+            tool = entry.tool_name
+            counts[tool] = counts.get(tool, 0) + 1
+        return counts
+
+    @property
+    def total_tool_calls(self) -> int:
+        """전체 tool 호출 횟수"""
+        return len(self._entries)
+
     @property
     def success_rate(self) -> float:
         """Success rate across all calls"""
@@ -1299,6 +1316,41 @@ def get_all_metrics_entries(partition_results: list[dict]) -> list[dict]:
     for pr in partition_results:
         entries.extend(pr.get("metrics_entries", []))
     return entries
+
+
+def print_execution_trace(
+    execution_trace: list[dict],
+    scheduler_type: str = "",
+    title: str = "Agent Execution Trace",
+):
+    """
+    실행 trace 출력 (Scheduler별 포맷팅)
+
+    Args:
+        execution_trace: [{"tool": str, "location": str, "cost": float, ...}, ...]
+        scheduler_type: "brute_force", "static", "heuristic" 등
+        title: 출력 제목
+    """
+    if not execution_trace:
+        return
+
+    print()
+    print("=" * 70)
+    print(title)
+    print("=" * 70)
+
+    for i, trace in enumerate(execution_trace, 1):
+        tool = trace.get("tool", "unknown")
+        location = trace.get("location", "?")
+        fixed_mark = "[FIXED]" if trace.get("fixed") else ""
+
+        if scheduler_type == "brute_force":
+            cost = trace.get("cost", 0)
+            comp = trace.get("comp", 0)
+            comm = trace.get("comm", 0)
+            print(f"  {i}. {tool:25} -> {location:6} (cost={cost:.3f}, comp={comp:.3f}, comm={comm:.3f}) {fixed_mark}")
+        else:
+            print(f"  {i}. {tool:25} -> {location:6} {fixed_mark}")
 
 
 def print_orchestration_summary(
