@@ -761,20 +761,17 @@ class BruteForceChainScheduler(BaseScheduler):
         config_path: str | Path,
         system_config_path: str | Path,
         registry: ToolRegistry,
-        subagent_mode: bool = True,
     ):
         """
         Args:
             config_path: tools_scenario*.yaml 경로
             system_config_path: system.yaml 경로
             registry: ToolRegistry 인스턴스
-            subagent_mode: True면 SubAgent 직접 통신, False면 middleware 경유 모델
         """
         self.config_path = Path(config_path)
         self.system_config_path = Path(system_config_path)
         self.registry = registry
-        self.subagent_mode = subagent_mode
-        self.scoring_engine = ScoringEngine(system_config_path, registry, subagent_mode)
+        self.scoring_engine = ScoringEngine(system_config_path, registry)
 
         # Agent 모드용 상태 (prev_location 추적)
         self._prev_location: Optional[Location] = None
@@ -837,14 +834,10 @@ class BruteForceChainScheduler(BaseScheduler):
         ScoringEngine의 cost 공식을 그대로 사용하며,
         이전 tool의 location을 v로 적용합니다.
 
-        Cost 계산 (subagent_mode에 따라):
-          subagent_mode=True (SubAgent 직접 통신):
-            - Job 시작: P_comm[(D, u)]
-            - 노드 변경: P_comm[(v, u)]
-            - Job 종료: + P_comm[(u, D)]
-          subagent_mode=False (middleware 경유):
+        TransCost 계산 (미들웨어 경유):
             - Job 시작: P^{in}(u)
-            - 노드 변경: P^{out}(v) + P^{in}(u)
+            - 노드 변경 (v≠u): P^{out}(v) + P^{in}(u)
+            - 노드 유지 (v==u): 0
             - Job 종료: + P^{out}(u)
 
         Args:

@@ -71,7 +71,7 @@ You have access to the following tools:
 
 IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
 
-The repository is located at /edgeagent/repos/scenario1
+The repository is located at /edgeagent/data/scenario1/defects4j/lang
 
 When conducting code review, follow this workflow:
 1. List the repository files to understand the structure
@@ -117,7 +117,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
         self._repo_source = repo_source
         self._data_source = data_source
 
-        repo_path = Path("/edgeagent/repos/scenario1")
+        repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
         repo_path.parent.mkdir(parents=True, exist_ok=True)
         if repo_path.exists():
             shutil.rmtree(repo_path)
@@ -134,7 +134,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
     @property
     def user_request(self) -> str:
         return (
-            "Review the Git repository at /edgeagent/repos/scenario1. "
+            "Review the Git repository at /edgeagent/data/scenario1/defects4j/lang."
             "Analyze the commit history, code changes, and generate a comprehensive "
             "code review report to /edgeagent/results/scenario1_agent_code_review_report.md"
         )
@@ -146,7 +146,7 @@ class AgentCodeReviewScenario(ScenarioRunner):
     ) -> Any:
         """Execute code review using LLM Agent"""
 
-        repo_path = Path("/edgeagent/repos/scenario1")
+        repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
 
         # Filter out problematic tools (directory_tree causes issues with gpt-4o-mini)
         excluded_tools = {"directory_tree"}

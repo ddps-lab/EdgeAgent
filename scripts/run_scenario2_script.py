@@ -61,7 +61,6 @@ async def run_log_analysis(
     config_path: Path,
     system_config_path: Path,
     scheduler_type: str = "brute_force",
-    subagent_mode: bool = False,
     output_dir: str = "results/scenario2",
 ) -> dict:
     """
@@ -97,7 +96,6 @@ async def run_log_analysis(
             config_path=config_path,
             system_config_path=system_config_path,
             registry=registry,
-            subagent_mode=subagent_mode,
         )
         scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
 
@@ -309,7 +307,6 @@ async def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--scheduler", default="brute_force")
-    parser.add_argument("--subagent-mode", action="store_true")
     args = parser.parse_args()
 
     config_path = Path(__file__).parent.parent / "config" / "tools_scenario2.yaml"
@@ -319,14 +316,12 @@ async def main():
     print("Scenario 2: Log Analysis Pipeline")
     print("=" * 70)
     print(f"Scheduler: {args.scheduler}")
-    print(f"SubAgent Mode: {args.subagent_mode}")
     print()
 
     result = await run_log_analysis(
         config_path=config_path,
         system_config_path=system_config_path,
         scheduler_type=args.scheduler,
-        subagent_mode=args.subagent_mode,
     )
 
     return result.get("success", False)

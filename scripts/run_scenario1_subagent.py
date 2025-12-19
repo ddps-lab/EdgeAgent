@@ -81,7 +81,7 @@ def prepare_repo() -> tuple[Path, str]:
     """Prepare repository (same path structure exists on all locations)"""
     repo_source, data_source = load_repo_source()
 
-    repo_path = Path("/edgeagent/repos/scenario1")
+    repo_path = Path("/edgeagent/data/scenario1/defects4j/lang")
     repo_path.parent.mkdir(parents=True, exist_ok=True)
 
     if repo_path.exists():
@@ -96,15 +96,15 @@ REPO_PATH, DATA_SOURCE = prepare_repo()
 
 
 USER_REQUEST = """
-Review the Git repository at /edgeagent/repos/scenario1.
+Review the Git repository at /edgeagent/data/scenario1/defects4j/lang.
 
 Execute the following tool calls with EXACT parameters:
 
 Step 1: read_file
-  - path: "/edgeagent/repos/scenario1/README.md"
+  - path: "/edgeagent/data/scenario1/defects4j/lang/README.md"
 
 Step 2: git_diff
-  - repo_path: "/edgeagent/repos/scenario1"
+  - repo_path: "/edgeagent/data/scenario1/defects4j/lang"
   - target: "HEAD~1"
 
 Step 3: summarize_text
@@ -118,7 +118,7 @@ Step 5: write_file
   - content: (final review report)
 
 CRITICAL: Use the EXACT paths shown above. Do NOT modify or shorten them.
-The repository path is "/edgeagent/repos/scenario1" (ends with "1").
+The repository path is "/edgeagent/data/scenario1/defects4j/lang".
 
 Return a summary of the code review.
 """

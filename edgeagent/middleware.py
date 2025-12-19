@@ -193,7 +193,7 @@ class EdgeAgentMCPClient:
         else:
             sys_config = system_config_path or (Path(config_path).parent / "system.yaml")
             self.scheduler = BruteForceChainScheduler(
-                config_path, sys_config, self.registry, subagent_mode=False
+                config_path, sys_config, self.registry
             )
 
         # Location별 MCP client 저장

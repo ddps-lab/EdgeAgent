@@ -97,7 +97,6 @@ async def run_code_review(
     config_path: Path,
     system_config_path: Path,
     scheduler_type: str = "brute_force",
-    subagent_mode: bool = False,
     output_dir: str = "results/scenario1",
 ) -> dict:
     """
@@ -111,11 +110,11 @@ async def run_code_review(
     start_time = time.time()
 
     # 경로 설정 (모든 location에서 동일한 구조)
-    repo_path = "/edgeagent/repos/scenario1"
+    repo_path = "/edgeagent/data/scenario1/defects4j/lang"
     report_path = "/edgeagent/results/scenario1_code_review_report.md"
 
     # 디렉토리 생성
-    Path("/edgeagent/repos").mkdir(parents=True, exist_ok=True)
+    Path("/edgeagent/data/scenario1/defects4j").mkdir(parents=True, exist_ok=True)
     Path("/edgeagent/results").mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -136,7 +135,6 @@ async def run_code_review(
             config_path=config_path,
             system_config_path=system_config_path,
             registry=registry,
-            subagent_mode=subagent_mode,
         )
         scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
 
@@ -354,7 +352,6 @@ async def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--scheduler", default="brute_force")
-    parser.add_argument("--subagent-mode", action="store_true")
     args = parser.parse_args()
 
     config_path = Path(__file__).parent.parent / "config" / "tools_scenario1.yaml"
@@ -364,14 +361,12 @@ async def main():
     print("Scenario 1: Code Review Pipeline")
     print("=" * 70)
     print(f"Scheduler: {args.scheduler}")
-    print(f"SubAgent Mode: {args.subagent_mode}")
     print()
 
     result = await run_code_review(
         config_path=config_path,
         system_config_path=system_config_path,
         scheduler_type=args.scheduler,
-        subagent_mode=args.subagent_mode,
     )
 
     return result.get("success", False)

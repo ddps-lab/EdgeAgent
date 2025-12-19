@@ -12,11 +12,6 @@
 #   - α_i: 연산 중요도 (0~1) - tools_scenario*.yaml에서 정의
 #   - β_i: 외부 인터넷 사용 여부 (0 or 1) - tools_scenario*.yaml에서 정의
 
-p_comp:
-  DEVICE: 1.0
-  EDGE: 0.3
-  CLOUD: 0.0
-
 # P_net: 노드별 외부 네트워크 비용
 p_net:
   DEVICE: 1.0

@@ -89,7 +89,6 @@ async def run_research_assistant(
     config_path: Path,
     system_config_path: Path,
     scheduler_type: str = "brute_force",
-    subagent_mode: bool = False,
     output_dir: str = "results/scenario3",
     max_urls: int = 3,
 ) -> dict:
@@ -131,7 +130,6 @@ async def run_research_assistant(
             config_path=config_path,
             system_config_path=system_config_path,
             registry=registry,
-            subagent_mode=subagent_mode,
         )
         scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
 
@@ -390,7 +388,6 @@ async def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--scheduler", default="brute_force")
-    parser.add_argument("--subagent-mode", action="store_true")
     parser.add_argument("--max-urls", type=int, default=3)
     args = parser.parse_args()
 
@@ -401,14 +398,12 @@ async def main():
     print("Scenario 3: Research Assistant Pipeline")
     print("=" * 70)
     print(f"Scheduler: {args.scheduler}")
-    print(f"SubAgent Mode: {args.subagent_mode}")
     print()
 
     result = await run_research_assistant(
         config_path=config_path,
         system_config_path=system_config_path,
         scheduler_type=args.scheduler,
-        subagent_mode=args.subagent_mode,
         max_urls=args.max_urls,
     )
 
