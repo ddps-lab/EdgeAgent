@@ -130,6 +130,38 @@ class ToolCallLogger(BaseCallbackHandler):
             print(f"  [FINISH] Agent completed with {len(self.tool_calls)} tool calls")
 
 
+def create_llm_with_latency_tracking(
+    model: str,
+    temperature: float = 0,
+    metrics_collector=None,
+):
+    """
+    LLM latency tracking이 설정된 ChatOpenAI 인스턴스 생성
+
+    LangGraph에서 LLM latency를 추적하려면 LLM 생성 시 callback을 등록해야 합니다.
+
+    Args:
+        model: OpenAI 모델 이름
+        temperature: Temperature 설정
+        metrics_collector: MetricsCollector 인스턴스
+
+    Returns:
+        ChatOpenAI 인스턴스 (callback 등록됨)
+    """
+    from langchain_openai import ChatOpenAI
+
+    llm_tracker = LLMLatencyTracker(metrics_collector=metrics_collector)
+
+    llm_kwargs = {"model": model}
+    if "gpt-5" not in model:
+        llm_kwargs["temperature"] = temperature
+
+    # LLM 생성 시 callback 직접 등록 (LangGraph에서 제대로 전파됨)
+    llm_kwargs["callbacks"] = [llm_tracker]
+
+    return ChatOpenAI(**llm_kwargs)
+
+
 async def run_agent_with_logging(
     agent,
     user_request: str,
@@ -143,16 +175,18 @@ async def run_agent_with_logging(
         agent: LangGraph agent (CompiledStateGraph)
         user_request: The user's request string
         verbose: Whether to print tool calls
-        metrics_collector: MetricsCollector 인스턴스 (optional, LLM latency 추적용)
+        metrics_collector: MetricsCollector 인스턴스 (optional, 하위 호환성용)
 
     Returns:
         Agent result dictionary with messages
+
+    Note:
+        LLM latency 추적을 위해서는 create_llm_with_latency_tracking()으로
+        LLM을 생성해야 합니다. 이 함수의 metrics_collector 파라미터는
+        하위 호환성을 위해 유지되지만, 실제 LLM latency 추적에는 사용되지 않습니다.
     """
     if verbose:
         print()
-
-    # LLM Latency Tracker 생성
-    llm_tracker = LLMLatencyTracker(metrics_collector=metrics_collector)
 
     # For LangGraph agents, we use astream with "values" mode to get full state
     # This avoids duplicate execution that happens with ainvoke after astream
@@ -162,7 +196,6 @@ async def run_agent_with_logging(
     async for chunk in agent.astream(
         {"messages": [("user", user_request)]},
         stream_mode="values",
-        config={"callbacks": [llm_tracker]},
     ):
         # In "values" mode, chunk contains the full state
         if "messages" in chunk:
