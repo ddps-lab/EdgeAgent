@@ -659,7 +659,7 @@ class MetricsCollector:
             "end_time_iso": datetime.fromtimestamp(end_time).isoformat(),
             "summary": {
                 "total_calls": len(self._entries),
-                "total_latency_ms": self.total_latency_ms,
+                "total_tool_latency_ms": self.total_latency_ms,
                 "pipeline_depth": self.pipeline_depth,
                 "parallel_calls_count": 0,  # TODO: detect parallel calls
                 "success_rate": self.success_rate,
