@@ -334,18 +334,6 @@ def download_defects4j(output_dir: Path, size: str = "small") -> Path:
         except Exception as e:
             print(f"    [ERROR] Clone failed: {e}")
 
-    # Create sample_repo symlink
-    sample_repo = output_dir / "sample_repo"
-    if sample_repo.exists():
-        shutil.rmtree(sample_repo)
-
-    # Use generated repo as fallback
-    if not any(defects4j_dir.iterdir()):
-        generate_test_repo(sample_repo)
-    else:
-        first_project = next(defects4j_dir.iterdir())
-        shutil.copytree(first_project, sample_repo)
-
     return output_dir
 
 
@@ -454,6 +442,54 @@ def generate_log_file(output_path: Path, num_lines: int) -> dict:
     return {"path": str(output_path), "lines": num_lines, "size_bytes": len(content)}
 
 
+def download_loghub_samples(loghub_dir: Path, size: str = "small") -> int:
+    """Download log samples from Loghub GitHub repository.
+
+    Downloads all log types and splits into small/medium/large sizes:
+    - small: 200 lines
+    - medium: 1000 lines
+    - large: 2000 lines (full 2k sample)
+    """
+    # Loghub raw file URLs (from https://github.com/logpai/loghub)
+    loghub_base = "https://raw.githubusercontent.com/logpai/loghub/master"
+    log_types = [
+        ("Apache", f"{loghub_base}/Apache/Apache_2k.log"),
+        ("Linux", f"{loghub_base}/Linux/Linux_2k.log"),
+        ("OpenSSH", f"{loghub_base}/OpenSSH/OpenSSH_2k.log"),
+        ("HDFS", f"{loghub_base}/HDFS/HDFS_2k.log"),
+        ("Hadoop", f"{loghub_base}/Hadoop/Hadoop_2k.log"),
+        ("Zookeeper", f"{loghub_base}/Zookeeper/Zookeeper_2k.log"),
+        ("Spark", f"{loghub_base}/Spark/Spark_2k.log"),
+    ]
+
+    # Size configurations: lines per size
+    # tiny: 20 lines (for fast agent testing)
+    size_lines = {"tiny": 20, "small": 200, "medium": 1000, "large": 2000}
+
+    downloaded = 0
+
+    for name, url in log_types:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "EdgeAgent/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                full_content = response.read().decode("utf-8", errors="replace")
+                lines = full_content.splitlines()
+
+                # Create small/medium/large versions
+                for size_name, num_lines in size_lines.items():
+                    subset_lines = lines[:num_lines]
+                    subset_content = "\n".join(subset_lines)
+                    output_file = loghub_dir / f"{name.lower()}_{size_name}.log"
+                    output_file.write_text(subset_content)
+
+                print(f"    {name}: tiny(20), small(200), medium(1000), large(2000) lines")
+                downloaded += 1
+        except Exception as e:
+            print(f"    [ERROR] {name}: {e}")
+
+    return downloaded
+
+
 def setup_scenario2(data_dir: Path, download: bool = False, size: str = "small"):
     """Setup Scenario 2: Log Analysis."""
     print("\n" + "=" * 60)
@@ -462,26 +498,38 @@ def setup_scenario2(data_dir: Path, download: bool = False, size: str = "small")
 
     output_dir = data_dir / "scenario2"
     loghub_dir = output_dir / "loghub_samples"
+    if loghub_dir.exists():
+        shutil.rmtree(loghub_dir)
     loghub_dir.mkdir(parents=True, exist_ok=True)
 
-    # Define log sizes
-    configs = [
-        ("small_python.log", 100),
-        ("medium_python.log", 1000),
-        ("large_python.log", 10000),
-    ]
+    if download:
+        # Download from Loghub - all log types
+        print("  Downloading from Loghub...")
+        downloaded = download_loghub_samples(loghub_dir)
+        if downloaded == 0:
+            print("  [WARN] No files downloaded, falling back to generated logs")
+            download = False
 
-    print("  Generating log files...")
-    for name, lines in configs:
-        result = generate_log_file(loghub_dir / name, lines)
-        print(f"    {name}: {lines:,} lines, {result['size_bytes']:,} bytes")
+    if not download:
+        # Generate synthetic logs
+        configs = [
+            ("small_python.log", 100),
+            ("medium_python.log", 1000),
+            ("large_python.log", 10000),
+        ]
+        print("  Generating log files...")
+        for name, lines in configs:
+            result = generate_log_file(loghub_dir / name, lines)
+            print(f"    {name}: {lines:,} lines, {result['size_bytes']:,} bytes")
 
-    # Create default server.log
+    # Create default server.log from first available log
     default_log = output_dir / "server.log"
-    medium_log = loghub_dir / "medium_python.log"
-    if medium_log.exists():
-        default_log.write_text(medium_log.read_text())
-        print(f"  Default log: {default_log}")
+    log_files = list(loghub_dir.glob("*.log"))
+    if log_files:
+        # Use largest log file as default
+        largest = max(log_files, key=lambda f: f.stat().st_size)
+        default_log.write_text(largest.read_text())
+        print(f"  Default log: {default_log} (from {largest.name})")
 
     print(f"  Output: {output_dir}")
 
@@ -489,6 +537,40 @@ def setup_scenario2(data_dir: Path, download: bool = False, size: str = "small")
 # =============================================================================
 # Scenario 3: Research Papers (S2ORC)
 # =============================================================================
+
+import time as time_module
+
+
+def fetch_semantic_scholar(query: str, limit: int, api_key: str | None = None, max_retries: int = 10) -> list:
+    """Fetch papers from Semantic Scholar API with retry logic."""
+    api_base = "https://api.semanticscholar.org/graph/v1"
+    url = f"{api_base}/paper/search?query={urllib.parse.quote(query)}&limit={limit}&fields=paperId,title,abstract,year"
+
+    headers = {"User-Agent": "EdgeAgent/1.0"}
+    if api_key:
+        headers["x-api-key"] = api_key
+
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode())
+                return result.get("data", [])
+        except urllib.error.HTTPError as e:
+            if e.code == 429:  # Rate limit
+                wait_time = (attempt + 1) * 10  # 10s, 20s, 30s, 40s, 50s
+                print(f"    [RATE LIMIT] Waiting {wait_time}s before retry...")
+                time_module.sleep(wait_time)
+            else:
+                raise
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time_module.sleep(5)
+            else:
+                raise
+
+    return []
+
 
 def setup_scenario3(data_dir: Path, download: bool = False, size: str = "small"):
     """Setup Scenario 3: Research Assistant."""
@@ -501,40 +583,49 @@ def setup_scenario3(data_dir: Path, download: bool = False, size: str = "small")
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    num_papers = {"small": 50, "medium": 200, "large": 1000}[size]
+    num_papers = {"small": 30, "medium": 100, "large": 500}[size]
+
+    # Check for API key (via environment variable)
+    api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+    if api_key:
+        print(f"  Using Semantic Scholar API key")
+    else:
+        print(f"  No API key found (set SEMANTIC_SCHOLAR_API_KEY for better rate limits)")
 
     print(f"  Fetching {num_papers} papers from Semantic Scholar API...")
 
-    api_base = "https://api.semanticscholar.org/graph/v1"
     search_queries = [
         "large language model agent",
         "AI agent tool use",
         "edge computing machine learning",
+        "multi-agent systems",
+        "function calling LLM",
+        "autonomous AI systems",
+        "LLM reasoning planning",
     ]
 
     papers = []
     papers_per_query = num_papers // len(search_queries) + 1
 
-    for query in search_queries:
+    for i, query in enumerate(search_queries):
         if len(papers) >= num_papers:
             break
 
         try:
-            url = f"{api_base}/paper/search?query={urllib.parse.quote(query)}&limit={papers_per_query}&fields=paperId,title,abstract,year"
-            req = urllib.request.Request(url, headers={"User-Agent": "EdgeAgent/1.0"})
+            # Add delay between queries to avoid rate limit (1 request per second limit)
+            if i > 0:
+                time_module.sleep(1 if api_key else 3)  # 1s with API key, 3s without
 
-            with urllib.request.urlopen(req, timeout=30) as response:
-                result = json.loads(response.read().decode())
-                if "data" in result:
-                    for paper in result["data"]:
-                        if paper.get("abstract") and len(paper["abstract"]) > 100:
-                            papers.append({
-                                "id": paper["paperId"],
-                                "title": paper["title"],
-                                "abstract": paper["abstract"],
-                                "year": paper.get("year"),
-                            })
-                    print(f"    Query '{query[:30]}...': {len(result['data'])} papers")
+            result = fetch_semantic_scholar(query, papers_per_query, api_key)
+            for paper in result:
+                if paper.get("abstract") and len(paper["abstract"]) > 100:
+                    papers.append({
+                        "id": paper["paperId"],
+                        "title": paper["title"],
+                        "abstract": paper["abstract"],
+                        "year": paper.get("year"),
+                    })
+            print(f"    Query '{query[:30]}...': {len(result)} papers")
         except Exception as e:
             print(f"    [ERROR] Query failed: {e}")
 

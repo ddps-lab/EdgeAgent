@@ -108,7 +108,14 @@ fn send_response(response_out: ResponseOutparam, status: u16, headers: Fields, b
 
     if !body.is_empty() {
         let out = outgoing_body.write().unwrap();
-        let _ = out.blocking_write_and_flush(body);
+        // Write in chunks due to WASI stream 4KB limit
+        // See: https://github.com/bytecodealliance/wasmtime/issues/9653
+        const CHUNK_SIZE: usize = 4096;
+        for chunk in body.chunks(CHUNK_SIZE) {
+            if out.blocking_write_and_flush(chunk).is_err() {
+                break;
+            }
+        }
         drop(out);
     }
 

@@ -20,10 +20,8 @@ spec:
       timeoutSeconds: 300
       containers:
         - name: mcp-fetch
-          # Use ECR image (change to private registry if needed)
-          image: 786382940258.dkr.ecr.ap-northeast-2.amazonaws.com/edgeagent-mcp-fetch:latest
-          # Or use private registry:
-          # image: srv2.ddps.cloud/edgeagent/mcp-fetch:latest
+          # Use private registry
+          image: srv2.ddps.cloud/edgeagent/mcp-fetch:latest
           ports:
             - containerPort: 8080
               protocol: TCP
