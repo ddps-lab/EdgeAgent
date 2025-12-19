@@ -125,14 +125,13 @@ where
         let result = (self.func)(params)?;
 
         let exec_ms = exec_start.elapsed().as_secs_f64() * 1000.0;
-        
+        eprintln!("---TOOL_EXEC---{:.3}", exec_ms);
 
         // Try to parse as JSON, otherwise return as string
         match serde_json::from_str(&result) {
             Ok(json) => Ok(json),
             Err(_) => Ok(Value::String(result)),
         }
-        eprintln!("---TOOL_EXEC---{:.3}", exec_ms);
     }
 }
 
