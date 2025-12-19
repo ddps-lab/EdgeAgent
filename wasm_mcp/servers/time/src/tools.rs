@@ -5,6 +5,8 @@
 
 use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
+#[allow(unused_imports)]
+use wasmmcp::timing::measure_io;
 
 /// Parse timezone string to Tz
 pub fn parse_timezone(tz_str: &str) -> Result<Tz, String> {

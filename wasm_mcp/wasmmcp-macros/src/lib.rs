@@ -325,6 +325,10 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
         impl wasi::exports::cli::run::Guest for WasmMcpCliRunner {
             fn run() -> Result<(), ()> {
                 use std::io::{BufRead, Write};
+                use std::time::Instant;
+
+                // Start timing from the very beginning (WASM cold start)
+                let wasm_start = Instant::now();
 
                 let server = #server_fn();
 
@@ -369,6 +373,12 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
                     let response_str = serde_json::to_string(&response).unwrap_or_default();
                     let _ = writeln!(stdout, "{}", response_str);
                     let _ = stdout.flush();
+
+                    // Output WASM total time after tools/call
+                    if method == "tools/call" {
+                        let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!("---WASM_TOTAL---{:.3}", wasm_total_ms);
+                    }
                 }
 
                 Ok(())

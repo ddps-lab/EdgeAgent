@@ -5,6 +5,8 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+#[allow(unused_imports)]
+use wasmmcp::timing::measure_io;
 
 // ==========================================
 // Helper functions
