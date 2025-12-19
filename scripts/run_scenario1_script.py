@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from edgeagent import EdgeAgentMCPClient
 from edgeagent.registry import ToolRegistry
-from edgeagent.scheduler import BruteForceChainScheduler, create_scheduler
+from edgeagent.scheduler import create_scheduler
 
 
 # Tool Chain 정의 (실제 서버에 존재하는 툴 사용)
@@ -130,51 +130,26 @@ async def run_code_review(
 
     registry = ToolRegistry.from_yaml(config_path)
 
-    if scheduler_type == "brute_force":
-        chain_scheduler = BruteForceChainScheduler(
-            config_path=config_path,
-            system_config_path=system_config_path,
-            registry=registry,
-        )
-        scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
+    # 모든 scheduler_type에서 create_scheduler()와 schedule_chain() 사용
+    chain_scheduler = create_scheduler(
+        scheduler_type,
+        config_path,
+        registry,
+        system_config_path=system_config_path,
+    )
+    scheduling_result = chain_scheduler.schedule_chain(TOOL_CHAIN)
 
-        print(f"Total Cost: {scheduling_result.total_score:.4f}")
-        print(f"Search Space: {scheduling_result.search_space_size}")
-        print(f"Decision Time: {scheduling_result.decision_time_ns / 1e6:.2f} ms")
-        print()
-        print("Optimal Placement:")
-        for p in scheduling_result.placements:
-            fixed_mark = "[FIXED]" if p.fixed else ""
-            print(f"  {p.tool_name:25} -> {p.location:6} (cost={p.score:.3f}, comp={p.exec_cost:.3f}, comm={p.trans_cost:.3f}) {fixed_mark}")
-        print()
+    print(f"Total Cost: {scheduling_result.total_score:.4f}")
+    print(f"Search Space: {scheduling_result.search_space_size}")
+    print(f"Decision Time: {scheduling_result.decision_time_ns / 1e6:.2f} ms")
+    print()
+    print("Optimal Placement:")
+    for p in scheduling_result.placements:
+        fixed_mark = "[FIXED]" if p.fixed else ""
+        print(f"  {p.tool_name:25} -> {p.location:6} (cost={p.score:.3f}, comp={p.exec_cost:.3f}, comm={p.trans_cost:.3f}) {fixed_mark}")
+    print()
 
-        placement_map = {p.tool_name: p.location for p in scheduling_result.placements}
-    elif scheduler_type == "all_device":
-        chain_scheduler = None
-        placement_map = {tool: "DEVICE" for tool in TOOL_CHAIN}
-        print("Placement: All tools -> DEVICE")
-    elif scheduler_type == "all_edge":
-        chain_scheduler = None
-        placement_map = {tool: "EDGE" for tool in TOOL_CHAIN}
-        print("Placement: All tools -> EDGE")
-    elif scheduler_type == "all_cloud":
-        chain_scheduler = None
-        placement_map = {tool: "CLOUD" for tool in TOOL_CHAIN}
-        print("Placement: All tools -> CLOUD")
-    elif scheduler_type in ("static", "heuristic"):
-        chain_scheduler = create_scheduler(scheduler_type, config_path, registry)
-        placement_map = {}
-        print("Optimal Placement:")
-        for tool in TOOL_CHAIN:
-            result = chain_scheduler.get_location_for_call_with_reason(tool, {})
-            placement_map[tool] = result.location
-            print(f"  {tool:25} -> {result.location:6} (reason={result.reason})")
-        print()
-    else:
-        # 기본값: all_device
-        chain_scheduler = None
-        placement_map = {tool: "DEVICE" for tool in TOOL_CHAIN}
-        print(f"Unknown scheduler '{scheduler_type}', using all_device")
+    placement_map = {p.tool_name: p.location for p in scheduling_result.placements}
 
     # ================================================================
     # Step 2: get_backend_tools()로 필요한 서버만 연결
@@ -189,6 +164,8 @@ async def run_code_review(
         system_config_path=system_config_path,
         collect_metrics=True,
     ) as client:
+        # Chain Scheduling 결과 설정 (개별 tool 메트릭에 score, exec_cost 등 기록)
+        client.set_chain_scheduling_result(scheduling_result)
         # placement_map 기반으로 필요한 서버만 연결
         tool_by_name = await client.get_backend_tools(placement_map)
         print(f"  Loaded {len(tool_by_name)} tools (MetricsWrappedTool)")
@@ -335,6 +312,12 @@ async def run_code_review(
         "total_time_ms": total_time_ms,
         "used_locations": list(used_locations),
         "placement_map": placement_map,
+        "chain_scheduling": {
+            "total_cost": scheduling_result.total_score,
+            "search_space_size": scheduling_result.search_space_size,
+            "decision_time_ns": scheduling_result.decision_time_ns,
+            "decision_time_ms": scheduling_result.decision_time_ns / 1e6,
+        },
         "metrics_entries": metrics_entries,
         "tool_call_count": len(metrics_entries),
     }

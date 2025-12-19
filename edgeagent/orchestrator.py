@@ -27,7 +27,7 @@ from typing import Any, Literal, Optional
 import httpx
 import yaml
 
-from .types import Location, LOCATIONS
+from .types import Location, LOCATIONS, ChainSchedulingResult
 from .registry import ToolRegistry
 from .scheduler import create_scheduler
 from .planner import ToolSequencePlanner, ExecutionPlan, Partition
@@ -308,6 +308,7 @@ class SubAgentOrchestrator:
                 context=current_context,
                 tools=partition.tools,
                 direct_call=use_direct_call,
+                chain_scheduling_result=plan.chain_scheduling_result,
             )
 
             partition_result = {
@@ -469,6 +470,7 @@ class SubAgentOrchestrator:
         context: dict,
         tools: list[str],
         direct_call: bool = False,
+        chain_scheduling_result: "ChainSchedulingResult | None" = None,
     ) -> SubAgentResponse:
         """
         Sub-Agent HTTP 호출
@@ -479,6 +481,7 @@ class SubAgentOrchestrator:
             context: Context 데이터
             tools: 사용할 tool 목록
             direct_call: True이면 LLM 우회하고 직접 tool 호출
+            chain_scheduling_result: schedule_chain() 결과 (각 tool의 SchedulingResult 포함)
 
         Returns:
             SubAgentResponse
@@ -486,7 +489,9 @@ class SubAgentOrchestrator:
         endpoint = self.config.subagent_endpoints.get(location)
         if not endpoint:
             # Endpoint가 설정되지 않은 경우 로컬 실행
-            return await self._execute_locally(location, task, context, tools, direct_call)
+            return await self._execute_locally(
+                location, task, context, tools, direct_call, chain_scheduling_result
+            )
 
         if not self._http_client:
             self._http_client = httpx.AsyncClient(timeout=endpoint.timeout)
@@ -525,6 +530,7 @@ class SubAgentOrchestrator:
         context: dict,
         tools: list[str],
         direct_call: bool = False,
+        chain_scheduling_result: "ChainSchedulingResult | None" = None,
     ) -> SubAgentResponse:
         """
         로컬에서 Sub-Agent 실행 (HTTP 서버 없이)
@@ -533,6 +539,7 @@ class SubAgentOrchestrator:
 
         Args:
             direct_call: True이면 LLM 우회하고 직접 tool 호출 (단일 tool 최적화)
+            chain_scheduling_result: schedule_chain() 결과 (각 tool의 SchedulingResult 포함)
         """
         from .subagent import SubAgent
 
@@ -542,6 +549,7 @@ class SubAgentOrchestrator:
             model=self.config.model,
             temperature=self.config.temperature,
             scheduler=self.scheduler,  # Orchestrator의 scheduler 전달
+            chain_scheduling_result=chain_scheduling_result,  # Chain scheduling 결과 전달
         )
 
         request = SubAgentRequest(

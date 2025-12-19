@@ -29,7 +29,7 @@ from langchain_core.callbacks import (
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-from .types import Location
+from .types import Location, ChainSchedulingResult, SchedulingResult
 from .registry import ToolRegistry
 from .scheduler import BaseScheduler, BruteForceChainScheduler
 from .proxy_tool import LocationAwareProxyTool
@@ -62,6 +62,9 @@ class MetricsWrappedTool(BaseTool):
     client: Optional[Any] = Field(default=None, description="EdgeAgentMCPClient reference")
     server_location: str = Field(default="", description="Server-location identifier (e.g., 'summarize_EDGE')")
     _initialized: bool = False
+
+    # Chain Scheduling에서 계산된 SchedulingResult (score, exec_cost 등 포함)
+    scheduling_result: Optional[Any] = Field(default=None, description="SchedulingResult for this tool")
 
     def _run(
         self,
@@ -113,16 +116,38 @@ class MetricsWrappedTool(BaseTool):
                 location=self.location,
                 args=kwargs,
             ) as ctx:
-                ctx.add_scheduling_info(
-                    reason="placement_map_static",
-                    constraints=[],
-                    available=[self.location],
-                    decision_time_ns=0,
-                    score=0.0,
-                    exec_cost=0.0,
-                    trans_cost=0.0,
-                    fixed=True,
-                )
+                # SchedulingResult가 있으면 원래 계산된 정보 사용
+                if self.scheduling_result is not None:
+                    sr = self.scheduling_result
+                    # constraints 변환
+                    constraints_list = []
+                    if hasattr(sr, 'constraints') and sr.constraints:
+                        if sr.constraints.requires_cloud_api:
+                            constraints_list.append("requires_cloud_api")
+                        if sr.constraints.privacy_sensitive:
+                            constraints_list.append("privacy_sensitive")
+                    ctx.add_scheduling_info(
+                        reason=sr.reason,
+                        constraints=constraints_list,
+                        available=sr.available_locations or [self.location],
+                        decision_time_ns=sr.decision_time_ns or 0,
+                        score=sr.score or 0.0,
+                        exec_cost=sr.exec_cost or 0.0,
+                        trans_cost=sr.trans_cost or 0.0,
+                        fixed=sr.fixed if sr.fixed is not None else True,
+                    )
+                else:
+                    # fallback: 기본값 사용
+                    ctx.add_scheduling_info(
+                        reason="placement_map_static",
+                        constraints=[],
+                        available=[self.location],
+                        decision_time_ns=0,
+                        score=0.0,
+                        exec_cost=0.0,
+                        trans_cost=0.0,
+                        fixed=True,
+                    )
                 try:
                     result = await self.backend_tool.ainvoke(kwargs)
                     ctx.set_result(result)
@@ -162,6 +187,7 @@ class EdgeAgentMCPClient:
         filter_location: Optional[Location] = None,
         scheduler: Optional[BaseScheduler] = None,
         system_config_path: Optional[str | Path] = None,
+        scenario_name: str = "unknown",
     ):
         """
         Args:
@@ -172,10 +198,12 @@ class EdgeAgentMCPClient:
             filter_location: 특정 location의 endpoint만 사용 (None이면 모든 location)
             scheduler: 외부에서 생성한 Scheduler (None이면 BruteForceChainScheduler 사용)
             system_config_path: System 설정 YAML 경로 (BruteForceChainScheduler 사용 시)
+            scenario_name: 시나리오 이름 (metrics에 기록)
         """
         self.config_path = Path(config_path)
         self.filter_tools = filter_tools
         self.filter_location = filter_location
+        self.scenario_name = scenario_name
 
         # Registry 및 Scheduler 초기화
         self.registry = ToolRegistry.from_yaml(config_path)
@@ -186,6 +214,9 @@ class EdgeAgentMCPClient:
             self.scheduler = BruteForceChainScheduler(
                 config_path, sys_config, self.registry
             )
+
+        # Scheduler type 추출
+        self.scheduler_type = self._get_scheduler_type()
 
         # Location별 MCP client 저장
         self.clients: dict[Location, MultiServerMCPClient] = {}
@@ -200,7 +231,11 @@ class EdgeAgentMCPClient:
         self._collect_metrics = collect_metrics
         if collect_metrics:
             config = metrics_config or MetricsConfig()
-            self.metrics_collector = MetricsCollector(config)
+            self.metrics_collector = MetricsCollector(
+                config,
+                scenario_name=scenario_name,
+                scheduler_type=self.scheduler_type,
+            )
         else:
             self.metrics_collector = None
 
@@ -211,6 +246,22 @@ class EdgeAgentMCPClient:
         # Lazy loading을 위한 connection queue (메인 task에서 세션 생성)
         self._connection_queue: Optional[asyncio.Queue] = None
         self._processor_task: Optional[asyncio.Task] = None
+
+        # Chain Scheduling 결과 저장 (스크립트/SubAgent 모드에서 사용)
+        self.chain_scheduling_result: Optional[ChainSchedulingResult] = None
+
+    def _get_scheduler_type(self) -> str:
+        """Scheduler 타입 문자열 추출"""
+        scheduler_name = type(self.scheduler).__name__
+        type_map = {
+            "BruteForceChainScheduler": "brute_force",
+            "StaticScheduler": "static",
+            "HeuristicScheduler": "heuristic",
+            "AllDeviceScheduler": "all_device",
+            "AllEdgeScheduler": "all_edge",
+            "AllCloudScheduler": "all_cloud",
+        }
+        return type_map.get(scheduler_name, scheduler_name.lower())
 
     async def __aenter__(self):
         """Context manager entry - DEVICE 초기화, 나머지는 스케줄러 선택 시 연결"""
@@ -622,6 +673,8 @@ class EdgeAgentMCPClient:
         wrapped_tools: dict[str, BaseTool] = {}
         for tool_name, backend_tool in backend_tools.items():
             parent_server, location = tool_metadata[tool_name]
+            # chain_scheduling_result에서 해당 tool의 SchedulingResult 조회
+            scheduling_result = self.get_scheduling_result_for_tool(tool_name)
             wrapped_tool = MetricsWrappedTool(
                 name=tool_name,
                 description=backend_tool.description,
@@ -629,6 +682,7 @@ class EdgeAgentMCPClient:
                 location=location,
                 parent_tool_name=parent_server,
                 metrics_collector=self.metrics_collector,
+                scheduling_result=scheduling_result,
             )
             if hasattr(backend_tool, 'args_schema') and backend_tool.args_schema:
                 wrapped_tool.args_schema = backend_tool.args_schema
@@ -780,6 +834,37 @@ class EdgeAgentMCPClient:
     def get_metrics(self) -> Optional[MetricsCollector]:
         """통합 메트릭 수집기 반환"""
         return self.metrics_collector
+
+    def set_chain_scheduling_result(self, result: ChainSchedulingResult):
+        """
+        Chain Scheduling 결과 설정
+
+        스크립트 모드에서 schedule_chain() 호출 후 결과를 저장합니다.
+        get_backend_tools()에서 각 tool의 SchedulingResult를 참조합니다.
+
+        Args:
+            result: ChainSchedulingResult (각 tool의 SchedulingResult 포함)
+        """
+        self.chain_scheduling_result = result
+
+    def get_scheduling_result_for_tool(self, tool_name: str) -> Optional[SchedulingResult]:
+        """
+        특정 tool의 SchedulingResult 조회
+
+        chain_scheduling_result에서 해당 tool의 스케줄링 결과를 찾습니다.
+
+        Args:
+            tool_name: Tool 이름
+
+        Returns:
+            SchedulingResult 또는 None
+        """
+        if self.chain_scheduling_result is None:
+            return None
+        for p in self.chain_scheduling_result.placements:
+            if p.tool_name == tool_name:
+                return p
+        return None
 
     def reset_metrics(self):
         """메트릭 수집기 초기화 (새 세션 시작 시)"""

@@ -124,7 +124,11 @@ class LocationAwareProxyTool(BaseTool):
         #    (SubAgent 모드: schedule_chain()으로 이미 결정됨)
         if self.client and self.client.filter_location:
             location = self.client.filter_location
-            scheduling_result = self._create_fixed_scheduling_result(location)
+            # chain_scheduling_result에서 해당 tool의 SchedulingResult 조회
+            scheduling_result = self.client.get_scheduling_result_for_tool(self.name)
+            if scheduling_result is None:
+                # fallback: chain_scheduling_result가 없으면 기본값 생성
+                scheduling_result = self._create_fixed_scheduling_result(location)
         else:
             # Agent 모드: Scheduler가 location 결정
             scheduling_result = self._get_location_with_reason(kwargs)

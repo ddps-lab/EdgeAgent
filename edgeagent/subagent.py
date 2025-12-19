@@ -32,7 +32,7 @@ from typing import Any, Optional
 
 from typing import TYPE_CHECKING
 
-from .types import Location, LOCATIONS
+from .types import Location, LOCATIONS, ChainSchedulingResult
 from .registry import ToolRegistry
 from .planner import Partition
 
@@ -124,6 +124,7 @@ class SubAgent:
         temperature: float = 0,
         collect_metrics: bool = True,
         scheduler: "BaseScheduler | None" = None,
+        chain_scheduling_result: Optional[ChainSchedulingResult] = None,
     ):
         """
         Args:
@@ -133,6 +134,7 @@ class SubAgent:
             temperature: LLM temperature
             collect_metrics: 상세 메트릭 수집 여부
             scheduler: Orchestrator에서 전달받은 scheduler (location 결정에 사용)
+            chain_scheduling_result: schedule_chain() 결과 (각 tool의 SchedulingResult 포함)
         """
         self.location = location
         self.config_path = Path(config_path)
@@ -140,6 +142,7 @@ class SubAgent:
         self.temperature = temperature
         self.collect_metrics = collect_metrics
         self.scheduler = scheduler
+        self.chain_scheduling_result = chain_scheduling_result
 
         # Registry 로드
         self.registry = ToolRegistry.from_yaml(config_path)
@@ -275,6 +278,9 @@ class SubAgent:
                 filter_location=self.location,  # 현재 location의 endpoint만 사용
                 scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
             )
+            # Chain Scheduling 결과 설정 (원래 계산된 score, reason 등 사용)
+            if self.chain_scheduling_result:
+                client.set_chain_scheduling_result(self.chain_scheduling_result)
             await exit_stack.enter_async_context(client)
 
             all_tools = await client.get_tools()
@@ -443,6 +449,9 @@ class SubAgent:
                 filter_location=self.location,  # 현재 location의 endpoint만 사용
                 scheduler=self.scheduler,  # Orchestrator의 scheduler 사용
             )
+            # Chain Scheduling 결과 설정 (원래 계산된 score, reason 등 사용)
+            if self.chain_scheduling_result:
+                client.set_chain_scheduling_result(self.chain_scheduling_result)
             await exit_stack.enter_async_context(client)
 
             # 필터링된 tools 가져오기

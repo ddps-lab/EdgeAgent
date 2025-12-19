@@ -250,6 +250,9 @@ class StaticScheduler(BaseScheduler):
 
         return ChainSchedulingResult(
             placements=placements,
+            total_score=0.0,
+            search_space_size=1,
+            valid_combinations=1,
             optimization_method="static_mapping",
             decision_time_ns=decision_time_ns,
         )
@@ -547,6 +550,9 @@ class AllDeviceScheduler(BaseScheduler):
             reason="all_device_policy",
             available_locations=["DEVICE"],
             decision_time_ns=decision_time_ns,
+            score=0.0,
+            exec_cost=0.0,
+            trans_cost=0.0,
         )
 
     def select_runtime(self, tool_name: str, location: Location) -> Runtime:
@@ -569,12 +575,18 @@ class AllDeviceScheduler(BaseScheduler):
                 location="DEVICE",
                 reason="all_device_policy",
                 decision_time_ns=0,
+                score=0.0,
+                exec_cost=0.0,
+                trans_cost=0.0,
             ))
 
         decision_time_ns = time.perf_counter_ns() - start_time_ns
 
         return ChainSchedulingResult(
             placements=placements,
+            total_score=0.0,
+            search_space_size=1,
+            valid_combinations=1,
             optimization_method="all_device",
             decision_time_ns=decision_time_ns,
         )
@@ -620,6 +632,9 @@ class AllEdgeScheduler(BaseScheduler):
             reason="all_edge_policy",
             available_locations=["EDGE"],
             decision_time_ns=decision_time_ns,
+            score=0.0,
+            exec_cost=0.0,
+            trans_cost=0.0,
         )
 
     def select_runtime(self, tool_name: str, location: Location) -> Runtime:
@@ -645,12 +660,18 @@ class AllEdgeScheduler(BaseScheduler):
                 location="EDGE",
                 reason="all_edge_policy",
                 decision_time_ns=0,
+                score=0.0,
+                exec_cost=0.0,
+                trans_cost=0.0,
             ))
 
         decision_time_ns = time.perf_counter_ns() - start_time_ns
 
         return ChainSchedulingResult(
             placements=placements,
+            total_score=0.0,
+            search_space_size=1,
+            valid_combinations=1,
             optimization_method="all_edge",
             decision_time_ns=decision_time_ns,
         )
@@ -696,6 +717,9 @@ class AllCloudScheduler(BaseScheduler):
             reason="all_cloud_policy",
             available_locations=["CLOUD"],
             decision_time_ns=decision_time_ns,
+            score=0.0,
+            exec_cost=0.0,
+            trans_cost=0.0,
         )
 
     def select_runtime(self, tool_name: str, location: Location) -> Runtime:
@@ -721,12 +745,18 @@ class AllCloudScheduler(BaseScheduler):
                 location="CLOUD",
                 reason="all_cloud_policy",
                 decision_time_ns=0,
+                score=0.0,
+                exec_cost=0.0,
+                trans_cost=0.0,
             ))
 
         decision_time_ns = time.perf_counter_ns() - start_time_ns
 
         return ChainSchedulingResult(
             placements=placements,
+            total_score=0.0,
+            search_space_size=1,
+            valid_combinations=1,
             optimization_method="all_cloud",
             decision_time_ns=decision_time_ns,
         )
@@ -777,37 +807,51 @@ class BruteForceChainScheduler(BaseScheduler):
         self._prev_location: Optional[Location] = None
         self._call_count: int = 0
 
-    def _extract_fixed_location(
+    def _extract_fixed_location_with_reason(
         self,
         tool_name: str,
         args: Optional[dict] = None,
-    ) -> Optional[Location]:
+    ) -> tuple[Optional[Location], Optional[str]]:
         """
-        Type C (local_data) Tool의 고정 노드 추출
+        Tool의 고정 노드와 이유 추출
 
-        Path prefix 규칙:
-        - edge://... 또는 /edgeagent_edge/ → EDGE
-        - cloud://... 또는 /edgeagent_cloud/ → CLOUD
-        - 그 외 → DEVICE (기본)
+        고정 조건 (우선순위):
+        1. requires_cloud_api=True → CLOUD
+        2. privacy_sensitive=True → DEVICE
+        3. data_locality="local_data" → path prefix 기반 노드 결정
 
         Args:
             tool_name: Tool 이름
-            args: Tool 호출 인자 (없으면 DEVICE 기본값)
+            args: Tool 호출 인자
 
         Returns:
-            고정 노드 또는 None (고정 불필요)
+            (고정 노드, 고정 이유) 또는 (None, None)
         """
         profile = self.registry.get_profile(tool_name)
-        data_locality = getattr(profile, 'data_locality', 'args_only') if profile else 'args_only'
+        if not profile:
+            return None, None
 
-        if data_locality != "local_data":
-            return None
+        # 1. requires_cloud_api 체크
+        if getattr(profile, 'requires_cloud_api', False):
+            return "CLOUD", "requires_cloud_api"
 
-        # args가 없으면 DEVICE 기본값
+        # 2. privacy_sensitive 체크
+        if getattr(profile, 'privacy_sensitive', False):
+            return "DEVICE", "privacy_sensitive"
+
+        # 3. data_locality="local_data" 체크
+        data_locality = getattr(profile, 'data_locality', 'args_only')
+        if data_locality == "local_data":
+            location = self._get_local_data_location(args)
+            return location, f"local_data_{location.lower()}"
+
+        return None, None
+
+    def _get_local_data_location(self, args: Optional[dict] = None) -> Location:
+        """local_data Tool의 path prefix 기반 노드 결정"""
         if not args:
             return "DEVICE"
 
-        # args에서 path 추출
         path = args.get("path") or args.get("directory") or args.get("image_path") or args.get("repo_path")
         if not path:
             return "DEVICE"
@@ -819,6 +863,20 @@ class BruteForceChainScheduler(BaseScheduler):
             return "CLOUD"
         else:
             return "DEVICE"
+
+    def _extract_fixed_location(
+        self,
+        tool_name: str,
+        args: Optional[dict] = None,
+    ) -> Optional[Location]:
+        """
+        Type C (local_data) Tool의 고정 노드 추출 (하위 호환성 유지)
+
+        Returns:
+            고정 노드 또는 None (고정 불필요)
+        """
+        location, _ = self._extract_fixed_location_with_reason(tool_name, args)
+        return location
 
     def get_optimal_location_for_tool(
         self,
@@ -927,19 +985,19 @@ class BruteForceChainScheduler(BaseScheduler):
                 decision_time_ns=0,
             )
 
-        # 1. 각 Tool의 후보 노드 결정
+        # 1. 각 Tool의 후보 노드 및 고정 이유 결정
         candidate_nodes: list[list[Location]] = []
-        fixed_nodes: list[Optional[Location]] = []
+        fixed_info: list[tuple[Optional[Location], Optional[str]]] = []
 
         for i, tool_name in enumerate(tool_names):
             args = tool_args[i] if tool_args and i < len(tool_args) else None
 
-            # Type C (local_data) 체크 → 노드 고정
-            fixed = self._extract_fixed_location(tool_name, args)
-            fixed_nodes.append(fixed)
+            # 고정 노드와 이유 추출
+            fixed_location, fixed_reason = self._extract_fixed_location_with_reason(tool_name, args)
+            fixed_info.append((fixed_location, fixed_reason))
 
-            if fixed:
-                candidate_nodes.append([fixed])
+            if fixed_location:
+                candidate_nodes.append([fixed_location])
             else:
                 candidate_nodes.append(list(LOCATIONS))
 
@@ -970,9 +1028,15 @@ class BruteForceChainScheduler(BaseScheduler):
             tool_names, best_assignment
         )
 
-        # fixed 플래그 설정
+        # fixed 플래그 및 reason 설정
         for i, placement in enumerate(placements):
-            placement.fixed = (fixed_nodes[i] is not None)
+            fixed_location, fixed_reason = fixed_info[i]
+            if fixed_location is not None:
+                placement.fixed = True
+                placement.reason = fixed_reason  # "requires_cloud_api", "privacy_sensitive", "local_data_device" 등
+            else:
+                placement.fixed = False
+                # 기본 reason은 "brute_force_optimal" 유지
 
         decision_time_ns = time.perf_counter_ns() - start_time_ns
 

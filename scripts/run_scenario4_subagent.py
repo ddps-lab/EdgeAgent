@@ -52,6 +52,7 @@ class ExecutionResult:
     scheduler_type: str = ""
     metrics_entries: list[dict] = field(default_factory=list)
     placement_map: dict = field(default_factory=dict)
+    chain_scheduling: dict = field(default_factory=dict)
 
 
 def load_image_source() -> tuple[Path, str]:
@@ -236,11 +237,18 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
                 if "metrics_entries" in pr:
                     metrics_entries.extend(pr["metrics_entries"])
 
-        # Get placement map from execution plan
+        # Get placement map and chain_scheduling from execution plan
         placement_map = {}
+        chain_scheduling = {}
         plan = orchestrator.get_execution_plan(TOOL_SEQUENCE)
         if plan.chain_scheduling_result:
             placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
+            chain_scheduling = {
+                "total_cost": plan.chain_scheduling_result.total_score,
+                "search_space_size": plan.chain_scheduling_result.search_space_size,
+                "decision_time_ns": plan.chain_scheduling_result.decision_time_ns,
+                "decision_time_ms": plan.chain_scheduling_result.decision_time_ns / 1e6,
+            }
         else:
             for partition in plan.partitions:
                 for tool in partition.tools:
@@ -258,6 +266,7 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
             scheduler_type=scheduler,
             metrics_entries=metrics_entries,
             placement_map=placement_map,
+            chain_scheduling=chain_scheduling,
         )
 
     except Exception as e:
@@ -373,6 +382,7 @@ def save_result(result: ExecutionResult, output_dir: str = "results/scenario4_su
         "partitions": result.partitions,
         "partition_times": result.partition_times,
         "placement_map": result.placement_map,
+        "chain_scheduling": result.chain_scheduling,
         "metrics_entries": result.metrics_entries,
         "tool_call_count": len(result.metrics_entries),
         "error": result.error if result.error else None,

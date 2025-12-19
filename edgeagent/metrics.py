@@ -251,10 +251,12 @@ class MetricsCollector:
         config: Optional[MetricsConfig] = None,
         scenario_name: str = "unknown",
         client_location: str = "CLIENT",
+        scheduler_type: str = "unknown",
     ):
         self.config = config or MetricsConfig()
         self.scenario_name = scenario_name
         self.client_location = client_location
+        self.scheduler_type = scheduler_type
         self._entries: list[MetricEntry] = []
         self._custom_metrics: dict[str, Any] = {}
         self._session_id: str = str(uuid.uuid4())[:8]
@@ -568,9 +570,18 @@ class MetricsCollector:
         """Export all metrics as dictionary"""
         end_time = self._session_end or time.time()
 
+        # chain_scheduling이 없으면 entries에서 합산
+        chain_scheduling_dict = None
+        if self._chain_scheduling:
+            chain_scheduling_dict = self._chain_scheduling.to_dict()
+        elif self._entries:
+            # Agent 모드: entries에서 scheduling 정보 합산
+            chain_scheduling_dict = self._aggregate_scheduling_from_entries()
+
         result = {
             "session_id": self._session_id,
             "scenario_name": self.scenario_name,
+            "scheduler_type": self.scheduler_type,
             "start_time": self._session_start,
             "start_time_iso": datetime.fromtimestamp(self._session_start).isoformat(),
             "end_time": end_time,
@@ -603,13 +614,50 @@ class MetricsCollector:
                 "resource_usage": self.total_resource_usage(),
                 "network": self.network_summary(),
             },
-            "chain_scheduling": self._chain_scheduling.to_dict() if self._chain_scheduling else None,
+            "chain_scheduling": chain_scheduling_dict,
             "scenario_metrics": self._scenario_metrics.to_dict(),
             "custom_metrics": self._custom_metrics,
             "entries": [e.to_dict() for e in self._entries],
         }
 
         return result
+
+    def _aggregate_scheduling_from_entries(self) -> dict[str, Any]:
+        """Agent 모드: entries에서 scheduling 정보 합산"""
+        if not self._entries:
+            return None
+
+        total_score = 0.0
+        total_exec_cost = 0.0
+        total_trans_cost = 0.0
+        total_decision_time_ns = 0
+        placements = []
+
+        for entry in self._entries:
+            total_score += entry.scheduling_score
+            total_exec_cost += entry.exec_cost
+            total_trans_cost += entry.trans_cost
+            total_decision_time_ns += entry.scheduling_decision_time_ns
+
+            placements.append({
+                "tool_name": entry.tool_name,
+                "location": entry.actual_location,
+                "reason": entry.scheduling_reason or "unknown",
+                "score": entry.scheduling_score,
+                "exec_cost": entry.exec_cost,
+                "trans_cost": entry.trans_cost,
+                "fixed": entry.fixed_location,
+            })
+
+        return {
+            "total_cost": total_score,
+            "search_space_size": len(self._entries),
+            "valid_combinations": 1,  # Agent 모드는 동적 결정
+            "decision_time_ns": total_decision_time_ns,
+            "decision_time_ms": total_decision_time_ns / 1e6,
+            "optimization_method": self.scheduler_type,
+            "placements": placements,
+        }
 
     def save_json(self, output_path: str | Path, pretty: bool = True) -> Path:
         """Save metrics to JSON file"""

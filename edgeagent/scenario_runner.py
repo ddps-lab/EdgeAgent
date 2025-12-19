@@ -257,6 +257,7 @@ class ScenarioRunner(ABC):
                 metrics_config=self.metrics_config,
                 collect_metrics=True,
                 scheduler=self.scheduler,
+                scenario_name=self.name,
             ) as client:
                 # Load tools
                 tools = await client.get_tools()
