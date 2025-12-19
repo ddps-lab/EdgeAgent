@@ -22,7 +22,6 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -36,23 +35,11 @@ from edgeagent import (
     SubAgentOrchestrator,
     OrchestrationConfig,
 )
-
-
-@dataclass
-class ExecutionResult:
-    """Execution result for comparison"""
-    mode: str
-    success: bool
-    total_time_ms: float
-    tool_calls: int
-    partitions: int = 0
-    partition_times: list[float] = field(default_factory=list)
-    final_result: str = ""
-    error: str = ""
-    scheduler_type: str = ""
-    metrics_entries: list[dict] = field(default_factory=list)
-    placement_map: dict = field(default_factory=dict)
-    chain_scheduling: dict = field(default_factory=dict)
+from edgeagent.metrics import (
+    print_orchestration_summary,
+    save_orchestration_result,
+    save_orchestration_metrics_csv,
+)
 
 
 def load_log_source() -> tuple[Path, str]:
@@ -100,8 +87,12 @@ Return the analysis summary.
 TOOL_SEQUENCE = ["read_text_file", "parse_logs", "compute_log_statistics", "write_file"]
 
 
-async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
-    """Run with legacy single-agent mode"""
+async def run_legacy_mode(config_path: Path, model: str, scenario_name: str = "log_analysis") -> dict:
+    """Run with legacy single-agent mode
+
+    Returns:
+        dict 형태의 결과 (OrchestrationResult.to_dict()와 호환)
+    """
     print("\n" + "=" * 70, flush=True)
     print("LEGACY MODE: Single Agent with All Tools", flush=True)
     print("=" * 70, flush=True)
@@ -123,7 +114,7 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
             print("Running agent...", flush=True)
             result_content = ""
-            seen_tool_ids = set()  # 중복 방지용
+            seen_tool_ids = set()
 
             async for chunk in agent.astream(
                 {"messages": [("user", USER_REQUEST)]},
@@ -145,27 +136,51 @@ async def run_legacy_mode(config_path: Path, model: str) -> ExecutionResult:
 
             elapsed = (time.time() - start_time) * 1000
 
-            return ExecutionResult(
-                mode="legacy",
-                success=True,
-                total_time_ms=elapsed,
-                tool_calls=tool_calls,
-                final_result=result_content[:500] if result_content else "",
-            )
+            return {
+                "scenario_name": scenario_name,
+                "mode": "legacy",
+                "scheduler_type": "",
+                "success": True,
+                "total_time_ms": elapsed,
+                "tool_calls": tool_calls,
+                "partitions": 1,
+                "partition_times": [elapsed],
+                "partition_details": [],
+                "placement_map": {},
+                "chain_scheduling": {},
+                "metrics_entries": [],
+                "tool_call_count": tool_calls,
+                "error": None,
+                "final_result_preview": result_content[:500] if result_content else "",
+            }
 
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
-        return ExecutionResult(
-            mode="legacy",
-            success=False,
-            total_time_ms=elapsed,
-            tool_calls=tool_calls,
-            error=str(e),
-        )
+        import traceback
+        return {
+            "scenario_name": scenario_name,
+            "mode": "legacy",
+            "scheduler_type": "",
+            "success": False,
+            "total_time_ms": elapsed,
+            "tool_calls": tool_calls,
+            "partitions": 0,
+            "partition_times": [],
+            "partition_details": [],
+            "placement_map": {},
+            "chain_scheduling": {},
+            "metrics_entries": [],
+            "tool_call_count": 0,
+            "error": f"{e}\n{traceback.format_exc()}",
+        }
 
 
-async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "brute_force") -> ExecutionResult:
-    """Run with Sub-Agent Orchestration mode"""
+async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "brute_force", scenario_name: str = "log_analysis") -> dict:
+    """Run with Sub-Agent Orchestration mode
+
+    Returns:
+        OrchestrationResult.to_dict() 형태의 dict
+    """
     print("\n" + "=" * 70)
     print(f"SUBAGENT MODE: Location-Aware Orchestration (scheduler={scheduler})")
     print("=" * 70)
@@ -204,192 +219,67 @@ async def run_subagent_mode(config_path: Path, model: str, scheduler: str = "bru
 
         elapsed = (time.time() - start_time) * 1000
 
-        # Extract partition times and metrics
-        partition_times = []
-        metrics_entries = []
-        if result.partition_results:
-            for pr in result.partition_results:
-                if "execution_time_ms" in pr:
-                    partition_times.append(pr["execution_time_ms"])
-                if "metrics_entries" in pr:
-                    metrics_entries.extend(pr["metrics_entries"])
+        # OrchestrationResult에 scenario_name 설정
+        result.scenario_name = scenario_name
+        result.execution_time_ms = elapsed
 
-        # Get placement map and chain_scheduling from execution plan
-        placement_map = {}
-        chain_scheduling = {}
-        plan = orchestrator.get_execution_plan(TOOL_SEQUENCE)
-        if plan.chain_scheduling_result:
-            placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
-            chain_scheduling = {
-                "total_cost": plan.chain_scheduling_result.total_score,
-                "search_space_size": plan.chain_scheduling_result.search_space_size,
-                "decision_time_ns": plan.chain_scheduling_result.decision_time_ns,
-                "decision_time_ms": plan.chain_scheduling_result.decision_time_ns / 1e6,
-            }
-        else:
-            for partition in plan.partitions:
-                for tool in partition.tools:
-                    placement_map[tool] = partition.location
-
-        return ExecutionResult(
-            mode="subagent",
-            success=result.success,
-            total_time_ms=elapsed,
-            tool_calls=result.total_tool_calls,
-            partitions=result.partitions_executed,
-            partition_times=partition_times,
-            final_result=str(result.final_result)[:500] if result.final_result else "",
-            error=result.error or "",
-            scheduler_type=scheduler,
-            metrics_entries=metrics_entries,
-            placement_map=placement_map,
-            chain_scheduling=chain_scheduling,
-        )
+        return result.to_dict()
 
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
         import traceback
-        return ExecutionResult(
-            mode="subagent",
-            success=False,
-            total_time_ms=elapsed,
-            tool_calls=0,
-            error=f"{e}\n{traceback.format_exc()}",
-        )
-
-
-def print_result(result: ExecutionResult):
-    """Print execution result"""
-    print(f"\n--- {result.mode.upper()} Result ---")
-    if result.scheduler_type:
-        print(f"Scheduler: {result.scheduler_type}")
-    print(f"Success: {result.success}")
-    print(f"Total time: {result.total_time_ms:.0f}ms")
-    print(f"Tool calls: {result.tool_calls}")
-    print(f"Metrics entries: {len(result.metrics_entries)}")
-
-    if result.partitions > 0:
-        print(f"Partitions: {result.partitions}")
-        if result.partition_times:
-            print(f"Partition times: {[f'{t:.0f}ms' for t in result.partition_times]}")
-
-    if result.placement_map:
-        print(f"\nPlacement Map:")
-        for tool, location in result.placement_map.items():
-            print(f"  {tool:25} -> {location}")
-
-    if result.error:
-        print(f"\nError: {result.error[:300]}")
-
-    if result.final_result:
-        print(f"\nResult preview:\n{result.final_result[:300]}...")
-
-
-def save_metrics_csv(metrics_entries: list[dict], output_path: Path, scenario_name: str = ""):
-    """Save metrics entries to CSV file (flattened format)"""
-    import csv
-    import uuid
-
-    if not metrics_entries:
-        return
-
-    session_id = str(uuid.uuid4())[:8]
-    rows = []
-
-    for e in metrics_entries:
-        timing = e.get("timing", {})
-        location = e.get("location", {})
-        scheduling = e.get("scheduling", {})
-        data_flow = e.get("data_flow", {})
-        resource = e.get("resource", {})
-        status = e.get("status", {})
-
-        rows.append({
-            "session_id": session_id,
+        return {
             "scenario_name": scenario_name,
-            "tool_name": e.get("tool_name", ""),
-            "parent_tool_name": e.get("parent_tool_name", ""),
-            "pipeline_step": e.get("pipeline_step", 0),
-            "timestamp": e.get("timestamp", 0),
-            "latency_ms": timing.get("latency_ms", 0),
-            "inter_tool_latency_ms": timing.get("inter_tool_latency_ms", 0),
-            "scheduled_location": location.get("scheduled_location", ""),
-            "actual_location": location.get("actual_location", ""),
-            "fallback_occurred": location.get("fallback_occurred", False),
-            "scheduling_decision_time_ns": scheduling.get("decision_time_ns", 0),
-            "scheduling_reason": scheduling.get("reason", ""),
-            "scheduling_score": scheduling.get("score", 0),
-            "exec_cost": scheduling.get("exec_cost", 0),
-            "trans_cost": scheduling.get("trans_cost", 0),
-            "fixed_location": scheduling.get("fixed", ""),
-            "input_size_bytes": data_flow.get("input_size_bytes", 0),
-            "output_size_bytes": data_flow.get("output_size_bytes", 0),
-            "reduction_ratio": data_flow.get("reduction_ratio", 0),
-            "data_flow_type": data_flow.get("data_flow_type", ""),
-            "mcp_serialization_time_ms": timing.get("mcp_serialization_time_ms", 0),
-            "mcp_deserialization_time_ms": timing.get("mcp_deserialization_time_ms", 0),
-            "memory_delta_bytes": resource.get("memory_delta_bytes", 0),
-            "cpu_time_user_ms": resource.get("cpu_time_user_ms", 0),
-            "cpu_time_system_ms": resource.get("cpu_time_system_ms", 0),
-            "success": status.get("success", True),
-            "retry_count": status.get("retry_count", 0),
-            "error": status.get("error", ""),
-        })
-
-    if rows:
-        with open(output_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-            writer.writeheader()
-            writer.writerows(rows)
+            "mode": "subagent",
+            "scheduler_type": scheduler,
+            "success": False,
+            "total_time_ms": elapsed,
+            "tool_calls": 0,
+            "partitions": 0,
+            "partition_times": [],
+            "partition_details": [],
+            "placement_map": {},
+            "chain_scheduling": {},
+            "metrics_entries": [],
+            "tool_call_count": 0,
+            "error": f"{e}\n{traceback.format_exc()}",
+        }
 
 
-def save_result(result: ExecutionResult, output_dir: str = "results/scenario2_subagent"):
-    """Save execution result to JSON and CSV files"""
-    import time as time_module
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+def save_result(result_dict: dict, output_dir: str = "results/scenario2_subagent"):
+    """Save execution result to JSON and CSV files using metrics.py utilities"""
+    scenario_name = result_dict.get("scenario_name", "log_analysis")
 
-    result_dict = {
-        "scenario_name": "log_analysis",
-        "mode": result.mode,
-        "scheduler_type": result.scheduler_type,
-        "success": result.success,
-        "total_time_ms": result.total_time_ms,
-        "tool_calls": result.tool_calls,
-        "partitions": result.partitions,
-        "partition_times": result.partition_times,
-        "placement_map": result.placement_map,
-        "chain_scheduling": result.chain_scheduling,
-        "metrics_entries": result.metrics_entries,
-        "tool_call_count": len(result.metrics_entries),
-        "error": result.error if result.error else None,
-    }
-
-    output_path = Path(output_dir) / f"log_analysis_{result.mode}_{int(time_module.time())}.json"
-    with open(output_path, "w") as f:
-        json.dump(result_dict, f, indent=2)
-    print(f"Results saved to: {output_path}")
+    # Save JSON
+    save_orchestration_result(result_dict, output_dir, scenario_name)
 
     # Save CSV
     csv_path = Path(output_dir) / "metrics.csv"
-    save_metrics_csv(result.metrics_entries, csv_path, scenario_name="log_analysis")
-    print(f"Metrics CSV saved to: {csv_path}")
+    save_orchestration_metrics_csv(
+        result_dict.get("metrics_entries", []),
+        str(csv_path),
+        scenario_name=scenario_name,
+    )
 
 
-def compare_results(legacy: ExecutionResult, subagent: ExecutionResult):
+def compare_results(legacy: dict, subagent: dict):
     """Compare legacy vs subagent results"""
     print("\n" + "=" * 70)
     print("COMPARISON: Legacy vs Sub-Agent")
     print("=" * 70)
 
+    legacy_time = legacy.get("total_time_ms", legacy.get("execution_time_ms", 0))
+    subagent_time = subagent.get("total_time_ms", subagent.get("execution_time_ms", 0))
+
     print(f"\n{'Metric':<25} {'Legacy':<20} {'Sub-Agent':<20}")
     print("-" * 65)
-    print(f"{'Success':<25} {str(legacy.success):<20} {str(subagent.success):<20}")
-    print(f"{'Total time (ms)':<25} {legacy.total_time_ms:<20.0f} {subagent.total_time_ms:<20.0f}")
-    print(f"{'Tool calls':<25} {legacy.tool_calls:<20} {subagent.tool_calls:<20}")
-    print(f"{'Partitions':<25} {'1 (all)':<20} {subagent.partitions:<20}")
+    print(f"{'Success':<25} {str(legacy.get('success')):<20} {str(subagent.get('success')):<20}")
+    print(f"{'Total time (ms)':<25} {legacy_time:<20.0f} {subagent_time:<20.0f}")
+    print(f"{'Tool calls':<25} {legacy.get('tool_calls', 0):<20} {subagent.get('tool_calls', 0):<20}")
+    print(f"{'Partitions':<25} {'1 (all)':<20} {subagent.get('partitions', 0):<20}")
 
-    if legacy.success and subagent.success:
-        speedup = legacy.total_time_ms / subagent.total_time_ms if subagent.total_time_ms > 0 else 0
+    if legacy.get("success") and subagent.get("success"):
+        speedup = legacy_time / subagent_time if subagent_time > 0 else 0
         print(f"\n{'Speedup':<25} {speedup:.2f}x")
 
         if speedup > 1:
@@ -453,28 +343,28 @@ async def main():
     if args.compare:
         # Run both modes
         legacy_result = await run_legacy_mode(config_path, args.model)
-        print_result(legacy_result)
+        print_orchestration_summary(legacy_result)
         save_result(legacy_result)
 
         subagent_result = await run_subagent_mode(config_path, args.model, args.scheduler)
-        print_result(subagent_result)
+        print_orchestration_summary(subagent_result)
         save_result(subagent_result)
 
         compare_results(legacy_result, subagent_result)
 
-        return legacy_result.success and subagent_result.success
+        return legacy_result.get("success", False) and subagent_result.get("success", False)
 
     elif args.mode == "legacy":
         result = await run_legacy_mode(config_path, args.model)
-        print_result(result)
+        print_orchestration_summary(result)
         save_result(result)
-        return result.success
+        return result.get("success", False)
 
     else:  # subagent
         result = await run_subagent_mode(config_path, args.model, args.scheduler)
-        print_result(result)
+        print_orchestration_summary(result)
         save_result(result)
-        return result.success
+        return result.get("success", False)
 
 
 if __name__ == "__main__":

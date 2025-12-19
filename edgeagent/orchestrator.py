@@ -106,16 +106,32 @@ class OrchestrationResult:
     execution_time_ms: float = 0.0
     partition_results: list[dict] = field(default_factory=list)
 
+    # 추가 필드들
+    scheduler_type: str = ""
+    placement_map: dict = field(default_factory=dict)
+    chain_scheduling: dict = field(default_factory=dict)
+    scenario_name: str = ""
+
     def to_dict(self) -> dict:
+        """metrics.py 유틸리티 함수와 호환되는 dict 반환"""
+        from .metrics import aggregate_partition_metrics, get_partition_times, get_all_metrics_entries
+
         return {
-            "success": self.success,
-            "final_result": self.final_result,
-            "error": self.error,
+            "scenario_name": self.scenario_name,
             "mode": self.mode,
-            "partitions_executed": self.partitions_executed,
-            "total_tool_calls": self.total_tool_calls,
-            "execution_time_ms": self.execution_time_ms,
-            "partition_results": self.partition_results,
+            "scheduler_type": self.scheduler_type,
+            "success": self.success,
+            "total_time_ms": self.execution_time_ms,
+            "tool_calls": self.total_tool_calls,
+            "partitions": self.partitions_executed,
+            "partition_times": get_partition_times(self.partition_results),
+            "partition_details": aggregate_partition_metrics(self.partition_results),
+            "placement_map": self.placement_map,
+            "chain_scheduling": self.chain_scheduling,
+            "metrics_entries": get_all_metrics_entries(self.partition_results),
+            "tool_call_count": len(get_all_metrics_entries(self.partition_results)),
+            "error": self.error if self.error else None,
+            "final_result_preview": str(self.final_result)[:500] if self.final_result else None,
         }
 
 
@@ -311,6 +327,9 @@ class SubAgentOrchestrator:
                 chain_scheduling_result=plan.chain_scheduling_result,
             )
 
+            # SubAgentResponse에서 이미 aggregate된 정보 사용
+            aggregated = response.aggregated or {}
+
             partition_result = {
                 "partition_index": i,
                 "location": partition.location,
@@ -318,12 +337,31 @@ class SubAgentOrchestrator:
                 "success": response.success,
                 "tool_calls": response.tool_calls,
                 "execution_time_ms": response.execution_time_ms,
-                "metrics_entries": response.metrics_entries,  # 상세 tool 메트릭
+                "metrics_entries": response.metrics_entries or [],
+                # Aggregated partition metrics (SubAgent에서 계산된 값 사용)
+                "latency_ms": aggregated.get("latency_ms", 0),
+                "inter_tool_latency_ms": aggregated.get("inter_tool_latency_ms", 0),
+                "llm_latency_ms": aggregated.get("llm_latency_ms", 0),
+                "total_latency_ms": aggregated.get("total_latency_ms", 0),
+                "llm": aggregated.get("llm", {"input_tokens": 0, "output_tokens": 0}),
             }
 
             if not response.success:
                 partition_result["error"] = response.error
                 partition_results.append(partition_result)
+
+                # 실패 시에도 placement_map과 chain_scheduling 포함
+                fail_placement_map = {}
+                fail_chain_scheduling = {}
+                if plan.chain_scheduling_result:
+                    fail_placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
+                    fail_chain_scheduling = {
+                        "total_cost": plan.chain_scheduling_result.total_score,
+                        "search_space_size": plan.chain_scheduling_result.search_space_size,
+                        "decision_time_ns": plan.chain_scheduling_result.decision_time_ns,
+                        "decision_time_ms": plan.chain_scheduling_result.decision_time_ns / 1e6,
+                    }
+
                 return OrchestrationResult(
                     success=False,
                     error=f"Partition {i} ({partition.location}) failed: {response.error}",
@@ -331,6 +369,9 @@ class SubAgentOrchestrator:
                     partitions_executed=i + 1,
                     total_tool_calls=total_tool_calls,
                     partition_results=partition_results,
+                    scheduler_type=self.scheduler_type,
+                    placement_map=fail_placement_map,
+                    chain_scheduling=fail_chain_scheduling,
                 )
 
             partition_result["result"] = response.result
@@ -350,6 +391,23 @@ class SubAgentOrchestrator:
             current_context[f"partition_{i}_tool_calls"] = response.tool_calls
             total_tool_calls += len(response.tool_calls)
 
+        # placement_map과 chain_scheduling 추출
+        placement_map = {}
+        chain_scheduling = {}
+        if plan.chain_scheduling_result:
+            placement_map = {p.tool_name: p.location for p in plan.chain_scheduling_result.placements}
+            chain_scheduling = {
+                "total_cost": plan.chain_scheduling_result.total_score,
+                "search_space_size": plan.chain_scheduling_result.search_space_size,
+                "decision_time_ns": plan.chain_scheduling_result.decision_time_ns,
+                "decision_time_ms": plan.chain_scheduling_result.decision_time_ns / 1e6,
+            }
+        else:
+            # Fallback: extract from partitions
+            for partition in plan.partitions:
+                for tool in partition.tools:
+                    placement_map[tool] = partition.location
+
         # 최종 결과
         return OrchestrationResult(
             success=True,
@@ -358,6 +416,9 @@ class SubAgentOrchestrator:
             partitions_executed=len(plan.partitions),
             total_tool_calls=total_tool_calls,
             partition_results=partition_results,
+            scheduler_type=self.scheduler_type,
+            placement_map=placement_map,
+            chain_scheduling=chain_scheduling,
         )
 
     async def _run_legacy_mode(
