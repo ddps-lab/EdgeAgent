@@ -33,8 +33,11 @@ class ToolTimer {
             io_ms: 0,
             compute_ms: Math.round(elapsed * 1000) / 1000,
         };
+        const timingLine = `---TIMING---${JSON.stringify(timing)}`;
         try { writeFileSync(TIMING_FILE, JSON.stringify(timing)); } catch (e) {}
-        console.error(`---TIMING---${JSON.stringify(timing)}`);
+        // Output to both stdout and stderr for reliable Docker log capture
+        console.log(timingLine);
+        console.error(timingLine);
         return timing;
     }
 }
