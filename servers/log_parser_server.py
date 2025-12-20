@@ -22,31 +22,12 @@ Usage:
 
 import re
 import json
-import sys
-import time
 from typing import Literal, Any
 from collections import Counter
 from fastmcp import FastMCP
+from timing import ToolTimer
 
 mcp = FastMCP("log_parser")
-
-# Timing utilities
-_tool_start_time = 0.0
-_io_time = 0.0
-_TIMING_FILE = "/tmp/mcp_timing.txt"
-
-def _reset_timing():
-    global _tool_start_time, _io_time
-    _tool_start_time = time.perf_counter()
-    _io_time = 0.0
-
-def _output_timing():
-    global _tool_start_time, _io_time
-    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
-    # Write to file (FastMCP captures stderr)
-    with open(_TIMING_FILE, "w") as f:
-        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
-        f.write(f"---IO---{_io_time:.3f}\n")
 
 # Common log patterns
 LOG_PATTERNS = {
@@ -182,7 +163,7 @@ def parse_logs(
         - parsed_count: Number of successfully parsed entries
         - error_count: Number of lines that couldn't be parsed
     """
-    _reset_timing()
+    timer = ToolTimer("parse_logs")
 
     lines = log_content.split("\n")
 
@@ -210,7 +191,7 @@ def parse_logs(
         "entries": parsed_entries,
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -248,7 +229,7 @@ def filter_entries(
         - by_level: Count per severity level
         - levels_included: Which levels are in the result
     """
-    _reset_timing()
+    timer = ToolTimer("filter_entries")
 
     if include_levels:
         # Filter by specific levels
@@ -276,7 +257,7 @@ def filter_entries(
         "entries": filtered,
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -309,10 +290,10 @@ def compute_log_statistics(entries: list) -> dict:
         - top_ips: Most frequent IP addresses (if applicable)
         - top_paths: Most frequent paths (if applicable)
     """
-    _reset_timing()
+    timer = ToolTimer("compute_log_statistics")
 
     if not entries:
-        _output_timing()
+        timer.finish()
         return {"entry_count": 0, "by_level": {}}
 
     level_counts = Counter(entry.get("_level", "unknown") for entry in entries)
@@ -338,7 +319,7 @@ def compute_log_statistics(entries: list) -> dict:
         "top_paths": dict(path_counts.most_common(10)) if path_counts else None,
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -372,7 +353,7 @@ def search_entries(
         - search_pattern: The pattern used
         - total_entries: Total entries searched
     """
-    _reset_timing()
+    timer = ToolTimer("search_entries")
 
     if fields is None:
         fields = ["message", "raw"]
@@ -400,7 +381,7 @@ def search_entries(
         "matches": matches[:100],  # Limit output
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -426,7 +407,7 @@ def extract_time_range(entries: list) -> dict:
         - last_timestamp: Last timestamp in logs
         - entry_count: Number of entries analyzed
     """
-    _reset_timing()
+    timer = ToolTimer("extract_time_range")
 
     times = []
     for entry in entries:
@@ -435,7 +416,7 @@ def extract_time_range(entries: list) -> dict:
             times.append(str(time_val))
 
     if not times:
-        _output_timing()
+        timer.finish()
         return {"has_timestamps": False, "entry_count": len(entries)}
 
     result = {
@@ -446,7 +427,7 @@ def extract_time_range(entries: list) -> dict:
         "sample_timestamps": times[:5],
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 

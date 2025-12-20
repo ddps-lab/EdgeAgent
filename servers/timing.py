@@ -2,143 +2,148 @@
 """
 Timing utilities for Native MCP servers profiling.
 
-Provides timing markers compatible with WASM profiling format:
-- ---NATIVE_TOTAL---{ms}  : Total time inside server (excludes process spawn)
-- ---TOOL_EXEC---{ms}     : Tool execution time
-- ---IO---{ms}            : Accumulated I/O time (disk + network)
+Matches WASM timing format exactly:
+- ---TIMING---{"tool":"name","fn_total_ms":X,"io_ms":Y,"compute_ms":Z}
 
 Usage:
-    from timing import TimingContext, io_timer
+    from timing import ToolTimer, measure_io
 
     @mcp.tool()
-    def my_tool(arg: str) -> dict:
-        with TimingContext("my_tool") as ctx:
-            # I/O operation
-            with ctx.io_timer():
-                data = read_file(path)
+    def my_tool(path: str) -> dict:
+        timer = ToolTimer("my_tool")
 
-            # Compute
-            result = process(data)
+        # I/O operation - wrap with measure_io
+        content = measure_io(lambda: open(path).read())
 
-            return result
+        # Compute (automatically tracked)
+        result = process(content)
+
+        timer.finish()
+        return result
 """
 
-import sys
+import json
 import time
-from contextlib import contextmanager
-from functools import wraps
-from typing import Callable, Any
 import threading
+from contextlib import contextmanager
+from typing import Callable, TypeVar, Any
+from pathlib import Path
 
-# Thread-local storage for timing data
+T = TypeVar('T')
+
+# Thread-local storage for I/O accumulator
 _timing_data = threading.local()
 
-
-def _get_timing():
-    """Get thread-local timing data"""
-    if not hasattr(_timing_data, 'io_time'):
-        _timing_data.io_time = 0.0
-        _timing_data.tool_start = 0.0
-    return _timing_data
+# Output file (FastMCP captures stderr, so we use a file)
+TIMING_FILE = Path("/tmp/mcp_timing.json")
 
 
-def reset_timing():
-    """Reset timing counters"""
-    data = _get_timing()
-    data.io_time = 0.0
-    data.tool_start = time.perf_counter()
+def _get_io_accumulator() -> float:
+    """Get thread-local I/O accumulator"""
+    if not hasattr(_timing_data, 'io_ms'):
+        _timing_data.io_ms = 0.0
+    return _timing_data.io_ms
 
 
-def add_io_time(ms: float):
-    """Add I/O time to accumulator"""
-    _get_timing().io_time += ms
+def _reset_io_accumulator():
+    """Reset I/O accumulator"""
+    _timing_data.io_ms = 0.0
 
 
-def get_io_time() -> float:
-    """Get accumulated I/O time"""
-    return _get_timing().io_time
+def _add_io_time(ms: float):
+    """Add to I/O accumulator"""
+    if not hasattr(_timing_data, 'io_ms'):
+        _timing_data.io_ms = 0.0
+    _timing_data.io_ms += ms
 
 
-class TimingContext:
-    """Context manager for tool timing"""
+def measure_io(func: Callable[[], T]) -> T:
+    """
+    Measure an I/O operation and add to the accumulator.
 
-    def __init__(self, tool_name: str):
-        self.tool_name = tool_name
-        self.start_time = 0.0
-        self.io_time = 0.0
-
-    def __enter__(self):
-        self.start_time = time.perf_counter()
-        self.io_time = 0.0
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        end_time = time.perf_counter()
-        tool_exec_ms = (end_time - self.start_time) * 1000
-
-        # Output timing markers to stderr (same as WASM)
-        print(f"---TOOL_EXEC---{tool_exec_ms:.3f}", file=sys.stderr)
-        print(f"---IO---{self.io_time:.3f}", file=sys.stderr)
-
-        return False
-
-    @contextmanager
-    def io_timer(self):
-        """Context manager for I/O timing"""
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            elapsed_ms = (time.perf_counter() - start) * 1000
-            self.io_time += elapsed_ms
+    Usage:
+        content = measure_io(lambda: open(path).read())
+        data = measure_io(lambda: requests.get(url).json())
+    """
+    start = time.perf_counter()
+    try:
+        return func()
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        _add_io_time(elapsed_ms)
 
 
 @contextmanager
 def io_timer():
-    """Standalone I/O timer context manager"""
+    """
+    Context manager for I/O timing.
+
+    Usage:
+        with io_timer():
+            content = open(path).read()
+    """
     start = time.perf_counter()
     try:
         yield
     finally:
         elapsed_ms = (time.perf_counter() - start) * 1000
-        add_io_time(elapsed_ms)
+        _add_io_time(elapsed_ms)
 
 
-def timed_tool(func: Callable) -> Callable:
-    """Decorator for timing MCP tools"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        reset_timing()
-        start_time = time.perf_counter()
+class ToolTimer:
+    """
+    Timer for measuring tool execution (matches WASM ToolTimer).
 
-        try:
-            result = func(*args, **kwargs)
+    Usage:
+        def my_tool():
+            timer = ToolTimer("my_tool")
+            # ... do work, use measure_io() for I/O ...
+            timer.finish()
             return result
-        finally:
-            end_time = time.perf_counter()
-            tool_exec_ms = (end_time - start_time) * 1000
-            io_time_ms = get_io_time()
+    """
 
-            # Output timing markers to stderr
-            print(f"---TOOL_EXEC---{tool_exec_ms:.3f}", file=sys.stderr)
-            print(f"---IO---{io_time_ms:.3f}", file=sys.stderr)
+    def __init__(self, tool_name: str):
+        self.tool_name = tool_name
+        self.start_time = time.perf_counter()
+        _reset_io_accumulator()
 
-    return wrapper
+    def finish(self) -> dict:
+        """Finish timing and output results"""
+        elapsed = time.perf_counter() - self.start_time
+        io_ms = _get_io_accumulator()
+
+        fn_total_ms = elapsed * 1000
+        compute_ms = max(0.0, fn_total_ms - io_ms)
+
+        timing = {
+            "tool": self.tool_name,
+            "fn_total_ms": round(fn_total_ms, 3),
+            "io_ms": round(io_ms, 3),
+            "compute_ms": round(compute_ms, 3),
+        }
+
+        # Write to file (FastMCP captures stderr)
+        try:
+            TIMING_FILE.write_text(json.dumps(timing))
+        except Exception:
+            pass
+
+        return timing
 
 
-class NativeTimingServer:
-    """Mixin for adding timing to FastMCP server"""
+# Global server start time for total timing
+_server_start_time: float = 0.0
 
-    _server_start_time: float = 0.0
 
-    @classmethod
-    def mark_server_start(cls):
-        """Mark server start time (call at beginning of main)"""
-        cls._server_start_time = time.perf_counter()
+def mark_server_start():
+    """Mark server start time (call at beginning of main)"""
+    global _server_start_time
+    _server_start_time = time.perf_counter()
 
-    @classmethod
-    def output_total_time(cls):
-        """Output total time marker (call at end of request)"""
-        if cls._server_start_time > 0:
-            total_ms = (time.perf_counter() - cls._server_start_time) * 1000
-            print(f"---NATIVE_TOTAL---{total_ms:.3f}", file=sys.stderr)
+
+def get_native_total_ms() -> float:
+    """Get total time since server start"""
+    global _server_start_time
+    if _server_start_time > 0:
+        return (time.perf_counter() - _server_start_time) * 1000
+    return 0.0

@@ -23,32 +23,11 @@ Usage:
 
 import os
 import io
-import time
 import base64
 from pathlib import Path
 from typing import Literal
 from fastmcp import FastMCP
-
-# Timing utilities
-_tool_start_time = 0.0
-_io_time = 0.0
-_TIMING_FILE = "/tmp/mcp_timing.txt"
-
-def _reset_timing():
-    global _tool_start_time, _io_time
-    _tool_start_time = time.perf_counter()
-    _io_time = 0.0
-
-def _output_timing():
-    global _tool_start_time, _io_time
-    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
-    with open(_TIMING_FILE, "w") as f:
-        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
-        f.write(f"---IO---{_io_time:.3f}\n")
-
-def _add_io_time(start: float):
-    global _io_time
-    _io_time += (time.perf_counter() - start) * 1000
+from timing import ToolTimer, measure_io
 
 mcp = FastMCP("image_resize")
 
@@ -99,14 +78,14 @@ def get_image_info(image_path: str) -> dict:
         - size_bytes: File size
         - mode: Color mode (RGB, RGBA, etc.)
     """
-    _reset_timing()
+    timer = ToolTimer("get_image_info")
     _ensure_pil()
     from PIL import Image
 
     try:
-        io_start = time.perf_counter()
-        with Image.open(image_path) as img:
-            _add_io_time(io_start)
+        # measure_io wraps I/O operation - time is automatically accumulated
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
             result = {
                 "path": image_path,
                 "format": img.format,
@@ -116,10 +95,10 @@ def get_image_info(image_path: str) -> dict:
                 "size_bytes": os.path.getsize(image_path),
                 "aspect_ratio": round(img.width / img.height, 2) if img.height > 0 else 0,
             }
-        _output_timing()
+        timer.finish()
         return result
     except Exception as e:
-        _output_timing()
+        timer.finish()
         return {"path": image_path, "error": str(e)}
 
 
