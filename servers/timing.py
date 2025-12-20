@@ -122,11 +122,15 @@ class ToolTimer:
             "compute_ms": round(compute_ms, 3),
         }
 
-        # Write to file (FastMCP captures stderr)
+        # Write to both file and stderr
+        import sys
         try:
             TIMING_FILE.write_text(json.dumps(timing))
         except Exception:
             pass
+
+        # Also print to stderr for Docker stdio capture
+        print(f"---TIMING---{json.dumps(timing)}", file=sys.stderr)
 
         return timing
 
