@@ -67,7 +67,10 @@ You have access to the following tools:
 - aggregate_list: Group and aggregate data
 - write_file: Write files to the filesystem
 
-IMPORTANT: Do NOT use directory_tree tool. Use list_directory instead.
+IMPORTANT:
+- Do NOT use directory_tree tool. Use list_directory instead.
+- Do NOT commit any changes. Only read, analyze, and write the report file.
+- Do NOT use git_diff_unstaged or git_diff_staged tools. Use git_diff with target="HEAD~1..HEAD" instead.
 
 The repository is located at /edgeagent/data/scenario1/defects4j/lang
 
@@ -83,10 +86,6 @@ Include in your report:
 - Recent commits summary
 - Code changes analysis
 - Recommendations for improvement
-
-IMPORTANT:
-- Do NOT commit any changes. Only read, analyze, and write the report file.
-- Do NOT use git_diff_unstaged or git_diff_staged tools. Use git_diff with target="HEAD~1..HEAD" instead.
 """
 
 
