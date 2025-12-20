@@ -20,7 +20,7 @@ spec:
       timeoutSeconds: 600  # Max allowed by Knative
       containers:
         - name: subagent
-          image: 786382940258.dkr.ecr.ap-northeast-2.amazonaws.com/edgeagent-subagent:latest
+          image: 786382940258.dkr.ecr.us-west-2.amazonaws.com/edgeagent-subagent:latest
           ports:
             - containerPort: 8080
               protocol: TCP

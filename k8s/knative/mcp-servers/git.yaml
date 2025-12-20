@@ -18,7 +18,7 @@ spec:
       timeoutSeconds: 300
       containers:
         - name: mcp-git
-          image: 786382940258.dkr.ecr.ap-northeast-2.amazonaws.com/edgeagent-mcp-git:latest
+          image: 786382940258.dkr.ecr.us-west-2.amazonaws.com/edgeagent-mcp-git:latest
           ports:
             - containerPort: 8080
               protocol: TCP
