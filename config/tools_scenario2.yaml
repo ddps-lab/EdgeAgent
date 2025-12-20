@@ -299,7 +299,7 @@ tools:
             edge-nuc: 2195.871
 static_mapping:
   filesystem: DEVICE
-  log_parser: CLOUD
+  log_parser: EDGE
   data_aggregate: EDGE
 subagent_endpoints:
   EDGE:

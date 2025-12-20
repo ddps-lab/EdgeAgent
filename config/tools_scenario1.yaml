@@ -427,7 +427,7 @@ tools:
 static_mapping:
   filesystem: DEVICE
   git: DEVICE
-  summarize: EDGE
+  summarize: CLOUD
   data_aggregate: EDGE
 subagent_endpoints:
   EDGE:
