@@ -14,11 +14,29 @@ Usage:
 """
 
 import json
+import time
 from collections import Counter, defaultdict
 from typing import Any
 from statistics import mean, median, stdev
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
+
+# Timing utilities
+_tool_start_time = 0.0
+_io_time = 0.0
+_TIMING_FILE = "/tmp/mcp_timing.txt"
+
+def _reset_timing():
+    global _tool_start_time, _io_time
+    _tool_start_time = time.perf_counter()
+    _io_time = 0.0
+
+def _output_timing():
+    global _tool_start_time, _io_time
+    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
+    with open(_TIMING_FILE, "w") as f:
+        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
+        f.write(f"---IO---{_io_time:.3f}\n")
 
 mcp = FastMCP("data_aggregate")
 
@@ -116,6 +134,8 @@ def aggregate_list(
         - field_stats: Statistics for each sum_field (if sum_fields specified)
         - reduction_ratio: Output size / Input size (shows data reduction achieved)
     """
+    _reset_timing()
+
     # Convert Pydantic models to dicts if needed
     items = [i.model_dump() if hasattr(i, 'model_dump') else i for i in items]
 
@@ -160,6 +180,7 @@ def aggregate_list(
         else 0
     )
 
+    _output_timing()
     return result
 
 
@@ -175,6 +196,8 @@ def merge_summaries(summaries: list[SummaryItem], weights: list[float] | None = 
     Returns:
         Merged summary
     """
+    _reset_timing()
+
     # Convert Pydantic models to dicts if needed
     summaries = [s.model_dump() if hasattr(s, 'model_dump') else s for s in summaries]
 
@@ -223,6 +246,7 @@ def merge_summaries(summaries: list[SummaryItem], weights: list[float] | None = 
         if isinstance(merged[key], defaultdict):
             merged[key] = dict(merged[key])
 
+    _output_timing()
     return merged
 
 
@@ -245,10 +269,13 @@ def combine_research_results(
     Returns:
         Combined research summary
     """
+    _reset_timing()
+
     # Convert Pydantic models to dicts if needed
     results = [r.model_dump() if hasattr(r, 'model_dump') else r for r in results]
 
     if not results:
+        _output_timing()
         return {"result_count": 0, "combined_summary": ""}
 
     # Sort by score if available
@@ -278,13 +305,16 @@ def combine_research_results(
         f"[{item['rank']}] {item['title']}\n{item['summary']}" for item in items
     )
 
-    return {
+    result = {
         "result_count": len(results),
         "items": items,
         "combined_text": combined_text,
         "input_size": sum(len(json.dumps(r)) for r in results),
         "output_size": len(combined_text),
     }
+
+    _output_timing()
+    return result
 
 
 @mcp.tool()
@@ -302,10 +332,13 @@ def deduplicate(
     Returns:
         Deduplicated items with statistics
     """
+    _reset_timing()
+
     # Convert Pydantic models to dicts if needed
     items = [i.model_dump() if hasattr(i, 'model_dump') else i for i in items]
 
     if not items:
+        _output_timing()
         return {"original_count": 0, "unique_count": 0, "items": []}
 
     seen = {}
@@ -325,13 +358,16 @@ def deduplicate(
     if keep == "last":
         result = list(seen.values())
 
-    return {
+    output = {
         "original_count": len(items),
         "unique_count": len(result),
         "duplicates_removed": len(items) - len(result),
         "key_fields": key_fields,
         "items": result,
     }
+
+    _output_timing()
+    return output
 
 
 @mcp.tool()
@@ -353,10 +389,13 @@ def compute_trends(
     Returns:
         Trend analysis
     """
+    _reset_timing()
+
     # Convert Pydantic models to dicts if needed
     time_series = [t.model_dump() if hasattr(t, 'model_dump') else t for t in time_series]
 
     if not time_series:
+        _output_timing()
         return {"data_points": 0, "trend": "insufficient_data"}
 
     # Extract and sort values
@@ -367,6 +406,7 @@ def compute_trends(
             data.append({"time": item.get(time_field), "value": value})
 
     if len(data) < 2:
+        _output_timing()
         return {"data_points": len(data), "trend": "insufficient_data"}
 
     values = [d["value"] for d in data]
@@ -385,7 +425,7 @@ def compute_trends(
     else:
         trend = "stable"
 
-    return {
+    result = {
         "data_points": len(data),
         "trend": trend,
         "stats": _compute_stats(values),
@@ -395,6 +435,9 @@ def compute_trends(
             ((second_avg - first_avg) / first_avg * 100) if first_avg != 0 else 0
         ),
     }
+
+    _output_timing()
+    return result
 
 
 if __name__ == "__main__":

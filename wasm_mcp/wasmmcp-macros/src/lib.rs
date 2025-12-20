@@ -405,6 +405,12 @@ pub fn export_cli(input: TokenStream) -> TokenStream {
 /// This macro creates a WASI HTTP handler that processes MCP requests
 /// over HTTP using JSON-RPC.
 ///
+/// Timing information is included in response headers:
+/// - X-WASM-Total-Ms: Total WASM execution time
+/// - X-JSON-Parse-Ms: JSON parsing time
+/// - X-Tool-Exec-Ms: Tool execution time (from server.handle_jsonrpc)
+/// - X-IO-Ms: I/O time (if measured by the tool)
+///
 /// # Example
 /// ```rust,ignore
 /// use wasmmcp::prelude::*;
@@ -427,24 +433,27 @@ pub fn export_http(input: TokenStream) -> TokenStream {
         impl wasi::exports::http::incoming_handler::Guest for WasmMcpHttpHandler {
             fn handle(request: wasi::http::types::IncomingRequest, response_out: wasi::http::types::ResponseOutparam) {
                 use wasi::http::types::{Fields, OutgoingBody, OutgoingResponse, Method};
+                use std::time::Instant;
+
+                // Start total timing
+                let wasm_start = Instant::now();
 
                 let method = request.method();
 
-                // CORS headers
-                let headers = Fields::new();
-                let _ = headers.set(&"Content-Type".to_string(), &[b"application/json".to_vec()]);
-                let _ = headers.set(&"Access-Control-Allow-Origin".to_string(), &[b"*".to_vec()]);
-                let _ = headers.set(&"Access-Control-Allow-Methods".to_string(), &[b"GET, POST, OPTIONS".to_vec()]);
-                let _ = headers.set(&"Access-Control-Allow-Headers".to_string(), &[b"Content-Type".to_vec()]);
-
-                // Handle CORS preflight
+                // Handle CORS preflight first (no timing needed)
                 if matches!(method, Method::Options) {
+                    let headers = Fields::new();
+                    let _ = headers.set(&"Access-Control-Allow-Origin".to_string(), &[b"*".to_vec()]);
+                    let _ = headers.set(&"Access-Control-Allow-Methods".to_string(), &[b"GET, POST, OPTIONS".to_vec()]);
+                    let _ = headers.set(&"Access-Control-Allow-Headers".to_string(), &[b"Content-Type".to_vec()]);
                     send_response(response_out, 204, headers, b"");
                     return;
                 }
 
                 // Only handle POST
                 if !matches!(method, Method::Post) {
+                    let headers = Fields::new();
+                    let _ = headers.set(&"Content-Type".to_string(), &[b"application/json".to_vec()]);
                     send_response(response_out, 405, headers, b"Method Not Allowed");
                     return;
                 }
@@ -452,10 +461,13 @@ pub fn export_http(input: TokenStream) -> TokenStream {
                 // Read request body
                 let body = read_body(&request);
 
-                // Parse JSON-RPC request
+                // Parse JSON-RPC request with timing
+                let json_parse_start = Instant::now();
                 let json_request: serde_json::Value = match serde_json::from_slice(&body) {
                     Ok(v) => v,
                     Err(e) => {
+                        let headers = Fields::new();
+                        let _ = headers.set(&"Content-Type".to_string(), &[b"application/json".to_vec()]);
                         let error_response = serde_json::json!({
                             "jsonrpc": "2.0",
                             "error": {
@@ -469,22 +481,32 @@ pub fn export_http(input: TokenStream) -> TokenStream {
                         return;
                     }
                 };
+                let json_parse_ms = json_parse_start.elapsed().as_secs_f64() * 1000.0;
 
-                let server = #server_fn();
                 let method_str = json_request.get("method")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let params = json_request.get("params").cloned();
                 let id = json_request.get("id").cloned();
 
-                // Handle the request
+                // Create server and handle request with timing
+                let server = #server_fn();
+                let tool_exec_start = Instant::now();
                 let result = server.handle_jsonrpc(method_str, params);
+                let tool_exec_ms = tool_exec_start.elapsed().as_secs_f64() * 1000.0;
+
+                // Get I/O timing if available (from thread-local accumulator)
+                let io_ms = wasmmcp::timing::get_io_duration().as_secs_f64() * 1000.0;
+
+                // Calculate total WASM time
+                let wasm_total_ms = wasm_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Notifications (no id) don't expect a response per JSON-RPC 2.0 spec
                 // Per MCP Streamable HTTP spec, return 202 Accepted with no body
                 let id = match id {
                     Some(id) => id,
                     None => {
+                        let headers = Fields::new();
                         send_response(response_out, 202, headers, b"");
                         return;
                     }
@@ -507,6 +529,26 @@ pub fn export_http(input: TokenStream) -> TokenStream {
                         serde_json::to_vec(&error_response).unwrap_or_else(|_| b"{}".to_vec())
                     }
                 };
+
+                // Build response headers with timing information
+                let headers = Fields::new();
+                let _ = headers.set(&"Content-Type".to_string(), &[b"application/json".to_vec()]);
+                let _ = headers.set(&"Access-Control-Allow-Origin".to_string(), &[b"*".to_vec()]);
+                let _ = headers.set(&"Access-Control-Expose-Headers".to_string(),
+                    &[b"X-WASM-Total-Ms, X-JSON-Parse-Ms, X-Tool-Exec-Ms, X-IO-Ms".to_vec()]);
+
+                // Add timing headers (only for tools/call method)
+                if method_str == "tools/call" {
+                    let _ = headers.set(&"X-WASM-Total-Ms".to_string(),
+                        &[format!("{:.3}", wasm_total_ms).into_bytes()]);
+                    let _ = headers.set(&"X-JSON-Parse-Ms".to_string(),
+                        &[format!("{:.3}", json_parse_ms).into_bytes()]);
+                    let _ = headers.set(&"X-Tool-Exec-Ms".to_string(),
+                        &[format!("{:.3}", tool_exec_ms).into_bytes()]);
+                    let _ = headers.set(&"X-IO-Ms".to_string(),
+                        &[format!("{:.3}", io_ms).into_bytes()]);
+                }
+
                 send_response(response_out, 200, headers, &response_body);
             }
         }

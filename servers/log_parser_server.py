@@ -33,6 +33,7 @@ mcp = FastMCP("log_parser")
 # Timing utilities
 _tool_start_time = 0.0
 _io_time = 0.0
+_TIMING_FILE = "/tmp/mcp_timing.txt"
 
 def _reset_timing():
     global _tool_start_time, _io_time
@@ -42,9 +43,10 @@ def _reset_timing():
 def _output_timing():
     global _tool_start_time, _io_time
     tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
-    print(f"---TOOL_EXEC---{tool_exec_ms:.3f}", file=sys.stderr)
-    print(f"---IO---{_io_time:.3f}", file=sys.stderr)
-    sys.stderr.flush()
+    # Write to file (FastMCP captures stderr)
+    with open(_TIMING_FILE, "w") as f:
+        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
+        f.write(f"---IO---{_io_time:.3f}\n")
 
 # Common log patterns
 LOG_PATTERNS = {

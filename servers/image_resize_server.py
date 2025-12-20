@@ -23,10 +23,32 @@ Usage:
 
 import os
 import io
+import time
 import base64
 from pathlib import Path
 from typing import Literal
 from fastmcp import FastMCP
+
+# Timing utilities
+_tool_start_time = 0.0
+_io_time = 0.0
+_TIMING_FILE = "/tmp/mcp_timing.txt"
+
+def _reset_timing():
+    global _tool_start_time, _io_time
+    _tool_start_time = time.perf_counter()
+    _io_time = 0.0
+
+def _output_timing():
+    global _tool_start_time, _io_time
+    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
+    with open(_TIMING_FILE, "w") as f:
+        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
+        f.write(f"---IO---{_io_time:.3f}\n")
+
+def _add_io_time(start: float):
+    global _io_time
+    _io_time += (time.perf_counter() - start) * 1000
 
 mcp = FastMCP("image_resize")
 
@@ -77,12 +99,15 @@ def get_image_info(image_path: str) -> dict:
         - size_bytes: File size
         - mode: Color mode (RGB, RGBA, etc.)
     """
+    _reset_timing()
     _ensure_pil()
     from PIL import Image
 
     try:
+        io_start = time.perf_counter()
         with Image.open(image_path) as img:
-            return {
+            _add_io_time(io_start)
+            result = {
                 "path": image_path,
                 "format": img.format,
                 "mode": img.mode,
@@ -91,7 +116,10 @@ def get_image_info(image_path: str) -> dict:
                 "size_bytes": os.path.getsize(image_path),
                 "aspect_ratio": round(img.width / img.height, 2) if img.height > 0 else 0,
             }
+        _output_timing()
+        return result
     except Exception as e:
+        _output_timing()
         return {"path": image_path, "error": str(e)}
 
 
@@ -125,11 +153,14 @@ def resize_image(
         - original_bytes, output_bytes: Size comparison
         - data_base64: Base64-encoded output image
     """
+    _reset_timing()
     _ensure_pil()
     from PIL import Image
 
     try:
+        io_start = time.perf_counter()
         with Image.open(image_path) as img:
+            _add_io_time(io_start)
             original_size = img.size
             original_bytes = os.path.getsize(image_path)
 
@@ -150,6 +181,7 @@ def resize_image(
                 )
             else:
                 # No resize parameters given, just return info
+                _output_timing()
                 return {
                     "success": False,
                     "error": "No resize parameters provided (width, height, or max_size)",
@@ -168,7 +200,7 @@ def resize_image(
             output_bytes = len(buffer.getvalue())
             output_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-            return {
+            result = {
                 "success": True,
                 "path": image_path,
                 "original_size": original_size,
@@ -179,7 +211,10 @@ def resize_image(
                 "format": output_format,
                 "data_base64": output_b64,
             }
+            _output_timing()
+            return result
     except Exception as e:
+        _output_timing()
         return {"success": False, "error": str(e), "path": image_path}
 
 
@@ -208,11 +243,14 @@ def scan_directory(
         - image_paths: List of image paths (use these with other tools)
         - total_size_bytes: Combined size of all images
     """
+    _reset_timing()
+
     if extensions is None:
         extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"]
 
     path = Path(directory)
     if not path.exists():
+        _output_timing()
         return {"error": f"Directory not found: {directory}"}
 
     image_paths = []
@@ -240,6 +278,7 @@ def scan_directory(
             images_info.append(info)
         result["images"] = images_info
 
+    _output_timing()
     return result
 
 
@@ -263,6 +302,7 @@ def compute_image_hash(
         - hash: Computed hash value (string)
         - hash_type: Type of hash used
     """
+    _reset_timing()
     _ensure_pil()
     _ensure_imagehash()
     from PIL import Image
@@ -276,15 +316,20 @@ def compute_image_hash(
     }
 
     try:
+        io_start = time.perf_counter()
         with Image.open(image_path) as img:
+            _add_io_time(io_start)
             hash_func = hash_funcs.get(hash_type, imagehash.phash)
             hash_value = hash_func(img)
-            return {
+            result = {
                 "path": image_path,
                 "hash": str(hash_value),
                 "hash_type": hash_type,
             }
+            _output_timing()
+            return result
     except Exception as e:
+        _output_timing()
         return {"path": image_path, "error": str(e)}
 
 
@@ -322,6 +367,7 @@ def compare_hashes(
         - unique_count: Number of unique images
         - total_compared: Total images compared
     """
+    _reset_timing()
     _ensure_imagehash()
     import imagehash
 
@@ -333,6 +379,7 @@ def compare_hashes(
     }
 
     if len(valid_hashes) < 2:
+        _output_timing()
         return {
             "total_compared": len(valid_hashes),
             "duplicate_groups": [],
@@ -372,7 +419,7 @@ def compare_hashes(
 
     unique = [p for p in valid_hashes.keys() if p not in all_duplicates]
 
-    return {
+    result = {
         "total_compared": len(valid_hashes),
         "duplicate_groups": groups,
         "duplicate_group_count": len(groups),
@@ -381,6 +428,9 @@ def compare_hashes(
         "threshold": threshold,
         "errors": [h for h in hashes if "error" in h],
     }
+
+    _output_timing()
+    return result
 
 
 @mcp.tool()
@@ -422,6 +472,8 @@ def batch_resize(
         - failed: Number of failures
         - overall_reduction: Ratio of output size to input size (e.g., 0.1 = 90% reduction)
     """
+    _reset_timing()
+
     results = []
     total_input = 0
     total_output = 0
@@ -466,7 +518,7 @@ def batch_resize(
             })
             failed += 1
 
-    return {
+    output = {
         "total_images": len(image_paths),
         "successful": successful,
         "failed": failed,
@@ -475,6 +527,9 @@ def batch_resize(
         "overall_reduction": round(total_output / total_input, 4) if total_input > 0 else 0,
         "results": results,
     }
+
+    _output_timing()
+    return output
 
 
 if __name__ == "__main__":
