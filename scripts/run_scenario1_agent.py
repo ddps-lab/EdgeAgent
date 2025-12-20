@@ -84,6 +84,8 @@ Include in your report:
 - Recent commits summary
 - Code changes analysis
 - Recommendations for improvement
+
+IMPORTANT: Do NOT commit any changes. Only read, analyze, and write the report file.
 """
 
 
