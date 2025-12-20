@@ -132,14 +132,13 @@ def resize_image(
         - original_bytes, output_bytes: Size comparison
         - data_base64: Base64-encoded output image
     """
-    _reset_timing()
+    timer = ToolTimer("resize_image")
     _ensure_pil()
     from PIL import Image
 
     try:
-        io_start = time.perf_counter()
-        with Image.open(image_path) as img:
-            _add_io_time(io_start)
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
             original_size = img.size
             original_bytes = os.path.getsize(image_path)
 
@@ -160,7 +159,7 @@ def resize_image(
                 )
             else:
                 # No resize parameters given, just return info
-                _output_timing()
+                timer.finish()
                 return {
                     "success": False,
                     "error": "No resize parameters provided (width, height, or max_size)",
@@ -190,10 +189,10 @@ def resize_image(
                 "format": output_format,
                 "data_base64": output_b64,
             }
-            _output_timing()
+            timer.finish()
             return result
     except Exception as e:
-        _output_timing()
+        timer.finish()
         return {"success": False, "error": str(e), "path": image_path}
 
 
@@ -222,14 +221,14 @@ def scan_directory(
         - image_paths: List of image paths (use these with other tools)
         - total_size_bytes: Combined size of all images
     """
-    _reset_timing()
+    timer = ToolTimer("scan_directory")
 
     if extensions is None:
         extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"]
 
     path = Path(directory)
     if not path.exists():
-        _output_timing()
+        timer.finish()
         return {"error": f"Directory not found: {directory}"}
 
     image_paths = []
@@ -257,7 +256,7 @@ def scan_directory(
             images_info.append(info)
         result["images"] = images_info
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -281,7 +280,7 @@ def compute_image_hash(
         - hash: Computed hash value (string)
         - hash_type: Type of hash used
     """
-    _reset_timing()
+    timer = ToolTimer("compute_image_hash")
     _ensure_pil()
     _ensure_imagehash()
     from PIL import Image
@@ -295,9 +294,8 @@ def compute_image_hash(
     }
 
     try:
-        io_start = time.perf_counter()
-        with Image.open(image_path) as img:
-            _add_io_time(io_start)
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
             hash_func = hash_funcs.get(hash_type, imagehash.phash)
             hash_value = hash_func(img)
             result = {
@@ -305,10 +303,10 @@ def compute_image_hash(
                 "hash": str(hash_value),
                 "hash_type": hash_type,
             }
-            _output_timing()
+            timer.finish()
             return result
     except Exception as e:
-        _output_timing()
+        timer.finish()
         return {"path": image_path, "error": str(e)}
 
 
@@ -346,7 +344,7 @@ def compare_hashes(
         - unique_count: Number of unique images
         - total_compared: Total images compared
     """
-    _reset_timing()
+    timer = ToolTimer("compare_hashes")
     _ensure_imagehash()
     import imagehash
 
@@ -358,7 +356,7 @@ def compare_hashes(
     }
 
     if len(valid_hashes) < 2:
-        _output_timing()
+        timer.finish()
         return {
             "total_compared": len(valid_hashes),
             "duplicate_groups": [],
@@ -408,7 +406,7 @@ def compare_hashes(
         "errors": [h for h in hashes if "error" in h],
     }
 
-    _output_timing()
+    timer.finish()
     return result
 
 
@@ -451,7 +449,7 @@ def batch_resize(
         - failed: Number of failures
         - overall_reduction: Ratio of output size to input size (e.g., 0.1 = 90% reduction)
     """
-    _reset_timing()
+    timer = ToolTimer("batch_resize")
 
     results = []
     total_input = 0
@@ -465,7 +463,8 @@ def batch_resize(
         from PIL import Image
 
         try:
-            with Image.open(path) as img:
+            img = measure_io(lambda p=path: Image.open(p))
+            with img:
                 original_bytes = os.path.getsize(path)
                 total_input += original_bytes
 
@@ -507,7 +506,7 @@ def batch_resize(
         "results": results,
     }
 
-    _output_timing()
+    timer.finish()
     return output
 
 

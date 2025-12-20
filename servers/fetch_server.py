@@ -8,32 +8,11 @@ Handles Semantic Scholar URLs by converting them to API calls.
 
 import re
 import json
-import time
 import httpx
 from fastmcp import FastMCP
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
-
-# Timing utilities
-_tool_start_time = 0.0
-_io_time = 0.0
-_TIMING_FILE = "/tmp/mcp_timing.txt"
-
-def _reset_timing():
-    global _tool_start_time, _io_time
-    _tool_start_time = time.perf_counter()
-    _io_time = 0.0
-
-def _output_timing():
-    global _tool_start_time, _io_time
-    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
-    with open(_TIMING_FILE, "w") as f:
-        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
-        f.write(f"---IO---{_io_time:.3f}\n")
-
-def _add_io_time(start: float):
-    global _io_time
-    _io_time += (time.perf_counter() - start) * 1000
+from timing import ToolTimer, io_timer
 
 mcp = FastMCP("fetch")
 
@@ -141,83 +120,81 @@ async def fetch(url: str, max_length: int = 50000) -> str:
     Returns:
         The page content converted to markdown
     """
-    _reset_timing()
+    timer = ToolTimer("fetch")
     try:
         # Check if this is a Semantic Scholar paper URL - use API instead
         s2_paper_id = _extract_s2_paper_id(url)
         if s2_paper_id:
-            io_start = time.perf_counter()
-            result = await _fetch_s2_paper_via_api(s2_paper_id, max_length)
-            _add_io_time(io_start)
-            _output_timing()
+            with io_timer():
+                result = await _fetch_s2_paper_via_api(s2_paper_id, max_length)
+            timer.finish()
             return result
 
-        io_start = time.perf_counter()
-        async with httpx.AsyncClient(
-            timeout=30.0,
-            follow_redirects=True,
-            headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-            }
-        ) as client:
-            response = await client.get(url)
-            _add_io_time(io_start)
+        with io_timer():
+            async with httpx.AsyncClient(
+                timeout=30.0,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "keep-alive",
+                }
+            ) as client:
+                response = await client.get(url)
 
-            # Handle HTTP 202 (Accepted but not ready) - common with Semantic Scholar
-            if response.status_code == 202:
-                _output_timing()
-                return f"Error: HTTP 202 Accepted - Content not ready. This URL ({url}) requires server-side processing. Try a different URL or wait and retry later."
+        # Handle HTTP 202 (Accepted but not ready) - common with Semantic Scholar
+        if response.status_code == 202:
+            timer.finish()
+            return f"Error: HTTP 202 Accepted - Content not ready. This URL ({url}) requires server-side processing. Try a different URL or wait and retry later."
 
-            response.raise_for_status()
+        response.raise_for_status()
 
-            content_type = response.headers.get("content-type", "")
+        content_type = response.headers.get("content-type", "")
 
-            if "text/html" in content_type:
-                # Parse HTML and convert to markdown
-                soup = BeautifulSoup(response.text, "html.parser")
+        if "text/html" in content_type:
+            # Parse HTML and convert to markdown
+            soup = BeautifulSoup(response.text, "html.parser")
 
-                # Remove script and style elements
-                for element in soup(["script", "style", "nav", "footer", "header"]):
-                    element.decompose()
+            # Remove script and style elements
+            for element in soup(["script", "style", "nav", "footer", "header"]):
+                element.decompose()
 
-                # Get main content if available
-                main = soup.find("main") or soup.find("article") or soup.find("body")
-                if main:
-                    html_content = str(main)
-                else:
-                    html_content = str(soup)
-
-                # Convert to markdown
-                markdown = md(html_content, heading_style="ATX", strip=["a"])
-
-                # Truncate if too long
-                if len(markdown) > max_length:
-                    markdown = markdown[:max_length] + "\n\n[Content truncated...]"
-
-                _output_timing()
-                return markdown
-
-            elif "application/json" in content_type:
-                _output_timing()
-                return response.text[:max_length]
-
+            # Get main content if available
+            main = soup.find("main") or soup.find("article") or soup.find("body")
+            if main:
+                html_content = str(main)
             else:
-                # Plain text or other
-                _output_timing()
-                return response.text[:max_length]
+                html_content = str(soup)
+
+            # Convert to markdown
+            markdown = md(html_content, heading_style="ATX", strip=["a"])
+
+            # Truncate if too long
+            if len(markdown) > max_length:
+                markdown = markdown[:max_length] + "\n\n[Content truncated...]"
+
+            timer.finish()
+            return markdown
+
+        elif "application/json" in content_type:
+            timer.finish()
+            return response.text[:max_length]
+
+        else:
+            # Plain text or other
+            timer.finish()
+            return response.text[:max_length]
 
     except httpx.HTTPStatusError as e:
-        _output_timing()
+        timer.finish()
         return f"HTTP Error {e.response.status_code}: {e.response.reason_phrase}"
     except httpx.RequestError as e:
-        _output_timing()
+        timer.finish()
         return f"Request Error: {str(e)}"
     except Exception as e:
-        _output_timing()
+        timer.finish()
         return f"Error fetching URL: {str(e)}"
 
 

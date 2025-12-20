@@ -15,31 +15,10 @@ Usage:
 """
 
 import os
-import time
 from pathlib import Path
 from typing import Literal
 from fastmcp import FastMCP
-
-# Timing utilities
-_tool_start_time = 0.0
-_io_time = 0.0
-_TIMING_FILE = "/tmp/mcp_timing.txt"
-
-def _reset_timing():
-    global _tool_start_time, _io_time
-    _tool_start_time = time.perf_counter()
-    _io_time = 0.0
-
-def _output_timing():
-    global _tool_start_time, _io_time
-    tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
-    with open(_TIMING_FILE, "w") as f:
-        f.write(f"---TOOL_EXEC---{tool_exec_ms:.3f}\n")
-        f.write(f"---IO---{_io_time:.3f}\n")
-
-def _add_io_time(start: float):
-    global _io_time
-    _io_time += (time.perf_counter() - start) * 1000
+from timing import ToolTimer, measure_io
 
 # Load .env file from project root
 try:
@@ -161,11 +140,9 @@ def summarize_text(
     Returns:
         Summarized text
     """
-    _reset_timing()
-    io_start = time.perf_counter()
-    result = _summarize_text_impl(text, max_length, style)
-    _add_io_time(io_start)  # API calls are network I/O
-    _output_timing()
+    timer = ToolTimer("summarize_text")
+    result = measure_io(lambda: _summarize_text_impl(text, max_length, style))
+    timer.finish()
     return result
 
 
@@ -186,11 +163,9 @@ def summarize_documents(
     Returns:
         List of summarized documents
     """
-    _reset_timing()
-    io_start = time.perf_counter()
-    result = [_summarize_text_impl(doc, max_length_per_doc, style) for doc in documents]
-    _add_io_time(io_start)  # API calls are network I/O
-    _output_timing()
+    timer = ToolTimer("summarize_documents")
+    result = measure_io(lambda: [_summarize_text_impl(doc, max_length_per_doc, style) for doc in documents])
+    timer.finish()
     return result
 
 
@@ -202,13 +177,13 @@ def get_provider_info() -> dict:
     Returns:
         Dictionary with provider information
     """
-    _reset_timing()
+    timer = ToolTimer("get_provider_info")
     result = {
         "provider": PROVIDER,
         "available_styles": ["concise", "detailed", "bullet"],
         "default_max_length": 150,
     }
-    _output_timing()
+    timer.finish()
     return result
 
 
