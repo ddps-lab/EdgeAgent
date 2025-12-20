@@ -273,7 +273,7 @@ class HeuristicScheduler(BaseScheduler):
 
     결정 규칙:
     1. Type C (local_data) → path 기반 노드 고정
-    2. requires_cloud_api → CLOUD
+    2. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
     3. privacy_sensitive → DEVICE
     4. 기본값 → DEVICE
     """
@@ -298,7 +298,7 @@ class HeuristicScheduler(BaseScheduler):
             tool_profiles = server_config.get("tool_profiles", {})
             for tool_name, profile in tool_profiles.items():
                 self.tool_constraints[tool_name] = SchedulingConstraints(
-                    requires_cloud_api=profile.get("requires_cloud_api", False),
+                    requires_gpu=profile.get("requires_gpu", False),
                     privacy_sensitive=profile.get("privacy_sensitive", False),
                 )
 
@@ -354,13 +354,13 @@ class HeuristicScheduler(BaseScheduler):
         Tool의 실행 location 결정 (args 없이)
 
         우선순위:
-        1. requires_cloud_api → CLOUD
+        1. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
         2. privacy_sensitive → DEVICE
         3. 기본값 → DEVICE
         """
         constraints = self._get_constraints(tool_name)
 
-        if constraints.requires_cloud_api:
+        if constraints.requires_gpu:
             return "CLOUD"
 
         if constraints.privacy_sensitive:
@@ -379,7 +379,7 @@ class HeuristicScheduler(BaseScheduler):
 
         우선순위:
         1. Type C (local_data) → path 기반 노드 고정
-        2. requires_cloud_api → CLOUD
+        2. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
         3. privacy_sensitive → DEVICE
         4. 기본값 → DEVICE
         """
@@ -391,7 +391,7 @@ class HeuristicScheduler(BaseScheduler):
         # 2, 3. Constraints
         constraints = self._get_constraints(tool_name)
 
-        if constraints.requires_cloud_api:
+        if constraints.requires_gpu:
             return "CLOUD"
 
         if constraints.privacy_sensitive:
@@ -426,13 +426,13 @@ class HeuristicScheduler(BaseScheduler):
                 fixed=True,
             )
 
-        # 2. requires_cloud_api → CLOUD
-        if constraints.requires_cloud_api:
+        # 2. requires_gpu → CLOUD
+        if constraints.requires_gpu:
             decision_time_ns = time.perf_counter_ns() - start_time_ns
             return SchedulingResult(
                 tool_name=tool_name,
                 location="CLOUD",
-                reason="cloud_api_required",
+                reason="requires_gpu",
                 available_locations=["CLOUD"],
                 decision_time_ns=decision_time_ns,
                 constraints=constraints,
@@ -482,7 +482,7 @@ class HeuristicScheduler(BaseScheduler):
 
         각 Tool에 대해 휴리스틱 규칙을 적용하여 location을 결정합니다:
         1. Type C (local_data) → path 기반 노드 고정
-        2. requires_cloud_api → CLOUD
+        2. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
         3. privacy_sensitive → DEVICE
         4. static_mapping 사용
         """
@@ -816,7 +816,7 @@ class BruteForceChainScheduler(BaseScheduler):
         Tool의 고정 노드와 이유 추출
 
         고정 조건 (우선순위):
-        1. requires_cloud_api=True → CLOUD
+        1. requires_gpu=True → CLOUD (GPU는 클라우드에만 존재)
         2. privacy_sensitive=True → DEVICE
         3. data_locality="local_data" → path prefix 기반 노드 결정
 
@@ -831,9 +831,9 @@ class BruteForceChainScheduler(BaseScheduler):
         if not profile:
             return None, None
 
-        # 1. requires_cloud_api 체크
-        if getattr(profile, 'requires_cloud_api', False):
-            return "CLOUD", "requires_cloud_api"
+        # 1. requires_gpu 체크 (GPU는 클라우드에만 존재)
+        if getattr(profile, 'requires_gpu', False):
+            return "CLOUD", "requires_gpu"
 
         # 2. privacy_sensitive 체크
         if getattr(profile, 'privacy_sensitive', False):
@@ -1033,7 +1033,7 @@ class BruteForceChainScheduler(BaseScheduler):
             fixed_location, fixed_reason = fixed_info[i]
             if fixed_location is not None:
                 placement.fixed = True
-                placement.reason = fixed_reason  # "requires_cloud_api", "privacy_sensitive", "local_data_device" 등
+                placement.reason = fixed_reason  # "requires_gpu", "privacy_sensitive", "local_data_device" 등
             else:
                 placement.fixed = False
                 # 기본 reason은 "brute_force_optimal" 유지

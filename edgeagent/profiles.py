@@ -22,19 +22,19 @@ from .types import (
 @dataclass
 class NetworkMeasurements:
     """
-    네트워크 측정값 (system.yaml에서 로드)
+    네트워크 측정값 (system.yaml에서 로드, 티어별)
 
     T_comm = (datasize_mb * 8 / bandwidth_mbps * 1000) + latency_ms
     """
-    bandwidth_mbps: dict[str, float]  # {"D_E": 943.71, "D_C": 325.66}
-    latency_ms: dict[str, float]      # {"D_E": 0.892, "D_C": 4.329}
+    bandwidth_mbps: dict[str, float]  # {"D_E": 944.44, "D_C": 325.66}
+    latency_ms: dict[str, float]      # {"D_E": 0.500, "D_C": 4.329}
 
     def get_t_comm(self, path: str, datasize_mb: float) -> float:
         """
         T_comm 계산 (ms)
 
         Args:
-            path: "D_E" 또는 "D_C"
+            path: "D_E", "D_C"
             datasize_mb: 데이터 크기 (MB, 십진)
         """
         bw = self.bandwidth_mbps.get(path, 100.0)
@@ -60,31 +60,56 @@ class ToolMeasurements:
     """
     input_datasize_mb: float    # 입력 데이터 크기 (MB)
     output_datasize_mb: float   # 출력 데이터 크기 (MB)
-    t_exec_ms: dict[str, float] # {"DEVICE": 2.1, "EDGE": 1.5, "CLOUD": 1.0}
+    t_exec_ms: dict[str, float] # {"device-rpi": 2.1, "edge-nuc": 0.57, ...}
 
-    def calculate_alpha(self, network: NetworkMeasurements, path: str) -> float:
+    def get_tier_t_exec(self, hardware_mapping: dict) -> dict[str, float]:
         """
-        α = avg(T_exec) / (avg(T_exec) + T_comm_in + T_comm_out)
+        하드웨어 값을 tier별로 가져오기 (대표 하드웨어)
+
+        Args:
+            hardware_mapping: {"DEVICE": ["device-rpi"], "EDGE": ["edge-orin"], "CLOUD": ["cloud-c7i48xlarge"]}
+
+        Returns:
+            {"DEVICE": 44516.523, "EDGE": 22237.747, "CLOUD": 12170.633}
+        """
+        result = {}
+        for tier, hw_list in hardware_mapping.items():
+            # 대표 하드웨어 (첫 번째)의 값 사용
+            hw = hw_list[0] if hw_list else None
+            result[tier] = self.t_exec_ms.get(hw, 0.0) if hw else 0.0
+        return result
+
+    def calculate_alpha(self, network: NetworkMeasurements,
+                        hardware_mapping: dict) -> float:
+        """
+        α = T_exec / (T_exec + T_comm_in + T_comm_out)
+
+        대표 엣지의 T_exec와 D_E 경로 기준으로 계산
 
         Args:
             network: 네트워크 측정값
-            path: "D_E" 또는 "D_C"
+            hardware_mapping: 티어 → 하드웨어 매핑
         """
-        avg_t_exec = sum(self.t_exec_ms.values()) / len(self.t_exec_ms)
-        t_comm_in = network.get_t_comm(path, self.input_datasize_mb)
-        t_comm_out = network.get_t_comm(path, self.output_datasize_mb)
-        return avg_t_exec / (avg_t_exec + t_comm_in + t_comm_out)
+        # EDGE 티어의 대표 하드웨어
+        edge_hw = hardware_mapping.get("EDGE", ["edge-orin"])[0]
+        t_exec = self.t_exec_ms.get(edge_hw, 0.0)
+        t_comm_in = network.get_t_comm("D_E", self.input_datasize_mb)
+        t_comm_out = network.get_t_comm("D_E", self.output_datasize_mb)
+        return t_exec / (t_exec + t_comm_in + t_comm_out) if (t_exec + t_comm_in + t_comm_out) > 0 else 0.5
 
-    def calculate_p_exec(self) -> list[float]:
+    def calculate_p_exec(self, hardware_mapping: dict) -> list[float]:
         """
         정규화된 P_exec [DEVICE, EDGE, CLOUD]
         높은 T_exec = 높은 비용 (느림)
+
+        Args:
+            hardware_mapping: 티어 → 하드웨어 매핑
         """
-        max_t = max(self.t_exec_ms.values())
-        return [
-            self.t_exec_ms.get(loc, max_t) / max_t
-            for loc in ["DEVICE", "EDGE", "CLOUD"]
-        ]
+        tier_t_exec = self.get_tier_t_exec(hardware_mapping)
+        max_t = max(tier_t_exec.values()) if tier_t_exec.values() else 1.0
+        if max_t == 0:
+            return [1.0, 1.0, 1.0]  # fallback
+        return [tier_t_exec.get(loc, max_t) / max_t for loc in ["DEVICE", "EDGE", "CLOUD"]]
 
 
 # ============================================================================
@@ -162,15 +187,6 @@ class ToolProfile:
     # ========================================================================
     # Dimension 4: Constraints
     # ========================================================================
-    requires_cloud_api: bool = False
-    """
-    Cloud API 필요 여부
-
-    True인 경우:
-    - 반드시 CLOUD에서만 실행 가능
-    - 예: slack_send, google_search, openai_api
-    """
-
     privacy_sensitive: bool = False
     """
     Privacy 민감 여부
