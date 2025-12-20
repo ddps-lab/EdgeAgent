@@ -84,7 +84,9 @@ Include in your report:
 - Code changes analysis
 - Recommendations for improvement
 
-IMPORTANT: Do NOT commit any changes. Only read, analyze, and write the report file.
+IMPORTANT:
+- Do NOT commit any changes. Only read, analyze, and write the report file.
+- Do NOT use git_diff_unstaged or git_diff_staged tools. Use git_diff with target="HEAD~1..HEAD" instead.
 """
 
 
