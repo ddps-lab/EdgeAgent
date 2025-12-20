@@ -44,6 +44,7 @@ def _output_timing():
     tool_exec_ms = (time.perf_counter() - _tool_start_time) * 1000
     print(f"---TOOL_EXEC---{tool_exec_ms:.3f}", file=sys.stderr)
     print(f"---IO---{_io_time:.3f}", file=sys.stderr)
+    sys.stderr.flush()
 
 # Common log patterns
 LOG_PATTERNS = {
