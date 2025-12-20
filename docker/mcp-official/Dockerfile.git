@@ -31,5 +31,5 @@ ENV MCP_PORT=8080
 # Expose HTTP port
 EXPOSE 8080
 
-# Run mcp-proxy in stateless mode
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-git"]
+# Run mcp-proxy in stateless mode (with safe.directory for mounted repos)
+CMD ["sh", "-c", "git config --global --add safe.directory '*' && mcp-proxy --port ${MCP_PORT} --stateless mcp-server-git"]
