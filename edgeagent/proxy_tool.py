@@ -170,8 +170,8 @@ class LocationAwareProxyTool(BaseTool):
                 # Scheduling 정보 추가 (cost 포함)
                 # SchedulingConstraints → list[str] 변환
                 constraints_list = []
-                if scheduling_result.constraints.requires_cloud_api:
-                    constraints_list.append("requires_cloud_api")
+                if scheduling_result.constraints.requires_gpu:
+                    constraints_list.append("requires_gpu")
                 if scheduling_result.constraints.privacy_sensitive:
                     constraints_list.append("privacy_sensitive")
                 ctx.add_scheduling_info(

@@ -68,15 +68,28 @@ class ScoringEngine:
         self.p_comm_out = self._load_p_comm_out()
         # 실측 기반 동적 계산용
         self.network = NetworkMeasurements.from_config(self.system_config)
+        self.hardware_mapping = self.system_config.get("hardware_mapping", {})
 
     def _load_system_config(self, path: str | Path) -> dict:
         with open(path, "r") as f:
             return yaml.safe_load(f)
 
     def _load_p_net(self) -> dict[Location, float]:
-        """P_net 로드 (노드별 외부 네트워크 비용)"""
-        raw = self.system_config.get("p_net", {})
-        return {loc: float(raw.get(loc, 0.5)) for loc in LOCATIONS}
+        """P_net 계산 (노드별 외부 네트워크 비용)
+
+        external_bandwidth_mbps에서 역정규화:
+        - 높은 대역폭 → 낮은 비용
+        - 낮은 대역폭 → 높은 비용
+        - p_net[u] = min_bw / bw[u]
+        """
+        ext_bw = self.system_config.get("external_bandwidth_mbps", {})
+        if not ext_bw:
+            # fallback: 기본값
+            return {loc: 0.5 for loc in LOCATIONS}
+
+        # 최소 대역폭 기준으로 역정규화
+        min_bw = min(ext_bw.values())
+        return {loc: min_bw / ext_bw.get(loc, min_bw) for loc in LOCATIONS}
 
     def _load_p_comm(self) -> dict[tuple[Location, Location], float]:
         """P_comm 로드 (노드 쌍 간 통신 비용)"""
@@ -124,7 +137,7 @@ class ScoringEngine:
 
         # 1. 실측 기반 measurements가 있으면 동적 계산
         if profile and hasattr(profile, 'measurements') and profile.measurements:
-            p_exec_list = profile.measurements.calculate_p_exec()
+            p_exec_list = profile.measurements.calculate_p_exec(self.hardware_mapping)
             return float(p_exec_list[idx])
 
         # 2. Fallback: profile의 P_exec
@@ -166,8 +179,9 @@ class ScoringEngine:
         # α 결정: 실측 기반 또는 fallback
         if profile and hasattr(profile, 'measurements') and profile.measurements:
             # 실측 기반 동적 계산: α = T_exec / (T_exec + T_comm_in + T_comm_out)
-            path = f"D_{self.FULL_TO_SHORT[u]}"  # "DEVICE" → "D_E" 등
-            alpha = profile.measurements.calculate_alpha(self.network, path)
+            alpha = profile.measurements.calculate_alpha(
+                self.network, self.hardware_mapping
+            )
         else:
             # Fallback: profile의 alpha
             alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5

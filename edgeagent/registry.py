@@ -90,7 +90,6 @@ class ToolRegistry:
                 compute_intensity=profile_data.get("compute_intensity", "LOW"),
                 data_flow=profile_data.get("data_flow", "TRANSFORM"),
                 reduction_ratio=profile_data.get("reduction_ratio", 1.0),
-                requires_cloud_api=profile_data.get("requires_cloud_api", False),
                 privacy_sensitive=profile_data.get("privacy_sensitive", False),
                 wasi_compatible=profile_data.get("wasi_compatible", True),
                 requires_gpu=profile_data.get("requires_gpu", False),
