@@ -1,7 +1,7 @@
-# MCP Filesystem Server with mcp-proxy (stateless HTTP mode)
+# MCP Filesystem Server with mcp-proxy (stateless HTTP mode) + ToolTimer profiling
 #
 # Uses mcp-proxy to expose stdio-based MCP server over HTTP
-# https://github.com/punkpeye/mcp-proxy
+# Patched with ToolTimer for timing measurements
 #
 # Usage:
 #   docker build -f Dockerfile.filesystem -t edgeagent-mcp-filesystem .
@@ -11,8 +11,18 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Install Python for patching script
+RUN apt-get update && apt-get install -y python3 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Install mcp-proxy and filesystem server
 RUN npm install -g mcp-proxy @modelcontextprotocol/server-filesystem
+
+# Copy patching script
+COPY servers/patches/node/patch_node_server.py /app/
+
+# Patch index.js with ToolTimer
+RUN python3 /app/patch_node_server.py /usr/local/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js
 
 # Environment variables
 ENV MCP_PORT=8080
@@ -22,5 +32,4 @@ ENV ALLOWED_PATH=/data
 EXPOSE 8080
 
 # Run mcp-proxy in stateless mode wrapping filesystem server
-# --stateless: No session state, each request is independent
 CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-filesystem ${ALLOWED_PATH}"]

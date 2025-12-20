@@ -1,6 +1,7 @@
-# MCP Sequential Thinking Server with mcp-proxy (stateless HTTP mode)
+# MCP Sequential Thinking Server with mcp-proxy (stateless HTTP mode) + ToolTimer profiling
 #
 # Uses mcp-proxy to expose stdio-based MCP server over HTTP
+# Patched with ToolTimer for timing measurements
 #
 # Usage:
 #   docker build -f Dockerfile.sequentialthinking -t edgeagent-mcp-sequentialthinking .
@@ -10,8 +11,18 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Install Python for patching script
+RUN apt-get update && apt-get install -y python3 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Install mcp-proxy and sequential-thinking server
 RUN npm install -g mcp-proxy @modelcontextprotocol/server-sequential-thinking
+
+# Copy patching script
+COPY servers/patches/node/patch_node_server.py /app/
+
+# Patch index.js with ToolTimer
+RUN python3 /app/patch_node_server.py /usr/local/lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js
 
 # Environment variables
 ENV MCP_PORT=8080

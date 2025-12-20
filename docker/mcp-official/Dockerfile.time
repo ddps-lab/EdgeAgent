@@ -1,6 +1,7 @@
-# MCP Time Server with mcp-proxy (stateless HTTP mode)
+# MCP Time Server with mcp-proxy (stateless HTTP mode) + ToolTimer profiling
 #
 # Uses mcp-proxy to expose stdio-based MCP server over HTTP
+# Patched with ToolTimer for timing measurements
 #
 # Usage:
 #   docker build -f Dockerfile.time -t edgeagent-mcp-time .
@@ -19,6 +20,10 @@ RUN apt-get update && apt-get install -y curl && \
 # Install mcp-proxy (Node) and time server (Python)
 RUN npm install -g mcp-proxy && \
     pip install --no-cache-dir mcp-server-time
+
+# Copy patched files with ToolTimer
+COPY servers/patches/python/timing.py /usr/local/lib/python3.11/site-packages/mcp_server_time/
+COPY servers/patches/python/time_server_patched.py /usr/local/lib/python3.11/site-packages/mcp_server_time/server.py
 
 # Environment variables
 ENV MCP_PORT=8080
