@@ -20,5 +20,6 @@ ENV MCP_PORT=8080
 # Expose HTTP port
 EXPOSE 8080
 
-# Run mcp-proxy in stateless mode (npx for the server command)
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless npx -y @modelcontextprotocol/server-sequential-thinking"]
+# Run mcp-proxy in stateless mode
+# The package installs as 'mcp-server-sequential-thinking' binary
+CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-sequential-thinking"]
