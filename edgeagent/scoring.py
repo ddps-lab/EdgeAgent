@@ -190,23 +190,27 @@ class ScoringEngine:
         p_exec_u = self._get_p_exec(tool_name, u)
         comp_cost = p_exec_u + beta * self.p_net.get(u, 0.5)
 
-        # === Middleware 경유 모드: P^{in}(u) + P^{out}(v) ===
-        comm_cost = 0.0
+        # === 통신 비용: 서브에이전트 모드 (노드 간 직접 전송) ===
+        # comm_cost = 0.0
+        #
+        # if is_first:
+        #     # Job 시작: P^{in}(u)
+        #     comm_cost = self.p_comm_in[u]
+        # elif v is not None:
+        #     if v == u:
+        #         # 노드 유지: 0 (middleware 경유 안 함)
+        #         comm_cost = 0.0
+        #     else:
+        #         # 노드 변경: P^{out}(v) + P^{in}(u)
+        #         comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
+        #
+        # if is_last:
+        #     # Job 종료: + P^{out}(u)
+        #     comm_cost += self.p_comm_out[u]
 
-        if is_first:
-            # Job 시작: P^{in}(u)
-            comm_cost = self.p_comm_in[u]
-        elif v is not None:
-            if v == u:
-                # 노드 유지: 0 (middleware 경유 안 함)
-                comm_cost = 0.0
-            else:
-                # 노드 변경: P^{out}(v) + P^{in}(u)
-                comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
-
-        if is_last:
-            # Job 종료: + P^{out}(u)
-            comm_cost += self.p_comm_out[u]
+        # === 통신 비용: 미들웨어 경유 모드 ===
+        # 모든 tool 실행이 미들웨어를 경유: in + out
+        comm_cost = self.p_comm_in[u] + self.p_comm_out[u]
 
         # 총 비용: α * comp_cost + (1-α) * comm_cost
         total_cost = alpha * comp_cost + (1 - alpha) * comm_cost
