@@ -200,7 +200,7 @@ async def run_code_review(
         print(f"\n  [{tool_name}] -> {location}")
 
         diff_tool = get_tool("git_diff")
-        raw_diff = await diff_tool.ainvoke({"repo_path": str(repo_path), "target": "HEAD~1..HEAD"})
+        raw_diff = await diff_tool.ainvoke({"repo_path": str(repo_path), "target": "HEAD~1"})
         diff_result = parse_tool_result(raw_diff)
         diff_content = diff_result.get("diff", str(raw_diff)) if isinstance(diff_result, dict) else str(raw_diff)
         print(f"    Retrieved diff ({len(str(diff_content))} chars)")
