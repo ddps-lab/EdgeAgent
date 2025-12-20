@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir \
     markdownify>=0.11.0 \
     beautifulsoup4>=4.12.0
 
-# Copy server file
+# Copy server files
+COPY servers/timing.py /app/
 COPY servers/fetch_server.py /app/
 
 # Environment variables for HTTP transport

@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
     fastmcp>=2.0.0 \
     pydantic>=2.0.0
 
-# Copy server file
+# Copy server files
+COPY servers/timing.py /app/
 COPY servers/log_parser_server.py /app/
 
 # Environment variables for HTTP transport
