@@ -75,7 +75,7 @@ When conducting code review, follow this workflow:
 1. List the repository files to understand the structure
 2. Get git status to see current state
 3. Get git log to see recent commits (use max_count=5)
-4. Get git diff to see recent code changes
+4. Get git diff to see recent code changes (IMPORTANT: use target="HEAD~1..HEAD" to compare commits, not working directory)
 5. Summarize the changes
 6. Write a comprehensive code review report to /edgeagent/results/scenario1_agent_code_review_report.md
 

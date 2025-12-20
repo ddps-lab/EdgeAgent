@@ -675,9 +675,381 @@ pub fn git_diff_staged(_repo_path: &str, _context_lines: Option<u32>) -> Result<
     Ok("No staged changes".to_string())
 }
 
+/// Tree entry representation
+#[derive(Debug, Clone)]
+struct TreeEntry {
+    mode: String,
+    name: String,
+    sha: String,
+}
+
+/// Parse a tree object into entries
+fn parse_tree(data: &[u8]) -> Result<Vec<TreeEntry>, String> {
+    // Skip the header (type + size + null byte)
+    let content = data.iter()
+        .position(|&b| b == 0)
+        .map(|pos| &data[pos + 1..])
+        .ok_or("Invalid tree object format")?;
+
+    let mut entries = Vec::new();
+    let mut pos = 0;
+
+    while pos < content.len() {
+        // Find space after mode
+        let space_pos = content[pos..].iter().position(|&b| b == b' ')
+            .ok_or("Invalid tree entry: no space")?;
+        let mode = String::from_utf8_lossy(&content[pos..pos + space_pos]).to_string();
+        pos += space_pos + 1;
+
+        // Find null after name
+        let null_pos = content[pos..].iter().position(|&b| b == 0)
+            .ok_or("Invalid tree entry: no null")?;
+        let name = String::from_utf8_lossy(&content[pos..pos + null_pos]).to_string();
+        pos += null_pos + 1;
+
+        // Read 20-byte SHA
+        if pos + 20 > content.len() {
+            break;
+        }
+        let sha = hex::encode(&content[pos..pos + 20]);
+        pos += 20;
+
+        entries.push(TreeEntry { mode, name, sha });
+    }
+
+    Ok(entries)
+}
+
+/// File info with SHA and mode
+#[derive(Debug, Clone)]
+struct FileInfo {
+    sha: String,
+    mode: String,
+}
+
+/// Recursively collect all files from a tree with mode info
+fn collect_files(git_dir: &Path, tree_sha: &str, prefix: &str) -> Result<std::collections::HashMap<String, FileInfo>, String> {
+    let mut files = std::collections::HashMap::new();
+
+    let tree_data = read_object(git_dir, tree_sha)?;
+    let entries = parse_tree(&tree_data)?;
+
+    for entry in entries {
+        let path = if prefix.is_empty() {
+            entry.name.clone()
+        } else {
+            format!("{}/{}", prefix, entry.name)
+        };
+
+        if entry.mode.starts_with("40") {
+            // Directory (tree)
+            let sub_files = collect_files(git_dir, &entry.sha, &path)?;
+            files.extend(sub_files);
+        } else {
+            // File (blob) - convert mode to standard format
+            let mode = match entry.mode.as_str() {
+                "100644" => "100644",
+                "100755" => "100755",
+                "120000" => "120000",
+                m if m.ends_with("644") => "100644",
+                m if m.ends_with("755") => "100755",
+                _ => "100644",
+            }.to_string();
+            files.insert(path, FileInfo { sha: entry.sha, mode });
+        }
+    }
+
+    Ok(files)
+}
+
+/// Read blob content
+fn read_blob_content(git_dir: &Path, sha: &str) -> Result<String, String> {
+    let data = read_object(git_dir, sha)?;
+
+    // Skip header
+    let content = data.iter()
+        .position(|&b| b == 0)
+        .map(|pos| &data[pos + 1..])
+        .ok_or("Invalid blob format")?;
+
+    Ok(String::from_utf8_lossy(content).to_string())
+}
+
+/// Generate unified diff between two strings
+fn generate_diff(old_content: &str, new_content: &str, path: &str, context_lines: usize) -> String {
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+
+    let mut output = format!("diff --git a/{} b/{}\n", path, path);
+    output.push_str(&format!("--- a/{}\n", path));
+    output.push_str(&format!("+++ b/{}\n", path));
+
+    // Simple line-by-line diff (not optimal but functional)
+    let mut old_idx = 0;
+    let mut new_idx = 0;
+    let mut hunks: Vec<String> = Vec::new();
+    let mut current_hunk: Vec<String> = Vec::new();
+    let mut hunk_old_start = 1;
+    let mut hunk_new_start = 1;
+    let mut hunk_old_count = 0;
+    let mut hunk_new_count = 0;
+    let mut context_buffer: Vec<String> = Vec::new();
+    let mut in_change = false;
+
+    while old_idx < old_lines.len() || new_idx < new_lines.len() {
+        let old_line = old_lines.get(old_idx);
+        let new_line = new_lines.get(new_idx);
+
+        match (old_line, new_line) {
+            (Some(o), Some(n)) if o == n => {
+                // Same line
+                if in_change {
+                    // Add context after change
+                    current_hunk.push(format!(" {}", o));
+                    hunk_old_count += 1;
+                    hunk_new_count += 1;
+                    context_buffer.push(format!(" {}", o));
+                    if context_buffer.len() > context_lines {
+                        // End current hunk
+                        if !current_hunk.is_empty() {
+                            let header = format!("@@ -{},{} +{},{} @@\n",
+                                hunk_old_start, hunk_old_count,
+                                hunk_new_start, hunk_new_count);
+                            hunks.push(format!("{}{}", header, current_hunk.join("\n")));
+                        }
+                        current_hunk.clear();
+                        context_buffer.clear();
+                        in_change = false;
+                    }
+                }
+                old_idx += 1;
+                new_idx += 1;
+            }
+            (Some(o), Some(n)) => {
+                // Different lines
+                if !in_change {
+                    in_change = true;
+                    hunk_old_start = old_idx.saturating_sub(context_lines) + 1;
+                    hunk_new_start = new_idx.saturating_sub(context_lines) + 1;
+                    hunk_old_count = 0;
+                    hunk_new_count = 0;
+                    // Add context before
+                    let start = old_idx.saturating_sub(context_lines);
+                    for i in start..old_idx {
+                        if let Some(line) = old_lines.get(i) {
+                            current_hunk.push(format!(" {}", line));
+                            hunk_old_count += 1;
+                            hunk_new_count += 1;
+                        }
+                    }
+                }
+                context_buffer.clear();
+                current_hunk.push(format!("-{}", o));
+                current_hunk.push(format!("+{}", n));
+                hunk_old_count += 1;
+                hunk_new_count += 1;
+                old_idx += 1;
+                new_idx += 1;
+            }
+            (Some(o), None) => {
+                // Deleted line
+                if !in_change {
+                    in_change = true;
+                    hunk_old_start = old_idx.saturating_sub(context_lines) + 1;
+                    hunk_new_start = new_idx.saturating_sub(context_lines) + 1;
+                    hunk_old_count = 0;
+                    hunk_new_count = 0;
+                }
+                context_buffer.clear();
+                current_hunk.push(format!("-{}", o));
+                hunk_old_count += 1;
+                old_idx += 1;
+            }
+            (None, Some(n)) => {
+                // Added line
+                if !in_change {
+                    in_change = true;
+                    hunk_old_start = old_idx.saturating_sub(context_lines) + 1;
+                    hunk_new_start = new_idx.saturating_sub(context_lines) + 1;
+                    hunk_old_count = 0;
+                    hunk_new_count = 0;
+                }
+                context_buffer.clear();
+                current_hunk.push(format!("+{}", n));
+                hunk_new_count += 1;
+                new_idx += 1;
+            }
+            (None, None) => break,
+        }
+    }
+
+    // Flush remaining hunk
+    if !current_hunk.is_empty() {
+        let header = format!("@@ -{},{} +{},{} @@\n",
+            hunk_old_start, hunk_old_count,
+            hunk_new_start, hunk_new_count);
+        hunks.push(format!("{}{}", header, current_hunk.join("\n")));
+    }
+
+    if hunks.is_empty() {
+        String::new()
+    } else {
+        output.push_str(&hunks.join("\n"));
+        output.push('\n');
+        output
+    }
+}
+
+/// Resolve a revision to SHA (HEAD, HEAD~1, branch name, or SHA)
+fn resolve_revision(git_dir: &Path, revision: &str) -> Result<String, String> {
+    // Handle HEAD~N syntax
+    if revision.starts_with("HEAD") {
+        let head = read_head(git_dir)?;
+        let mut sha = resolve_ref(git_dir, &head)?;
+
+        if let Some(tilde_pos) = revision.find('~') {
+            let count: usize = revision[tilde_pos + 1..].parse().unwrap_or(1);
+            for _ in 0..count {
+                let data = read_object(git_dir, &sha)?;
+                let commit = parse_commit(&data)?;
+                sha = commit.parents.first().cloned().ok_or("No parent commit")?;
+            }
+        }
+        return Ok(sha);
+    }
+
+    // Full SHA
+    if revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok(revision.to_string());
+    }
+
+    // Branch name
+    let ref_path = git_dir.join("refs/heads").join(revision);
+    if ref_path.exists() {
+        return measure_io(|| fs::read_to_string(&ref_path))
+            .map(|s| s.trim().to_string())
+            .map_err(|e| format!("Failed to read ref: {}", e));
+    }
+
+    Err(format!("Cannot resolve revision: {}", revision))
+}
+
 /// Shows changes between commits
-pub fn git_diff(_repo_path: &str, _target: &str, _context_lines: Option<u32>) -> Result<String, String> {
-    Ok("No changes".to_string())
+pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Result<String, String> {
+    let git_dir = git_dir(repo_path)?;
+    let context = context_lines.unwrap_or(3) as usize;
+
+    // Resolve HEAD
+    let head = read_head(&git_dir)?;
+    let head_sha = resolve_ref(&git_dir, &head)?;
+
+    // Resolve target
+    let target_sha = resolve_revision(&git_dir, target)?;
+
+    // Get tree SHAs
+    let head_data = read_object(&git_dir, &head_sha)?;
+    let head_commit = parse_commit(&head_data)?;
+
+    let target_data = read_object(&git_dir, &target_sha)?;
+    let target_commit = parse_commit(&target_data)?;
+
+    // Collect files from both trees
+    let head_files = collect_files(&git_dir, &head_commit.tree, "")?;
+    let target_files = collect_files(&git_dir, &target_commit.tree, "")?;
+
+    // 1. Add header like Cloud Python server
+    let mut output = format!("Diff with {}:\n", target);
+
+    let mut all_paths: std::collections::BTreeSet<&String> = std::collections::BTreeSet::new();
+    all_paths.extend(head_files.keys());
+    all_paths.extend(target_files.keys());
+
+    let mut has_changes = false;
+
+    for path in all_paths {
+        let head_info = head_files.get(path);
+        let target_info = target_files.get(path);
+
+        match (target_info, head_info) {
+            (Some(old), Some(new)) => {
+                // File exists in both commits
+                let mode_changed = old.mode != new.mode;
+                let content_changed = old.sha != new.sha;
+
+                if mode_changed || content_changed {
+                    has_changes = true;
+                    output.push_str(&format!("diff --git a/{} b/{}\n", path, path));
+
+                    // 2. Add index line (short SHA + mode)
+                    let old_short = if old.sha.len() >= 7 { &old.sha[..7] } else { &old.sha };
+                    let new_short = if new.sha.len() >= 7 { &new.sha[..7] } else { &new.sha };
+                    output.push_str(&format!("index {}..{} {}\n", old_short, new_short, new.mode));
+
+                    // Mode change
+                    if mode_changed {
+                        output.push_str(&format!("old mode {}\n", old.mode));
+                        output.push_str(&format!("new mode {}\n", new.mode));
+                    }
+
+                    // Content change
+                    if content_changed {
+                        let old_content = read_blob_content(&git_dir, &old.sha).unwrap_or_default();
+                        let new_content = read_blob_content(&git_dir, &new.sha).unwrap_or_default();
+                        output.push_str(&format!("--- a/{}\n", path));
+                        output.push_str(&format!("+++ b/{}\n", path));
+                        let diff = generate_diff(&old_content, &new_content, path, context);
+                        // generate_diff already includes header, so extract just the hunks
+                        if let Some(hunk_start) = diff.find("@@ ") {
+                            output.push_str(&diff[hunk_start..]);
+                        }
+                    }
+                }
+            }
+            (None, Some(new)) => {
+                // New file
+                has_changes = true;
+                let new_content = read_blob_content(&git_dir, &new.sha).unwrap_or_default();
+                output.push_str(&format!("diff --git a/{} b/{}\n", path, path));
+                output.push_str(&format!("new file mode {}\n", new.mode));
+                let new_short = if new.sha.len() >= 7 { &new.sha[..7] } else { &new.sha };
+                output.push_str(&format!("index 0000000..{}\n", new_short));
+                output.push_str("--- /dev/null\n");
+                output.push_str(&format!("+++ b/{}\n", path));
+                let lines: Vec<&str> = new_content.lines().collect();
+                if !lines.is_empty() {
+                    output.push_str(&format!("@@ -0,0 +1,{} @@\n", lines.len()));
+                    for line in lines {
+                        output.push_str(&format!("+{}\n", line));
+                    }
+                }
+            }
+            (Some(old), None) => {
+                // Deleted file
+                has_changes = true;
+                let old_content = read_blob_content(&git_dir, &old.sha).unwrap_or_default();
+                output.push_str(&format!("diff --git a/{} b/{}\n", path, path));
+                output.push_str(&format!("deleted file mode {}\n", old.mode));
+                let old_short = if old.sha.len() >= 7 { &old.sha[..7] } else { &old.sha };
+                output.push_str(&format!("index {}..0000000\n", old_short));
+                output.push_str(&format!("--- a/{}\n", path));
+                output.push_str("+++ /dev/null\n");
+                let lines: Vec<&str> = old_content.lines().collect();
+                if !lines.is_empty() {
+                    output.push_str(&format!("@@ -1,{} +0,0 @@\n", lines.len()));
+                    for line in lines {
+                        output.push_str(&format!("-{}\n", line));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !has_changes {
+        Ok("No changes".to_string())
+    } else {
+        Ok(output)
+    }
 }
 
 /// Records changes to the repository (simulated in WASM)
