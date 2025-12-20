@@ -21,5 +21,5 @@ ENV MCP_PORT=8080
 EXPOSE 8080
 
 # Run mcp-proxy in stateless mode
-# The package installs as 'mcp-server-sequential-thinking' binary
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-sequential-thinking"]
+# Use -- to separate proxy args from command, then run with node
+CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless -- node /usr/local/lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js"]
