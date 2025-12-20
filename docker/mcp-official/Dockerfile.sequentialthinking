@@ -21,5 +21,5 @@ ENV MCP_PORT=8080
 EXPOSE 8080
 
 # Run mcp-proxy in stateless mode
-# Wrap the full command in quotes so mcp-proxy sees it as one command
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless 'node /usr/local/lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js'"]
+# Command must come first, then options
+CMD ["sh", "-c", "mcp-proxy 'node /usr/local/lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js' --port ${MCP_PORT} --stateless"]
