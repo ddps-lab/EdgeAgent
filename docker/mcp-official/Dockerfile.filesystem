@@ -1,4 +1,4 @@
-# MCP Filesystem Server with mcp-proxy (stateless HTTP mode) + ToolTimer profiling
+# MCP Filesystem Server with mcp-proxy (stateless HTTP mode) + ToolTimer
 #
 # Uses mcp-proxy to expose stdio-based MCP server over HTTP
 # Patched with ToolTimer for timing measurements
@@ -11,17 +11,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install Python for patching script
-RUN apt-get update && apt-get install -y python3 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install Python for patching
+RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*
 
 # Install mcp-proxy and filesystem server
 RUN npm install -g mcp-proxy @modelcontextprotocol/server-filesystem
 
-# Copy patching script
+# Copy and run patch script
 COPY servers/patches/node/patch_node_server.py /app/
-
-# Patch index.js with ToolTimer
 RUN python3 /app/patch_node_server.py /usr/local/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js
 
 # Environment variables
