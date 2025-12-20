@@ -1,22 +1,27 @@
 #!/bin/bash
-# Push EdgeAgent images to AWS ECR
+# Build and Push EdgeAgent images to AWS ECR
 #
 # Prerequisites:
 #   - AWS CLI configured (aws configure)
-#   - Docker logged in to ECR
+#   - Docker installed
 #
 # Usage:
 #   ./scripts/push-to-ecr.sh                    # Use default region/account
 #   ./scripts/push-to-ecr.sh us-west-2 123456789012  # Specify region and account
 #   AWS_REGION=ap-northeast-2 ./scripts/push-to-ecr.sh  # Use env var
+#   SKIP_BUILD=1 ./scripts/push-to-ecr.sh      # Skip build, only push
 
 set -e
 
 # Configuration
-AWS_REGION="${1:-${AWS_REGION:-ap-northeast-2}}"
+AWS_REGION="${1:-${AWS_REGION:-us-west-2}}"
 AWS_ACCOUNT_ID="${2:-${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}}"
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 
 # Image names
 # Note: edge-subagent and cloud-subagent use the same image,
@@ -38,23 +43,80 @@ IMAGES=(
 )
 
 echo "========================================"
-echo "EdgeAgent ECR Push Script"
+echo "EdgeAgent ECR Build & Push Script"
 echo "========================================"
 echo "Region:   ${AWS_REGION}"
 echo "Account:  ${AWS_ACCOUNT_ID}"
 echo "Registry: ${ECR_REGISTRY}"
 echo "Tag:      ${IMAGE_TAG}"
+echo "Skip Build: ${SKIP_BUILD}"
 echo "========================================"
 echo ""
 
+# Build images
+if [ "${SKIP_BUILD}" != "1" ]; then
+    echo "[1/5] Building Docker images..."
+
+    # Build base image first
+    echo "  Building base image..."
+    docker build -t edgeagent-mcp-base:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.base" \
+        "${PROJECT_ROOT}"
+
+    # Build custom FastMCP servers
+    echo "  Building custom FastMCP servers..."
+    docker build -t edgeagent-mcp-fetch:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.fetch" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-log-parser:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.log-parser" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-summarize:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.summarize" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-data-aggregate:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.data-aggregate" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-image-resize:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-servers/Dockerfile.image-resize" \
+        "${PROJECT_ROOT}"
+
+    # Build official MCP servers (via mcp-proxy)
+    echo "  Building official MCP servers..."
+    docker build -t edgeagent-mcp-filesystem:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-official/Dockerfile.filesystem" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-time:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-official/Dockerfile.time" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-sequentialthinking:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-official/Dockerfile.sequentialthinking" \
+        "${PROJECT_ROOT}"
+    docker build -t edgeagent-mcp-git:latest \
+        -f "${PROJECT_ROOT}/docker/mcp-official/Dockerfile.git" \
+        "${PROJECT_ROOT}"
+
+    # Build subagent
+    echo "  Building subagent..."
+    docker build -t edgeagent-subagent:latest \
+        -f "${PROJECT_ROOT}/docker/subagent/Dockerfile" \
+        "${PROJECT_ROOT}"
+
+    echo "  All images built successfully!"
+    echo ""
+else
+    echo "[1/5] Skipping build (SKIP_BUILD=1)"
+    echo ""
+fi
+
 # Login to ECR
-echo "[1/4] Logging in to ECR..."
+echo "[2/5] Logging in to ECR..."
 aws ecr get-login-password --region "${AWS_REGION}" | \
     docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 echo ""
 
 # Create repositories if they don't exist
-echo "[2/4] Creating ECR repositories..."
+echo "[3/5] Creating ECR repositories..."
 for image in "${IMAGES[@]}"; do
     repo_name="${image}"
     if aws ecr describe-repositories --repository-names "${repo_name}" --region "${AWS_REGION}" 2>/dev/null; then
@@ -71,7 +133,7 @@ done
 echo ""
 
 # Tag and push images
-echo "[3/4] Tagging and pushing images..."
+echo "[4/5] Tagging and pushing images..."
 for image in "${IMAGES[@]}"; do
     local_image="${image}:latest"
     ecr_image="${ECR_REGISTRY}/${image}:${IMAGE_TAG}"
@@ -83,7 +145,7 @@ done
 echo ""
 
 # Print summary
-echo "[4/4] Push complete!"
+echo "[5/5] Push complete!"
 echo ""
 echo "Images pushed to ECR:"
 for image in "${IMAGES[@]}"; do

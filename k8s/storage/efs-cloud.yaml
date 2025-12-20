@@ -30,7 +30,7 @@ metadata:
 provisioner: efs.csi.aws.com
 parameters:
   provisioningMode: efs-ap
-  fileSystemId: "fs-0afc1a5670fb7ee48"
+  fileSystemId: "fs-0faeab94b7c925001"
   directoryPerms: "755"
   basePath: "/edgeagent"
   subPathPattern: ""
@@ -57,7 +57,7 @@ spec:
   storageClassName: efs-cloud
   csi:
     driver: efs.csi.aws.com
-    volumeHandle: "fs-0afc1a5670fb7ee48"
+    volumeHandle: "fs-0faeab94b7c925001"
 
 ---
 # PersistentVolumeClaim - Claim the EFS storage

@@ -14,6 +14,8 @@ spec:
         autoscaling.knative.dev/min-scale: "0"
         autoscaling.knative.dev/max-scale: "5"
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: edge-nuc
       runtimeClassName: wasmtime
       containerConcurrency: 5
       timeoutSeconds: 300

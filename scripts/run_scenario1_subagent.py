@@ -74,7 +74,7 @@ Step 1: read_file
 
 Step 2: git_diff
   - repo_path: "{REPO_PATH}"
-  - target: "HEAD~1"
+  - target: "HEAD~1..HEAD"
 
 Step 3: summarize_text
   - text: (use content from steps 1 and 2)

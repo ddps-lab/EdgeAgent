@@ -68,15 +68,28 @@ class ScoringEngine:
         self.p_comm_out = self._load_p_comm_out()
         # 실측 기반 동적 계산용
         self.network = NetworkMeasurements.from_config(self.system_config)
+        self.hardware_mapping = self.system_config.get("hardware_mapping", {})
 
     def _load_system_config(self, path: str | Path) -> dict:
         with open(path, "r") as f:
             return yaml.safe_load(f)
 
     def _load_p_net(self) -> dict[Location, float]:
-        """P_net 로드 (노드별 외부 네트워크 비용)"""
-        raw = self.system_config.get("p_net", {})
-        return {loc: float(raw.get(loc, 0.5)) for loc in LOCATIONS}
+        """P_net 계산 (노드별 외부 네트워크 비용)
+
+        external_bandwidth_mbps에서 역정규화:
+        - 높은 대역폭 → 낮은 비용
+        - 낮은 대역폭 → 높은 비용
+        - p_net[u] = min_bw / bw[u]
+        """
+        ext_bw = self.system_config.get("external_bandwidth_mbps", {})
+        if not ext_bw:
+            # fallback: 기본값
+            return {loc: 0.5 for loc in LOCATIONS}
+
+        # 최소 대역폭 기준으로 역정규화
+        min_bw = min(ext_bw.values())
+        return {loc: min_bw / ext_bw.get(loc, min_bw) for loc in LOCATIONS}
 
     def _load_p_comm(self) -> dict[tuple[Location, Location], float]:
         """P_comm 로드 (노드 쌍 간 통신 비용)"""
@@ -124,7 +137,7 @@ class ScoringEngine:
 
         # 1. 실측 기반 measurements가 있으면 동적 계산
         if profile and hasattr(profile, 'measurements') and profile.measurements:
-            p_exec_list = profile.measurements.calculate_p_exec()
+            p_exec_list = profile.measurements.calculate_p_exec(self.hardware_mapping)
             return float(p_exec_list[idx])
 
         # 2. Fallback: profile의 P_exec
@@ -166,8 +179,9 @@ class ScoringEngine:
         # α 결정: 실측 기반 또는 fallback
         if profile and hasattr(profile, 'measurements') and profile.measurements:
             # 실측 기반 동적 계산: α = T_exec / (T_exec + T_comm_in + T_comm_out)
-            path = f"D_{self.FULL_TO_SHORT[u]}"  # "DEVICE" → "D_E" 등
-            alpha = profile.measurements.calculate_alpha(self.network, path)
+            alpha = profile.measurements.calculate_alpha(
+                self.network, self.hardware_mapping
+            )
         else:
             # Fallback: profile의 alpha
             alpha = getattr(profile, 'alpha', 0.5) if profile else 0.5
@@ -176,23 +190,27 @@ class ScoringEngine:
         p_exec_u = self._get_p_exec(tool_name, u)
         comp_cost = p_exec_u + beta * self.p_net.get(u, 0.5)
 
-        # === Middleware 경유 모드: P^{in}(u) + P^{out}(v) ===
-        comm_cost = 0.0
+        # === 통신 비용: 서브에이전트 모드 (노드 간 직접 전송) ===
+        # comm_cost = 0.0
+        #
+        # if is_first:
+        #     # Job 시작: P^{in}(u)
+        #     comm_cost = self.p_comm_in[u]
+        # elif v is not None:
+        #     if v == u:
+        #         # 노드 유지: 0 (middleware 경유 안 함)
+        #         comm_cost = 0.0
+        #     else:
+        #         # 노드 변경: P^{out}(v) + P^{in}(u)
+        #         comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
+        #
+        # if is_last:
+        #     # Job 종료: + P^{out}(u)
+        #     comm_cost += self.p_comm_out[u]
 
-        if is_first:
-            # Job 시작: P^{in}(u)
-            comm_cost = self.p_comm_in[u]
-        elif v is not None:
-            if v == u:
-                # 노드 유지: 0 (middleware 경유 안 함)
-                comm_cost = 0.0
-            else:
-                # 노드 변경: P^{out}(v) + P^{in}(u)
-                comm_cost = self.p_comm_out[v] + self.p_comm_in[u]
-
-        if is_last:
-            # Job 종료: + P^{out}(u)
-            comm_cost += self.p_comm_out[u]
+        # === 통신 비용: 미들웨어 경유 모드 ===
+        # 모든 tool 실행이 미들웨어를 경유: in + out
+        comm_cost = self.p_comm_in[u] + self.p_comm_out[u]
 
         # 총 비용: α * comp_cost + (1-α) * comm_cost
         total_cost = alpha * comp_cost + (1 - alpha) * comm_cost

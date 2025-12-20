@@ -1,24 +1,12 @@
 # MCP Log Parser Server
 # Parses and analyzes log files
 
-FROM python:3.11-slim
+FROM edgeagent-mcp-base:latest
 
-WORKDIR /app
-
-# Install dependencies
-RUN pip install --no-cache-dir \
-    fastmcp>=2.0.0 \
-    pydantic>=2.0.0
+# No additional dependencies needed (all in base)
 
 # Copy server files
 COPY servers/timing.py /app/
 COPY servers/log_parser_server.py /app/
-
-# Environment variables for HTTP transport
-ENV MCP_TRANSPORT=http
-ENV MCP_HOST=0.0.0.0
-ENV MCP_PORT=8080
-
-EXPOSE 8080
 
 CMD ["python", "log_parser_server.py"]

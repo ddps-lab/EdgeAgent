@@ -1,26 +1,15 @@
 # MCP Fetch Server
 # Fetches web pages and converts HTML to markdown
 
-FROM python:3.11-slim
+FROM edgeagent-mcp-base:latest
 
-WORKDIR /app
-
-# Install dependencies
+# Install additional dependencies (not in base)
 RUN pip install --no-cache-dir \
-    fastmcp>=2.0.0 \
-    httpx>=0.27.0 \
     markdownify>=0.11.0 \
     beautifulsoup4>=4.12.0
 
 # Copy server files
 COPY servers/timing.py /app/
 COPY servers/fetch_server.py /app/
-
-# Environment variables for HTTP transport
-ENV MCP_TRANSPORT=http
-ENV MCP_HOST=0.0.0.0
-ENV MCP_PORT=8080
-
-EXPOSE 8080
 
 CMD ["python", "fetch_server.py"]

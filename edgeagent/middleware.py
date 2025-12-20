@@ -122,8 +122,8 @@ class MetricsWrappedTool(BaseTool):
                     # constraints 변환
                     constraints_list = []
                     if hasattr(sr, 'constraints') and sr.constraints:
-                        if sr.constraints.requires_cloud_api:
-                            constraints_list.append("requires_cloud_api")
+                        if sr.constraints.requires_gpu:
+                            constraints_list.append("requires_gpu")
                         if sr.constraints.privacy_sensitive:
                             constraints_list.append("privacy_sensitive")
                     ctx.add_scheduling_info(
