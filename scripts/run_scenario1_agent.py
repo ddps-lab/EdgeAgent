@@ -74,7 +74,7 @@ The repository is located at /edgeagent/data/scenario1/defects4j/lang
 When conducting code review, follow this workflow:
 1. List the repository files to understand the structure
 2. Get git log to see recent commits (use max_count=5)
-3. Get git diff to see recent code changes (IMPORTANT: use target="HEAD~1..HEAD" to compare commits, not working directory)
+3. Get git diff to see recent code changes (IMPORTANT: use target="HEAD~1..HEAD" to compare commits, not working directory DO NOT USE git_diff_unstaged or git_diff_staged tools)
 4. Summarize the changes
 5. Write a comprehensive code review report to /edgeagent/results/scenario1_agent_code_review_report.md
 
