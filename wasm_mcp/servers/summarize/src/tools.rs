@@ -126,7 +126,7 @@ pub fn call_llm(
         ),
         _ => (
             "https://api.openai.com/v1/chat/completions",
-            "gpt-5"
+            "gpt-4o"
         ),
     };
 
@@ -153,7 +153,7 @@ pub fn call_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": format!("Summarize the following text:\n\n{}", text)}
         ],
-        "max_completion_tokens": max_length.unwrap_or(500) as i64
+        "max_tokens": max_length.unwrap_or(500) as i64
     });
 
     let auth_header = format!("Bearer {}", api_key);
