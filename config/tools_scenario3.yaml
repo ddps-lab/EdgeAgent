@@ -205,7 +205,7 @@ tools:
       summarize_text:
         description: Summarize text using LLM
         data_locality: external_data
-        requires_gpu: true
+        requires_gpu: false
         privacy_sensitive: false
         measurements:
           input_datasize_mb: 0.001972
@@ -216,7 +216,7 @@ tools:
       summarize_documents:
         description: Summarize multiple documents.
         data_locality: external_data
-        requires_gpu: true
+        requires_gpu: false
         privacy_sensitive: false
       get_provider_info:
         description: Get information about the current summarization provider
