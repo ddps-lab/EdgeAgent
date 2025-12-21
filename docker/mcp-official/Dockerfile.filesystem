@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 # Clone MCP servers source
 RUN git clone --depth 1 https://github.com/modelcontextprotocol/servers.git /tmp/mcp_servers
 
-# Copy filesystem source
-RUN cp -r /tmp/mcp_servers/src/filesystem/* /build/
+# Copy filesystem source (exclude test files)
+RUN cp -r /tmp/mcp_servers/src/filesystem/* /build/ && \
+    rm -f /build/vitest.config.ts && \
+    rm -rf /build/__tests__
 
 # Copy patched files
 COPY servers/patches/typescript/timing.ts /build/
