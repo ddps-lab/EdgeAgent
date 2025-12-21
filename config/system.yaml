@@ -20,4 +20,4 @@ network_measurements:
 hardware_mapping:
   DEVICE: [device-rpi]
   EDGE: [edge-nuc]
-  CLOUD: [cloud-c7i48xlarge]
+  CLOUD: [cloud-x8aedz.xlarge]
