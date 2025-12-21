@@ -46,7 +46,8 @@ pub fn sequentialthinking(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     });

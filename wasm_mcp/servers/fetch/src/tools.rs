@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use url::Url;
-use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use wasmmcp::timing::{measure_network_io, ToolTimer, get_wasm_total_ms};
 use regex::Regex;
 
 /// Make HTTP request using wasi:http/outgoing-handler
@@ -52,7 +52,7 @@ pub fn http_get(url_str: &str) -> Result<(u16, String), String> {
         .map_err(|_| "Failed to set path")?;
 
     // Measure the entire HTTP I/O operation
-    let (status, content_str) = measure_io(|| {
+    let (status, content_str) = measure_network_io(|| {
         let future_response = outgoing_handler::handle(request, None)
             .map_err(|e| format!("Failed to send request: {:?}", e))?;
 
@@ -331,7 +331,8 @@ pub fn fetch(url_str: &str, max_length: usize) -> Result<String, String> {
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+                "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());

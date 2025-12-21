@@ -4,9 +4,10 @@
 //! The builder can be used to create both stdio and HTTP servers.
 
 use crate::registry::{Tool, ToolRegistry};
-use crate::timing::{reset_io_accumulator, get_io_duration};
+use crate::timing::{reset_io_accumulators, get_disk_io_duration, get_network_io_duration, set_tool_exec_ms, set_disk_io_ms, set_network_io_ms};
 use serde_json::{json, Value};
 use schemars::JsonSchema;
+use std::time::Instant;
 
 /// Server information
 #[derive(Debug, Clone)]
@@ -129,15 +130,27 @@ impl McpServer {
 
     /// Handle MCP tools/call request
     pub fn handle_tools_call(&self, name: &str, args: Value) -> Result<Value, String> {
-        // Reset I/O accumulator before tool execution
-        reset_io_accumulator();
+        // Reset both I/O accumulators before tool execution
+        reset_io_accumulators();
 
+        // Measure tool execution time
+        let start = Instant::now();
         let result = self.registry.call(name, args)?;
+        let tool_exec_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        // Output I/O timing (accumulated during tool execution via measure_io)
-        let io_duration = get_io_duration();
-        let io_ms = io_duration.as_secs_f64() * 1000.0;
-        eprintln!("---IO---{:.3}", io_ms);
+        // Get I/O timing (accumulated during tool execution via measure_disk_io/measure_network_io)
+        let disk_io_ms = get_disk_io_duration().as_secs_f64() * 1000.0;
+        let network_io_ms = get_network_io_duration().as_secs_f64() * 1000.0;
+
+        // Store timing values for HTTP transport to read
+        set_tool_exec_ms(tool_exec_ms);
+        set_disk_io_ms(disk_io_ms);
+        set_network_io_ms(network_io_ms);
+
+        // Output to stderr for CLI mode
+        eprintln!("---TOOL_EXEC---{:.3}", tool_exec_ms);
+        eprintln!("---DISK_IO---{:.3}", disk_io_ms);
+        eprintln!("---NETWORK_IO---{:.3}", network_io_ms);
 
         // Format as MCP content response
         let text = if result.is_string() {

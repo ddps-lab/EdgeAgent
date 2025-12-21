@@ -99,7 +99,8 @@ pub fn aggregate_list(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -197,7 +198,8 @@ pub fn merge_summaries(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -294,7 +296,8 @@ pub fn combine_research_results(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -353,7 +356,8 @@ pub fn combine_research_results(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -375,7 +379,8 @@ pub fn deduplicate(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -420,7 +425,8 @@ pub fn deduplicate(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -442,7 +448,8 @@ pub fn compute_trends(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -470,7 +477,8 @@ pub fn compute_trends(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -511,7 +519,8 @@ pub fn compute_trends(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())

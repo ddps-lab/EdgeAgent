@@ -8,7 +8,7 @@ use std::io::Cursor;
 use image::{GenericImageView, ImageFormat, imageops::FilterType};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::Serialize;
-use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use wasmmcp::timing::{measure_disk_io, ToolTimer, get_wasm_total_ms};
 
 #[derive(Debug, Serialize)]
 pub struct HashResult {
@@ -120,12 +120,12 @@ pub fn hash_distance(hash1: &str, hash2: &str) -> u32 {
 /// Get detailed information about an image
 pub fn get_image_info(image_path: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let metadata = measure_io(|| fs::metadata(image_path))
+    let metadata = measure_disk_io(|| fs::metadata(image_path))
         .map_err(|e| format!("Cannot access file: {}", e))?;
 
     let size_bytes = metadata.len();
 
-    let img = measure_io(|| image::open(image_path))
+    let img = measure_disk_io(|| image::open(image_path))
         .map_err(|e| format!("Cannot open image: {}", e))?;
 
     let (width, height) = img.dimensions();
@@ -147,7 +147,8 @@ pub fn get_image_info(image_path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     });
@@ -168,11 +169,11 @@ pub fn resize_image(
     let quality = quality.unwrap_or(85);
     let output_format = output_format.unwrap_or("JPEG");
 
-    let original_bytes = measure_io(|| fs::metadata(image_path))
+    let original_bytes = measure_disk_io(|| fs::metadata(image_path))
         .map(|m| m.len())
         .unwrap_or(0);
 
-    let img = measure_io(|| image::open(image_path))
+    let img = measure_disk_io(|| image::open(image_path))
         .map_err(|e| format!("Cannot open image: {}", e))?;
 
     let (orig_width, orig_height) = img.dimensions();
@@ -229,7 +230,8 @@ pub fn resize_image(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     });
@@ -270,7 +272,7 @@ pub fn scan_directory(
         paths: &mut Vec<String>,
         total: &mut u64,
     ) -> Result<(), String> {
-        let entries = measure_io(|| fs::read_dir(dir))
+        let entries = measure_disk_io(|| fs::read_dir(dir))
             .map_err(|e| format!("Cannot read directory: {}", e))?;
 
         for entry in entries.flatten() {
@@ -279,7 +281,7 @@ pub fn scan_directory(
                 if let Some(ext) = path.extension() {
                     let ext_str = format!(".{}", ext.to_string_lossy().to_lowercase());
                     if extensions.iter().any(|e| e.to_lowercase() == ext_str) {
-                        if let Ok(meta) = measure_io(|| fs::metadata(&path)) {
+                        if let Ok(meta) = measure_disk_io(|| fs::metadata(&path)) {
                             *total += meta.len();
                         }
                         paths.push(path.to_string_lossy().to_string());
@@ -305,9 +307,9 @@ pub fn scan_directory(
     if include_info {
         let mut images_info = Vec::new();
         for img_path in &image_paths {
-            if let Ok(img) = measure_io(|| image::open(img_path)) {
+            if let Ok(img) = measure_disk_io(|| image::open(img_path)) {
                 let (w, h) = img.dimensions();
-                let size = measure_io(|| fs::metadata(img_path)).map(|m| m.len()).unwrap_or(0);
+                let size = measure_disk_io(|| fs::metadata(img_path)).map(|m| m.len()).unwrap_or(0);
                 images_info.push(serde_json::json!({
                     "path": img_path,
                     "width": w,
@@ -335,7 +337,7 @@ pub fn compute_image_hash(image_path: &str, hash_type: Option<&str>) -> Result<S
     let timer = ToolTimer::start();
     let hash_type = hash_type.unwrap_or("phash");
 
-    let img = match measure_io(|| image::open(image_path)) {
+    let img = match measure_disk_io(|| image::open(image_path)) {
         Ok(img) => img,
         Err(e) => {
             let timing = timer.finish("compute_image_hash");
@@ -347,7 +349,8 @@ pub fn compute_image_hash(image_path: &str, hash_type: Option<&str>) -> Result<S
                 "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
-                    "io_ms": timing.io_ms,
+                    "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                     "compute_ms": timing.compute_ms
                 }
             }).to_string());
@@ -368,7 +371,8 @@ pub fn compute_image_hash(image_path: &str, hash_type: Option<&str>) -> Result<S
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -399,7 +403,8 @@ pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<S
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -462,7 +467,8 @@ pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<S
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -488,10 +494,10 @@ pub fn batch_resize(
     let mut failed = 0;
 
     for path in image_paths {
-        let original_bytes = measure_io(|| fs::metadata(path)).map(|m| m.len()).unwrap_or(0);
+        let original_bytes = measure_disk_io(|| fs::metadata(path)).map(|m| m.len()).unwrap_or(0);
         total_input += original_bytes;
 
-        match measure_io(|| image::open(path)) {
+        match measure_disk_io(|| image::open(path)) {
             Ok(img) => {
                 let (orig_w, orig_h) = img.dimensions();
                 let ratio = (max_size as f64 / orig_w.max(orig_h) as f64).min(1.0);
@@ -561,7 +567,8 @@ pub fn batch_resize(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())

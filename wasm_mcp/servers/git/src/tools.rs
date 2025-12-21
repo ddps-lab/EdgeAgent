@@ -9,7 +9,7 @@ use std::fs::{self, File};
 use std::io::{Read as IoRead, Seek, SeekFrom, BufReader};
 use std::path::{Path, PathBuf};
 use flate2::read::ZlibDecoder;
-use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use wasmmcp::timing::{measure_disk_io, ToolTimer, get_wasm_total_ms};
 use serde_json::json;
 
 #[derive(Debug, Serialize)]
@@ -44,7 +44,7 @@ pub fn git_dir(repo_path: &str) -> Result<PathBuf, String> {
 
 pub fn read_head(git_dir: &Path) -> Result<String, String> {
     let head_path = git_dir.join("HEAD");
-    measure_io(|| fs::read_to_string(&head_path))
+    measure_disk_io(|| fs::read_to_string(&head_path))
         .map(|s| s.trim().to_string())
         .map_err(|e| format!("Failed to read HEAD: {}", e))
 }
@@ -53,7 +53,7 @@ pub fn resolve_ref(git_dir: &Path, ref_str: &str) -> Result<String, String> {
     if ref_str.starts_with("ref: ") {
         let ref_name = &ref_str[5..];
         let ref_path = git_dir.join(ref_name);
-        measure_io(|| fs::read_to_string(&ref_path))
+        measure_disk_io(|| fs::read_to_string(&ref_path))
             .map(|s| s.trim().to_string())
             .map_err(|e| format!("Failed to resolve ref {}: {}", ref_name, e))
     } else {
@@ -69,7 +69,7 @@ pub fn read_object(git_dir: &Path, sha: &str) -> Result<Vec<u8>, String> {
     // Try loose object first
     let loose_path = git_dir.join("objects").join(&sha[..2]).join(&sha[2..]);
     if loose_path.exists() {
-        let compressed = measure_io(|| fs::read(&loose_path))
+        let compressed = measure_disk_io(|| fs::read(&loose_path))
             .map_err(|e| format!("Failed to read object {}: {}", sha, e))?;
         let mut decoder = ZlibDecoder::new(&compressed[..]);
         let mut decompressed = Vec::new();
@@ -98,7 +98,7 @@ fn read_object_from_pack(pack_dir: &Path, sha: &str) -> Result<Vec<u8>, String> 
     let sha_bytes = hex::decode(sha).map_err(|e| format!("Invalid SHA: {}", e))?;
 
     // Find all .idx files
-    let entries = measure_io(|| fs::read_dir(pack_dir))
+    let entries = measure_disk_io(|| fs::read_dir(pack_dir))
         .map_err(|e| format!("Failed to read pack dir: {}", e))?;
 
     for entry in entries.flatten() {
@@ -119,7 +119,7 @@ fn read_object_from_pack(pack_dir: &Path, sha: &str) -> Result<Vec<u8>, String> 
 
 /// Find object offset in .idx file (version 2 format)
 fn find_object_in_idx(idx_path: &Path, sha: &[u8]) -> Result<u64, String> {
-    let file = measure_io(|| File::open(idx_path))
+    let file = measure_disk_io(|| File::open(idx_path))
         .map_err(|e| format!("Failed to open idx: {}", e))?;
     let mut reader = BufReader::new(file);
 
@@ -211,7 +211,7 @@ fn find_object_in_idx(idx_path: &Path, sha: &[u8]) -> Result<u64, String> {
 
 /// Read object from .pack file at given offset
 fn read_object_from_packfile(pack_path: &Path, offset: u64) -> Result<Vec<u8>, String> {
-    let file = measure_io(|| File::open(pack_path))
+    let file = measure_disk_io(|| File::open(pack_path))
         .map_err(|e| format!("Failed to open pack: {}", e))?;
     let mut reader = BufReader::new(file);
 
@@ -491,7 +491,7 @@ pub fn list_branches(git_dir: &Path, branch_type: &str) -> Result<Vec<BranchInfo
     if branch_type == "remote" || branch_type == "all" {
         let remotes_dir = git_dir.join("refs/remotes");
         if remotes_dir.exists() {
-            for entry in measure_io(|| fs::read_dir(&remotes_dir)).map_err(|e| e.to_string())? {
+            for entry in measure_disk_io(|| fs::read_dir(&remotes_dir)).map_err(|e| e.to_string())? {
                 if let Ok(entry) = entry {
                     let remote_name = entry.file_name().to_string_lossy().to_string();
                     collect_refs(&entry.path(), &remote_name, "remote", &None, &mut branches)?;
@@ -514,7 +514,7 @@ fn collect_refs(
         return Ok(());
     }
 
-    for entry in measure_io(|| fs::read_dir(dir)).map_err(|e| e.to_string())? {
+    for entry in measure_disk_io(|| fs::read_dir(dir)).map_err(|e| e.to_string())? {
         if let Ok(entry) = entry {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
@@ -537,7 +537,7 @@ fn collect_refs(
                     .map(|c| c == &branch_name)
                     .unwrap_or(false);
 
-                let sha = measure_io(|| fs::read_to_string(&path))
+                let sha = measure_disk_io(|| fs::read_to_string(&path))
                     .map(|s| s.trim().to_string())
                     .unwrap_or_default();
 
@@ -582,7 +582,8 @@ pub fn git_status(repo_path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -625,7 +626,8 @@ pub fn git_log(repo_path: &str, max_count: Option<usize>) -> Result<String, Stri
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -644,7 +646,7 @@ pub fn git_show(repo_path: &str, revision: &str) -> Result<String, String> {
     } else {
         let ref_path = git_dir.join("refs/heads").join(revision);
         if ref_path.exists() {
-            measure_io(|| fs::read_to_string(&ref_path))
+            measure_disk_io(|| fs::read_to_string(&ref_path))
                 .map(|s| s.trim().to_string())
                 .map_err(|e| format!("Failed to read ref: {}", e))?
         } else {
@@ -668,7 +670,8 @@ pub fn git_show(repo_path: &str, revision: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -700,7 +703,8 @@ pub fn git_branch(repo_path: &str, branch_type: &str) -> Result<String, String> 
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -715,7 +719,8 @@ pub fn git_diff_unstaged(_repo_path: &str, _context_lines: Option<u32>) -> Resul
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -730,7 +735,8 @@ pub fn git_diff_staged(_repo_path: &str, _context_lines: Option<u32>) -> Result<
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -987,7 +993,7 @@ fn resolve_revision(git_dir: &Path, revision: &str) -> Result<String, String> {
     // Branch name
     let ref_path = git_dir.join("refs/heads").join(revision);
     if ref_path.exists() {
-        return measure_io(|| fs::read_to_string(&ref_path))
+        return measure_disk_io(|| fs::read_to_string(&ref_path))
             .map(|s| s.trim().to_string())
             .map_err(|e| format!("Failed to read ref: {}", e));
     }
@@ -1115,7 +1121,8 @@ pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Re
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string())
@@ -1125,7 +1132,8 @@ pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Re
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string())
@@ -1145,7 +1153,8 @@ pub fn git_commit(repo_path: &str, _message: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -1160,7 +1169,8 @@ pub fn git_add(_repo_path: &str, _files: &[String]) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -1175,7 +1185,8 @@ pub fn git_reset(_repo_path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -1190,7 +1201,8 @@ pub fn git_create_branch(_repo_path: &str, _branch_name: &str, _base_branch: Opt
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -1205,7 +1217,8 @@ pub fn git_checkout(_repo_path: &str, _branch_name: &str) -> Result<String, Stri
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
