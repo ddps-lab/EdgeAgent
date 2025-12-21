@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use url::Url;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 use regex::Regex;
 
 /// Make HTTP request using wasi:http/outgoing-handler
@@ -314,6 +314,7 @@ fn extract_json_value(json: &str, key: &str) -> Option<String> {
 
 /// Fetch a URL and return its contents as markdown
 pub fn fetch(url_str: &str, max_length: usize) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let url = Url::parse(url_str)
         .map_err(|e| format!("Invalid URL: {}", e))?;
 
@@ -323,7 +324,17 @@ pub fn fetch(url_str: &str, max_length: usize) -> Result<String, String> {
 
     // Check if this is a Semantic Scholar paper URL - use API instead
     if let Some(paper_id) = extract_s2_paper_id(url_str) {
-        return fetch_s2_paper_via_api(&paper_id, max_length);
+        let result = fetch_s2_paper_via_api(&paper_id, max_length)?;
+        let timing = timer.finish("fetch");
+        return Ok(serde_json::json!({
+            "content": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let (status, content) = http_get(url_str)?;
@@ -346,5 +357,14 @@ pub fn fetch(url_str: &str, max_length: usize) -> Result<String, String> {
         processed
     };
 
-    Ok(result)
+    let timing = timer.finish("fetch");
+    Ok(serde_json::json!({
+        "content": result,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }

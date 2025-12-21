@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 #[allow(unused_imports)]
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 // ==========================================
 // Helper functions
@@ -90,8 +90,19 @@ pub fn aggregate_list(
     count_field: Option<&str>,
     sum_fields: Option<&[String]>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if items.is_empty() {
-        return Ok(json!({"total_count": 0, "groups": {}}).to_string());
+        let timing = timer.finish("aggregate_list");
+        return Ok(json!({
+            "total_count": 0,
+            "groups": {},
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let input_size = serde_json::to_string(&items).map(|s| s.len()).unwrap_or(0);
@@ -162,6 +173,14 @@ pub fn aggregate_list(
     result["output_size_estimate"] = json!(output_size);
     result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
+    let timing = timer.finish("aggregate_list");
+    result["timing"] = json!({
+        "wasm_total_ms": get_wasm_total_ms(),
+        "fn_total_ms": timing.fn_total_ms,
+        "io_ms": timing.io_ms,
+        "compute_ms": timing.compute_ms
+    });
+
     Ok(result.to_string())
 }
 
@@ -170,8 +189,18 @@ pub fn merge_summaries(
     summaries: &[Value],
     weights: Option<&[f64]>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if summaries.is_empty() {
-        return Ok(json!({"merged_count": 0}).to_string());
+        let timing = timer.finish("merge_summaries");
+        return Ok(json!({
+            "merged_count": 0,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let default_weights: Vec<f64> = vec![1.0; summaries.len()];
@@ -238,6 +267,14 @@ pub fn merge_summaries(
         }
     }
 
+    let timing = timer.finish("merge_summaries");
+    merged["timing"] = json!({
+        "wasm_total_ms": get_wasm_total_ms(),
+        "fn_total_ms": timing.fn_total_ms,
+        "io_ms": timing.io_ms,
+        "compute_ms": timing.compute_ms
+    });
+
     Ok(merged.to_string())
 }
 
@@ -248,8 +285,19 @@ pub fn combine_research_results(
     summary_field: &str,
     score_field: Option<&str>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if results.is_empty() {
-        return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
+        let timing = timer.finish("combine_research_results");
+        return Ok(json!({
+            "result_count": 0,
+            "combined_summary": "",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let score_field = score_field.unwrap_or("relevance_score");
@@ -295,12 +343,19 @@ pub fn combine_research_results(
         .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
         .sum();
 
+    let timing = timer.finish("combine_research_results");
     Ok(json!({
         "result_count": results.len(),
         "items": items,
         "combined_text": combined_text,
         "input_size": input_size,
         "output_size": combined_text.len(),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
@@ -310,8 +365,20 @@ pub fn deduplicate(
     key_fields: &[String],
     keep: &str,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if items.is_empty() {
-        return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
+        let timing = timer.finish("deduplicate");
+        return Ok(json!({
+            "original_count": 0,
+            "unique_count": 0,
+            "items": [],
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let mut seen: HashMap<String, Value> = HashMap::new();
@@ -343,12 +410,19 @@ pub fn deduplicate(
     let unique_count = result.len();
     let duplicates_removed = items.len() - unique_count;
 
+    let timing = timer.finish("deduplicate");
     Ok(json!({
         "original_count": items.len(),
         "unique_count": unique_count,
         "duplicates_removed": duplicates_removed,
         "key_fields": key_fields,
         "items": result,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
@@ -359,8 +433,19 @@ pub fn compute_trends(
     value_field: &str,
     _bucket_count: usize,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if time_series.is_empty() {
-        return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
+        let timing = timer.finish("compute_trends");
+        return Ok(json!({
+            "data_points": 0,
+            "trend": "insufficient_data",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     // Extract values
@@ -378,7 +463,17 @@ pub fn compute_trends(
     }
 
     if data.len() < 2 {
-        return Ok(json!({"data_points": data.len(), "trend": "insufficient_data"}).to_string());
+        let timing = timer.finish("compute_trends");
+        return Ok(json!({
+            "data_points": data.len(),
+            "trend": "insufficient_data",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
@@ -405,6 +500,7 @@ pub fn compute_trends(
 
     let stats = compute_stats(&values);
 
+    let timing = timer.finish("compute_trends");
     Ok(json!({
         "data_points": data.len(),
         "trend": trend,
@@ -412,5 +508,11 @@ pub fn compute_trends(
         "first_half_avg": first_avg,
         "second_half_avg": second_avg,
         "change_percent": change_percent,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }

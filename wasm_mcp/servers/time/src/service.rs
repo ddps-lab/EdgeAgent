@@ -1,6 +1,7 @@
 //! Time MCP Service - provides time operations and timezone conversion
 //! Compatible with Python mcp-server-time
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -69,7 +70,18 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<GetCurrentTimeParams>,
     ) -> Result<String, String> {
-        tools::get_current_time(&params.timezone)
+        let timer = ToolTimer::start();
+        let result = tools::get_current_time(&params.timezone)?;
+        let timing = timer.finish("get_current_time");
+        Ok(serde_json::json!({
+            "output": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Convert time between timezones
@@ -79,7 +91,18 @@ impl TimeService {
         &self,
         Parameters(params): Parameters<ConvertTimeParams>,
     ) -> Result<String, String> {
-        tools::convert_time(&params.source_timezone, &params.time, &params.target_timezone)
+        let timer = ToolTimer::start();
+        let result = tools::convert_time(&params.source_timezone, &params.time, &params.target_timezone)?;
+        let timing = timer.finish("convert_time");
+        Ok(serde_json::json!({
+            "output": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 }
 

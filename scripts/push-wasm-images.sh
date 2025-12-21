@@ -5,7 +5,8 @@
 set -e
 
 REGISTRY="srv2.ddps.cloud/wasm-mcp"
-WASM_DIR="/home/mhsong/edgeagent/wasm_mcp/target/wasm32-wasip2/release"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WASM_DIR="$SCRIPT_DIR/../wasm_mcp/target/wasm32-wasip2/release"
 
 # Server name : WASM file mapping
 declare -A servers=(

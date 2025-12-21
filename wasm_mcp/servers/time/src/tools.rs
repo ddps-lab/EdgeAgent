@@ -6,7 +6,7 @@
 use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
 #[allow(unused_imports)]
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 /// Parse timezone string to Tz
 pub fn parse_timezone(tz_str: &str) -> Result<Tz, String> {
@@ -44,16 +44,24 @@ pub fn day_of_week_name(weekday: Weekday) -> &'static str {
 /// # Returns
 /// JSON string with timezone, datetime, day_of_week, and is_dst fields
 pub fn get_current_time(timezone: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let tz = parse_timezone(timezone)?;
 
     let now_utc = Utc::now();
     let now_local = now_utc.with_timezone(&tz);
 
+    let timing = timer.finish("get_current_time");
     Ok(serde_json::json!({
         "timezone": timezone,
         "datetime": format_datetime(now_local),
         "day_of_week": day_of_week_name(now_local.weekday()),
-        "is_dst": false
+        "is_dst": false,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
@@ -67,6 +75,7 @@ pub fn get_current_time(timezone: &str) -> Result<String, String> {
 /// # Returns
 /// JSON string with source and target datetime information
 pub fn convert_time(source_timezone: &str, time: &str, target_timezone: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let source_tz = parse_timezone(source_timezone)?;
     let target_tz = parse_timezone(target_timezone)?;
 
@@ -86,6 +95,7 @@ pub fn convert_time(source_timezone: &str, time: &str, target_timezone: &str) ->
     // Convert to target timezone
     let target_dt = source_dt.with_timezone(&target_tz);
 
+    let timing = timer.finish("convert_time");
     Ok(serde_json::json!({
         "source": {
             "timezone": source_timezone,
@@ -94,6 +104,12 @@ pub fn convert_time(source_timezone: &str, time: &str, target_timezone: &str) ->
         "target": {
             "timezone": target_timezone,
             "datetime": format_datetime(target_dt)
+        },
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
         }
     }).to_string())
 }

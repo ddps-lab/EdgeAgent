@@ -428,6 +428,8 @@ pub fn export_http(input: TokenStream) -> TokenStream {
             fn handle(request: wasi::http::types::IncomingRequest, response_out: wasi::http::types::ResponseOutparam) {
                 use wasi::http::types::{Fields, OutgoingBody, OutgoingResponse, Method};
 
+                wasmmcp::timing::reset_wasm_start();
+
                 let method = request.method();
 
                 // CORS headers

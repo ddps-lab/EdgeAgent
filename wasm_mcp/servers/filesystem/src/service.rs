@@ -2,6 +2,7 @@
 //!
 //! Implements the same 14 tools as the NPM @modelcontextprotocol/server-filesystem
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -327,6 +328,8 @@ impl FilesystemService {
     // 1. read_file (deprecated)
     #[tool(description = "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.")]
     fn read_file(&self, Parameters(params): Parameters<ReadFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -334,18 +337,31 @@ impl FilesystemService {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        if let Some(n) = params.head {
-            Ok(head_lines(&content, n))
+        let result = if let Some(n) = params.head {
+            head_lines(&content, n)
         } else if let Some(n) = params.tail {
-            Ok(tail_lines(&content, n))
+            tail_lines(&content, n)
         } else {
-            Ok(content)
-        }
+            content
+        };
+
+        let timing = timer.finish("read_file");
+        Ok(serde_json::json!({
+            "content": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 2. read_text_file
     #[tool(description = "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Only works within allowed directories.")]
     fn read_text_file(&self, Parameters(params): Parameters<ReadTextFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let content = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -353,30 +369,54 @@ impl FilesystemService {
             return Err("Cannot specify both head and tail parameters simultaneously".to_string());
         }
 
-        if let Some(n) = params.head {
-            Ok(head_lines(&content, n))
+        let result = if let Some(n) = params.head {
+            head_lines(&content, n)
         } else if let Some(n) = params.tail {
-            Ok(tail_lines(&content, n))
+            tail_lines(&content, n)
         } else {
-            Ok(content)
-        }
+            content
+        };
+
+        let timing = timer.finish("read_text_file");
+        Ok(serde_json::json!({
+            "content": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 3. read_media_file
     #[tool(description = "Read an image or audio file. Returns the base64 encoded data and MIME type. Only works within allowed directories.")]
     fn read_media_file(&self, Parameters(params): Parameters<ReadMediaFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let data = fs::read(&params.path)
             .map_err(|e| format!("Failed to read media file: {}", e))?;
 
         let base64_data = base64_encode(&data);
         let mime_type = get_mime_type(&params.path);
 
-        Ok(format!("data:{};base64,{}", mime_type, base64_data))
+        let timing = timer.finish("read_media_file");
+        Ok(serde_json::json!({
+            "data": format!("data:{};base64,{}", mime_type, base64_data),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 4. read_multiple_files
     #[tool(description = "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.")]
     fn read_multiple_files(&self, Parameters(params): Parameters<ReadMultipleFilesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let results: Vec<String> = params.paths.iter().map(|path| {
             match fs::read_to_string(path) {
                 Ok(content) => format!("{}:\n{}", path, content),
@@ -384,21 +424,43 @@ impl FilesystemService {
             }
         }).collect();
 
-        Ok(results.join("\n---\n"))
+        let timing = timer.finish("read_multiple_files");
+        Ok(serde_json::json!({
+            "content": results.join("\n---\n"),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 5. write_file
     #[tool(description = "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.")]
     fn write_file(&self, Parameters(params): Parameters<WriteFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         fs::write(&params.path, &params.content)
             .map_err(|e| format!("Failed to write file: {}", e))?;
 
-        Ok(format!("Successfully wrote to {}", params.path))
+        let timing = timer.finish("write_file");
+        Ok(serde_json::json!({
+            "message": format!("Successfully wrote to {}", params.path),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 6. edit_file
     #[tool(description = "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.")]
     fn edit_file(&self, Parameters(params): Parameters<EditFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let original = fs::read_to_string(&params.path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -414,27 +476,51 @@ impl FilesystemService {
             }
         }
 
-        if params.dry_run {
-            Ok(format!("Dry run - changes that would be made:\n{}", changes.join("\n")))
+        let message = if params.dry_run {
+            format!("Dry run - changes that would be made:\n{}", changes.join("\n"))
         } else {
             fs::write(&params.path, &content)
                 .map_err(|e| format!("Failed to write file: {}", e))?;
-            Ok(format!("Applied {} edit(s) to {}", params.edits.len(), params.path))
-        }
+            format!("Applied {} edit(s) to {}", params.edits.len(), params.path)
+        };
+
+        let timing = timer.finish("edit_file");
+        Ok(serde_json::json!({
+            "message": message,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 7. create_directory
     #[tool(description = "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.")]
     fn create_directory(&self, Parameters(params): Parameters<CreateDirectoryParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         fs::create_dir_all(&params.path)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
 
-        Ok(format!("Successfully created directory {}", params.path))
+        let timing = timer.finish("create_directory");
+        Ok(serde_json::json!({
+            "message": format!("Successfully created directory {}", params.path),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 8. list_directory
     #[tool(description = "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.")]
     fn list_directory(&self, Parameters(params): Parameters<ListDirectoryParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let entries = fs::read_dir(&params.path)
             .map_err(|e| format!("Failed to read directory: {}", e))?;
 
@@ -451,16 +537,29 @@ impl FilesystemService {
 
         items.sort();
 
-        Ok(if items.is_empty() {
+        let content = if items.is_empty() {
             "Directory is empty".to_string()
         } else {
             items.join("\n")
-        })
+        };
+
+        let timing = timer.finish("list_directory");
+        Ok(serde_json::json!({
+            "content": content,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 9. list_directory_with_sizes
     #[tool(description = "Get a detailed listing of all files and directories in a specified path, including sizes. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is useful for understanding directory structure and finding specific files within a directory. Only works within allowed directories.")]
     fn list_directory_with_sizes(&self, Parameters(params): Parameters<ListDirectoryWithSizesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let entries = fs::read_dir(&params.path)
             .map_err(|e| format!("Failed to read directory: {}", e))?;
 
@@ -512,44 +611,92 @@ impl FilesystemService {
         result.push(format!("Total: {} files, {} directories", file_count, dir_count));
         result.push(format!("Combined size: {}", format_size(total_size)));
 
-        Ok(result.join("\n"))
+        let timing = timer.finish("list_directory_with_sizes");
+        Ok(serde_json::json!({
+            "content": result.join("\n"),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 10. directory_tree
     #[tool(description = "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.")]
     fn directory_tree(&self, Parameters(params): Parameters<DirectoryTreeParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let path = Path::new(&params.path);
         let tree = build_directory_tree_json(path, &params.exclude_patterns)?;
-        Ok(serde_json::to_string_pretty(&tree).unwrap_or_else(|_| "[]".to_string()))
+
+        let timing = timer.finish("directory_tree");
+        Ok(serde_json::json!({
+            "tree": tree,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 11. move_file
     #[tool(description = "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.")]
     fn move_file(&self, Parameters(params): Parameters<MoveFileParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         fs::rename(&params.source, &params.destination)
             .map_err(|e| format!("Failed to move file: {}", e))?;
 
-        Ok(format!("Successfully moved {} to {}", params.source, params.destination))
+        let timing = timer.finish("move_file");
+        Ok(serde_json::json!({
+            "message": format!("Successfully moved {} to {}", params.source, params.destination),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 12. search_files
     #[tool(description = "Recursively search for files and directories matching a pattern. The patterns should be glob-style patterns that match paths relative to the working directory. Use pattern like '*.ext' to match files in current directory, and '**/*.ext' to match files in all subdirectories. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.")]
     fn search_files(&self, Parameters(params): Parameters<SearchFilesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let path = Path::new(&params.path);
         let mut results = Vec::new();
 
         search_files_recursive(path, &params.pattern, &params.exclude_patterns, &mut results)?;
 
-        if results.is_empty() {
-            Ok("No matches found".to_string())
+        let content = if results.is_empty() {
+            "No matches found".to_string()
         } else {
-            Ok(results.join("\n"))
-        }
+            results.join("\n")
+        };
+
+        let timing = timer.finish("search_files");
+        Ok(serde_json::json!({
+            "content": content,
+            "match_count": results.len(),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 13. get_file_info
     #[tool(description = "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.")]
     fn get_file_info(&self, Parameters(params): Parameters<GetFileInfoParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let path = Path::new(&params.path);
         let metadata = fs::metadata(path)
             .map_err(|e| format!("Failed to get file info: {}", e))?;
@@ -578,14 +725,35 @@ impl FilesystemService {
             info.push(format!("created: {}", metadata.ctime()));
         }
 
-        Ok(info.join("\n"))
+        let timing = timer.finish("get_file_info");
+        Ok(serde_json::json!({
+            "content": info.join("\n"),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     // 14. list_allowed_directories
     #[tool(description = "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.")]
     fn list_allowed_directories(&self) -> String {
-        // In WASM/WASI context, allowed directories are controlled by the runtime via --dir flag
-        "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.".to_string()
+        let timer = ToolTimer::start();
+
+        let message = "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.";
+
+        let timing = timer.finish("list_allowed_directories");
+        serde_json::json!({
+            "message": message,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string()
     }
 }
 

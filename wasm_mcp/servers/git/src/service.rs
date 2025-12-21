@@ -3,6 +3,7 @@
 //! Reads git repository data directly from .git directory.
 //! No external git command or library dependencies.
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -343,6 +344,7 @@ impl GitService {
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows the working tree status")]
     fn git_status(&self, Parameters(params): Parameters<RepoPathParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let git_dir = Self::git_dir(&params.repo_path)?;
         let head = Self::read_head(&git_dir)?;
 
@@ -358,13 +360,23 @@ impl GitService {
         // Note: Full working tree status requires comparing index with working directory
         output.push_str("nothing to commit, working tree clean\n");
 
-        Ok(output)
+        let timing = timer.finish("git_status");
+        Ok(serde_json::json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Shows the commit logs
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows the commit logs")]
     fn git_log(&self, Parameters(params): Parameters<LogParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let git_dir = Self::git_dir(&params.repo_path)?;
         let max_count = params.max_count.unwrap_or(10);
 
@@ -393,13 +405,23 @@ impl GitService {
             }
         }
 
-        Ok(output)
+        let timing = timer.finish("git_log");
+        Ok(serde_json::json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Shows the contents of a commit
     /// Output format matches Python mcp-server-git
     #[tool(description = "Shows a commit or other object")]
     fn git_show(&self, Parameters(params): Parameters<ShowParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let git_dir = Self::git_dir(&params.repo_path)?;
 
         let sha = if params.revision.len() == 40 && params.revision.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -428,13 +450,23 @@ impl GitService {
             output.push_str(&format!("Parents: {}\n", commit.parents.join(", ")));
         }
 
-        Ok(output)
+        let timing = timer.finish("git_show");
+        Ok(serde_json::json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// List Git branches
     /// Output format matches Python mcp-server-git
     #[tool(description = "Lists repository branches")]
     fn git_branch(&self, Parameters(params): Parameters<BranchListParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let git_dir = Self::git_dir(&params.repo_path)?;
         let branch_type = &params.branch_type;
 
@@ -453,66 +485,156 @@ impl GitService {
             output.push_str("No branches found\n");
         }
 
-        Ok(output)
+        let timing = timer.finish("git_branch");
+        Ok(serde_json::json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Shows changes in working directory not yet staged
     #[tool(description = "Shows changes not yet staged")]
     fn git_diff_unstaged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
-        Ok("No unstaged changes".to_string())
+        let timer = ToolTimer::start();
+        let timing = timer.finish("git_diff_unstaged");
+        Ok(serde_json::json!({
+            "output": "No unstaged changes",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Shows changes that are staged for commit
     #[tool(description = "Shows staged changes")]
     fn git_diff_staged(&self, Parameters(_params): Parameters<DiffUnstagedParams>) -> Result<String, String> {
-        Ok("No staged changes".to_string())
+        let timer = ToolTimer::start();
+        let timing = timer.finish("git_diff_staged");
+        Ok(serde_json::json!({
+            "output": "No staged changes",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Shows changes between commits
     #[tool(description = "Shows differences between commits")]
     fn git_diff(&self, Parameters(_params): Parameters<DiffParams>) -> Result<String, String> {
-        Ok("No changes".to_string())
+        let timer = ToolTimer::start();
+        let timing = timer.finish("git_diff");
+        Ok(serde_json::json!({
+            "output": "No changes",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Records changes to the repository
     /// Note: In WASM, this returns a simulated success message (matching Python behavior)
     #[tool(description = "Records changes to the repository")]
     fn git_commit(&self, Parameters(params): Parameters<CommitParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         // Python server creates commits even when nothing to commit
         // We simulate success to match Python behavior
         let git_dir = Self::git_dir(&params.repo_path)?;
         let head = Self::read_head(&git_dir)?;
         let current_sha = Self::resolve_ref(&git_dir, &head).unwrap_or_default();
         let short_sha = if current_sha.len() >= 7 { &current_sha[..7] } else { &current_sha };
-        Ok(format!("Changes committed successfully with hash {}{}", short_sha, "0000000"))
+        let output = format!("Changes committed successfully with hash {}{}", short_sha, "0000000");
+        let timing = timer.finish("git_commit");
+        Ok(serde_json::json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Adds file contents to the staging area
     /// Note: In WASM, this returns a simulated success message
     #[tool(description = "Adds file contents to the index")]
     fn git_add(&self, Parameters(_params): Parameters<AddParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         // Simulate success to match Python behavior
-        Ok("Files staged successfully".to_string())
+        let timing = timer.finish("git_add");
+        Ok(serde_json::json!({
+            "output": "Files staged successfully",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Unstages all staged changes
     /// Note: In WASM, this returns a simulated success message (matching Python behavior)
     #[tool(description = "Unstages all staged changes")]
     fn git_reset(&self, Parameters(_params): Parameters<RepoPathParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         // Python server always returns success
-        Ok("All staged changes reset".to_string())
+        let timing = timer.finish("git_reset");
+        Ok(serde_json::json!({
+            "output": "All staged changes reset",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Creates a new branch (disabled in WASM)
     #[tool(description = "Creates a new branch")]
     fn git_create_branch(&self, Parameters(_params): Parameters<CreateBranchParams>) -> Result<String, String> {
-        Err("git_create_branch is disabled in WASM for safety.".to_string())
+        let timer = ToolTimer::start();
+        let timing = timer.finish("git_create_branch");
+        Ok(serde_json::json!({
+            "error": "git_create_branch is disabled in WASM for safety.",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Switches branches (disabled in WASM)
     #[tool(description = "Switches branches or restores working tree files")]
     fn git_checkout(&self, Parameters(_params): Parameters<CheckoutParams>) -> Result<String, String> {
-        Err("git_checkout is disabled in WASM for safety.".to_string())
+        let timer = ToolTimer::start();
+        let timing = timer.finish("git_checkout");
+        Ok(serde_json::json!({
+            "error": "git_checkout is disabled in WASM for safety.",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 }
 

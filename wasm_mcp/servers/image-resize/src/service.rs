@@ -3,6 +3,7 @@
 //! Provides tools for image information, resizing, directory scanning,
 //! and perceptual hashing for duplicate detection.
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -233,6 +234,7 @@ impl ImageResizeService {
     /// Get detailed information about an image
     #[tool(description = "Get detailed information about an image file")]
     fn get_image_info(&self, Parameters(params): Parameters<GetImageInfoParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let path = &params.image_path;
 
         // Check file exists
@@ -252,7 +254,8 @@ impl ImageResizeService {
 
         let color_type = format!("{:?}", img.color());
 
-        let result = serde_json::json!({
+        let timing = timer.finish("get_image_info");
+        Ok(serde_json::json!({
             "path": path,
             "format": format,
             "mode": color_type,
@@ -260,14 +263,19 @@ impl ImageResizeService {
             "height": height,
             "size_bytes": size_bytes,
             "aspect_ratio": if height > 0 { (width as f64 / height as f64 * 100.0).round() / 100.0 } else { 0.0 },
-        });
-
-        Ok(result.to_string())
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Resize an image and return as base64
     #[tool(description = "Resize an image and return the result as base64-encoded data")]
     fn resize_image(&self, Parameters(params): Parameters<ResizeImageParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let path = &params.image_path;
         let quality = params.quality.unwrap_or(85);
         let output_format = params.output_format.as_deref().unwrap_or("JPEG");
@@ -326,7 +334,8 @@ impl ImageResizeService {
         let output_bytes = buffer.get_ref().len() as u64;
         let data_base64 = BASE64.encode(buffer.get_ref());
 
-        let result = serde_json::json!({
+        let timing = timer.finish("resize_image");
+        Ok(serde_json::json!({
             "success": true,
             "path": path,
             "original_size": [orig_width, orig_height],
@@ -336,14 +345,19 @@ impl ImageResizeService {
             "reduction_ratio": if original_bytes > 0 { (output_bytes as f64 / original_bytes as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
             "format": output_format,
             "data_base64": data_base64,
-        });
-
-        Ok(result.to_string())
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Scan directory for image files
     #[tool(description = "Scan a directory for image files")]
     fn scan_directory(&self, Parameters(params): Parameters<ScanDirectoryParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let directory = &params.directory;
         let recursive = params.recursive.unwrap_or(true);
         let include_info = params.include_info.unwrap_or(false);
@@ -419,25 +433,40 @@ impl ImageResizeService {
             result["images"] = serde_json::json!(images_info);
         }
 
+        let timing = timer.finish("scan_directory");
+        result["timing"] = serde_json::json!({
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        });
+
         Ok(result.to_string())
     }
 
     /// Compute perceptual hash of an image
     #[tool(description = "Compute perceptual hash of an image for duplicate detection")]
     fn compute_image_hash(&self, Parameters(params): Parameters<ComputeHashParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let path = &params.image_path;
         let hash_type = params.hash_type.as_deref().unwrap_or("phash");
 
         let img = match image::open(path) {
             Ok(img) => img,
             Err(e) => {
-                let result = HashResult {
-                    path: path.clone(),
-                    hash: None,
-                    hash_type: None,
-                    error: Some(format!("Cannot open image: {}", e)),
-                };
-                return Ok(serde_json::to_string(&result).unwrap());
+                let timing = timer.finish("compute_image_hash");
+                return Ok(serde_json::json!({
+                    "path": path,
+                    "hash": null,
+                    "hash_type": null,
+                    "error": format!("Cannot open image: {}", e),
+                    "timing": {
+                        "wasm_total_ms": get_wasm_total_ms(),
+                        "fn_total_ms": timing.fn_total_ms,
+                        "io_ms": timing.io_ms,
+                        "compute_ms": timing.compute_ms
+                    }
+                }).to_string());
             }
         };
 
@@ -447,19 +476,24 @@ impl ImageResizeService {
             _ => Self::compute_phash(&img),
         };
 
-        let result = HashResult {
-            path: path.clone(),
-            hash: Some(hash_value),
-            hash_type: Some(hash_type.to_string()),
-            error: None,
-        };
-
-        Ok(serde_json::to_string(&result).unwrap())
+        let timing = timer.finish("compute_image_hash");
+        Ok(serde_json::json!({
+            "path": path,
+            "hash": hash_value,
+            "hash_type": hash_type,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 
     /// Compare image hashes to find duplicates
     #[tool(description = "Compare image hashes to find duplicates/similar images")]
     fn compare_hashes(&self, Parameters(params): Parameters<CompareHashesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let threshold = params.threshold.unwrap_or(5);
 
         // Filter valid hashes
@@ -473,11 +507,18 @@ impl ImageResizeService {
                 .filter(|h| h.error.is_some())
                 .collect();
 
+            let timing = timer.finish("compare_hashes");
             return Ok(serde_json::json!({
                 "total_compared": valid_hashes.len(),
                 "duplicate_groups": [],
                 "unique_count": valid_hashes.len(),
                 "errors": errors,
+                "timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
             }).to_string());
         }
 
@@ -526,6 +567,7 @@ impl ImageResizeService {
             .filter(|h| h.error.is_some())
             .collect();
 
+        let timing = timer.finish("compare_hashes");
         Ok(serde_json::json!({
             "total_compared": valid_hashes.len(),
             "duplicate_groups": groups,
@@ -534,12 +576,19 @@ impl ImageResizeService {
             "unique_count": unique.len(),
             "threshold": threshold,
             "errors": errors,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
     /// Batch resize multiple images
     #[tool(description = "Resize multiple images at once (e.g., create thumbnails)")]
     fn batch_resize(&self, Parameters(params): Parameters<BatchResizeParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let max_size = params.max_size.unwrap_or(150);
         let quality = params.quality.unwrap_or(75);
         let output_format = params.output_format.as_deref().unwrap_or("JPEG");
@@ -613,6 +662,7 @@ impl ImageResizeService {
             }
         }
 
+        let timing = timer.finish("batch_resize");
         Ok(serde_json::json!({
             "total_images": params.image_paths.len(),
             "successful": successful,
@@ -621,6 +671,12 @@ impl ImageResizeService {
             "total_output_bytes": total_output,
             "overall_reduction": if total_input > 0 { (total_output as f64 / total_input as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
             "results": results,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 }

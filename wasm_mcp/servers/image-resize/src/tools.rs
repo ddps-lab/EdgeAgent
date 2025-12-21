@@ -8,7 +8,7 @@ use std::io::Cursor;
 use image::{GenericImageView, ImageFormat, imageops::FilterType};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::Serialize;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 #[derive(Debug, Serialize)]
 pub struct HashResult {
@@ -119,6 +119,7 @@ pub fn hash_distance(hash1: &str, hash2: &str) -> u32 {
 
 /// Get detailed information about an image
 pub fn get_image_info(image_path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let metadata = measure_io(|| fs::metadata(image_path))
         .map_err(|e| format!("Cannot access file: {}", e))?;
 
@@ -134,6 +135,7 @@ pub fn get_image_info(image_path: &str) -> Result<String, String> {
 
     let color_type = format!("{:?}", img.color());
 
+    let timing = timer.finish("get_image_info");
     let result = serde_json::json!({
         "path": image_path,
         "format": format,
@@ -142,6 +144,12 @@ pub fn get_image_info(image_path: &str) -> Result<String, String> {
         "height": height,
         "size_bytes": size_bytes,
         "aspect_ratio": if height > 0 { (width as f64 / height as f64 * 100.0).round() / 100.0 } else { 0.0 },
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     });
 
     Ok(result.to_string())
@@ -156,6 +164,7 @@ pub fn resize_image(
     quality: Option<u8>,
     output_format: Option<&str>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let quality = quality.unwrap_or(85);
     let output_format = output_format.unwrap_or("JPEG");
 
@@ -206,6 +215,7 @@ pub fn resize_image(
     let output_bytes = buffer.get_ref().len() as u64;
     let data_base64 = BASE64.encode(buffer.get_ref());
 
+    let timing = timer.finish("resize_image");
     let result = serde_json::json!({
         "success": true,
         "path": image_path,
@@ -216,6 +226,12 @@ pub fn resize_image(
         "reduction_ratio": if original_bytes > 0 { (output_bytes as f64 / original_bytes as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
         "format": output_format,
         "data_base64": data_base64,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     });
 
     Ok(result.to_string())
@@ -228,6 +244,7 @@ pub fn scan_directory(
     recursive: Option<bool>,
     include_info: Option<bool>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let recursive = recursive.unwrap_or(true);
     let include_info = include_info.unwrap_or(false);
 
@@ -302,23 +319,38 @@ pub fn scan_directory(
         result["images"] = serde_json::json!(images_info);
     }
 
+    let timing = timer.finish("scan_directory");
+    result["timing"] = serde_json::json!({
+        "wasm_total_ms": get_wasm_total_ms(),
+        "fn_total_ms": timing.fn_total_ms,
+        "io_ms": timing.io_ms,
+        "compute_ms": timing.compute_ms
+    });
+
     Ok(result.to_string())
 }
 
 /// Compute perceptual hash of an image
 pub fn compute_image_hash(image_path: &str, hash_type: Option<&str>) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let hash_type = hash_type.unwrap_or("phash");
 
     let img = match measure_io(|| image::open(image_path)) {
         Ok(img) => img,
         Err(e) => {
-            let result = HashResult {
-                path: image_path.to_string(),
-                hash: None,
-                hash_type: None,
-                error: Some(format!("Cannot open image: {}", e)),
-            };
-            return Ok(serde_json::to_string(&result).unwrap());
+            let timing = timer.finish("compute_image_hash");
+            return Ok(serde_json::json!({
+                "path": image_path,
+                "hash": null,
+                "hash_type": null,
+                "error": format!("Cannot open image: {}", e),
+                "timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
     };
 
@@ -328,18 +360,23 @@ pub fn compute_image_hash(image_path: &str, hash_type: Option<&str>) -> Result<S
         _ => compute_phash(&img),
     };
 
-    let result = HashResult {
-        path: image_path.to_string(),
-        hash: Some(hash_value),
-        hash_type: Some(hash_type.to_string()),
-        error: None,
-    };
-
-    Ok(serde_json::to_string(&result).unwrap())
+    let timing = timer.finish("compute_image_hash");
+    Ok(serde_json::json!({
+        "path": image_path,
+        "hash": hash_value,
+        "hash_type": hash_type,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Compare image hashes to find duplicates
 pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let threshold = threshold.unwrap_or(5);
 
     // Filter valid hashes
@@ -353,11 +390,18 @@ pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<S
             .filter(|h| h.error.is_some())
             .collect();
 
+        let timing = timer.finish("compare_hashes");
         return Ok(serde_json::json!({
             "total_compared": valid_hashes.len(),
             "duplicate_groups": [],
             "unique_count": valid_hashes.len(),
             "errors": errors,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string());
     }
 
@@ -406,6 +450,7 @@ pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<S
         .filter(|h| h.error.is_some())
         .collect();
 
+    let timing = timer.finish("compare_hashes");
     Ok(serde_json::json!({
         "total_compared": valid_hashes.len(),
         "duplicate_groups": groups,
@@ -414,6 +459,12 @@ pub fn compare_hashes(hashes: &[HashResult], threshold: Option<u32>) -> Result<S
         "unique_count": unique.len(),
         "threshold": threshold,
         "errors": errors,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
@@ -424,6 +475,7 @@ pub fn batch_resize(
     quality: Option<u8>,
     output_format: Option<&str>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let max_size = max_size.unwrap_or(150);
     let quality = quality.unwrap_or(75);
     let output_format = output_format.unwrap_or("JPEG");
@@ -497,6 +549,7 @@ pub fn batch_resize(
         }
     }
 
+    let timing = timer.finish("batch_resize");
     Ok(serde_json::json!({
         "total_images": image_paths.len(),
         "successful": successful,
@@ -505,5 +558,11 @@ pub fn batch_resize(
         "total_output_bytes": total_output,
         "overall_reduction": if total_input > 0 { (total_output as f64 / total_input as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
         "results": results,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }

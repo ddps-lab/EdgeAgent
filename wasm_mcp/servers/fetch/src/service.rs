@@ -2,6 +2,7 @@
 //!
 //! Fetches web pages and converts HTML to markdown.
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -202,6 +203,7 @@ impl FetchService {
     /// Output format matches Python fetch_server.py
     #[tool(description = "Fetches a URL from the internet and extracts its contents as markdown")]
     fn fetch(&self, Parameters(params): Parameters<FetchParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
         let max_length = params.max_length.unwrap_or(50000);
 
         // Validate URL
@@ -235,8 +237,16 @@ impl FetchService {
             processed
         };
 
-        // Return plain text (matching Python fetch_server output format)
-        Ok(result)
+        let timing = timer.finish("fetch");
+        Ok(serde_json::json!({
+            "content": result,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 }
 
