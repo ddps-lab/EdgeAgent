@@ -20,3 +20,6 @@ EXPOSE 8080
 
 # Run mcp-proxy in stateless mode
 CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-filesystem ${ALLOWED_PATH}"]
+
+
+# filesystem error
