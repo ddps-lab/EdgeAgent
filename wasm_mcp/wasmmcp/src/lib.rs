@@ -60,7 +60,9 @@ pub use serde_json;
 pub mod prelude {
     // WasmMCP types
     pub use crate::server::{WasmMcp, WasmMcpBuilder};
-    pub use crate::transport::{Transport, StdioTransport};
+    pub use crate::transport::Transport;
+    #[cfg(feature = "transport-stdio")]
+    pub use crate::transport::StdioTransport;
     #[cfg(feature = "transport-http")]
     pub use crate::transport::HttpTransport;
     pub use crate::registry::{Tool, ToolRegistry, ToolInfo, FnTool};

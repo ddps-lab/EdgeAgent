@@ -4,11 +4,13 @@
 //! - `StdioTransport`: For CLI usage via WASI stdin/stdout
 //! - `HttpTransport`: For HTTP servers via wasi:http (serverless)
 
+#[cfg(feature = "transport-stdio")]
 mod stdio;
 
 #[cfg(feature = "transport-http")]
 mod http;
 
+#[cfg(feature = "transport-stdio")]
 pub use stdio::{StdioTransport, AsyncInputStream, AsyncOutputStream};
 
 #[cfg(feature = "transport-http")]

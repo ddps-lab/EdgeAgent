@@ -26,6 +26,6 @@ rmcp = { version = "0.10", default-features = false, features = ["server", "macr
 wasmmcp-macros = { path = "../wasmmcp-macros" }
 
 [features]
-default = ["transport-stdio"]
+default = []
 transport-stdio = []
 transport-http = []

@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
-wasmmcp = { path = "../../wasmmcp" }
+wasmmcp = { path = "../../wasmmcp", default-features = false }
 wasi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -22,6 +22,6 @@ anyhow = { workspace = true, optional = true }
 
 [features]
 default = ["cli-export"]
-cli-export = []
-http-export = []
+cli-export = ["wasmmcp/transport-stdio"]
+http-export = ["wasmmcp/transport-http"]
 rmcp-service = ["tokio", "rmcp", "anyhow"]

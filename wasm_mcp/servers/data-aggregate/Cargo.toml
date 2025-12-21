@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core framework
-wasmmcp = { path = "../../wasmmcp" }
+wasmmcp = { path = "../../wasmmcp", default-features = false }
 wasi = { workspace = true }
 # Note: serde/serde_json/schemars needed directly for derive macros
 serde = { workspace = true }
@@ -29,7 +29,7 @@ anyhow = { workspace = true, optional = true }
 #   cargo build --features http-export   → wasmtime serve (HTTP)
 #   cargo build (no features)            → library only
 default = ["cli-export"]
-cli-export = []
-http-export = []
+cli-export = ["wasmmcp/transport-stdio"]
+http-export = ["wasmmcp/transport-http"]
 # Keep rmcp-based service for backward compatibility
 rmcp-service = ["tokio", "rmcp", "anyhow"]
