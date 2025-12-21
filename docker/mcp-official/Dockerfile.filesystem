@@ -25,9 +25,10 @@ RUN cp -r /tmp/mcp_servers/src/filesystem/* /build/ && \
 COPY servers/patches/typescript/timing.ts /build/
 COPY servers/patches/typescript/lib.ts /build/
 
-# Patch index.ts - add ToolTimer import and monkey-patch
+# Patch index.ts - add imports, monkey-patch, and replace readFileAsBase64Stream
 RUN head -29 /build/index.ts > /build/index.ts.new && \
     echo 'import { ToolTimer } from "./timing.js";' >> /build/index.ts.new && \
+    echo 'import { readFileAsBase64Stream } from "./lib.js";' >> /build/index.ts.new && \
     echo '' >> /build/index.ts.new && \
     echo '// ToolTimer Monkey-Patch' >> /build/index.ts.new && \
     echo 'const _origRegisterTool = McpServer.prototype.registerTool;' >> /build/index.ts.new && \
@@ -42,6 +43,9 @@ RUN head -29 /build/index.ts > /build/index.ts.new && \
     echo '' >> /build/index.ts.new && \
     tail -n +30 /build/index.ts >> /build/index.ts.new && \
     mv /build/index.ts.new /build/index.ts
+
+# Remove original readFileAsBase64Stream function from index.ts (use patched version from lib.ts)
+RUN sed -i '/^async function readFileAsBase64Stream/,/^}$/d' /build/index.ts
 
 # Create package.json
 RUN echo '{"name":"mcp-server-filesystem-patched","version":"0.2.0","type":"module","main":"dist/index.js","bin":{"mcp-server-filesystem":"dist/index.js"},"scripts":{"build":"tsc"},"dependencies":{"@modelcontextprotocol/sdk":"^1.0.0","diff":"^5.0.0","minimatch":"^9.0.0","zod":"^3.0.0"},"devDependencies":{"@types/diff":"^5.0.0","@types/node":"^20.0.0","typescript":"^5.0.0"}}' > /build/package.json
