@@ -169,8 +169,8 @@ class AgentImageProcessingScenario(ScenarioRunner):
             metrics_collector=client.metrics_collector,
         )
 
-        # Create agent
-        agent = create_agent(llm, tools)
+        # Create agent with system prompt
+        agent = create_agent(llm, tools, system_prompt=IMAGE_PROCESSING_SYSTEM_PROMPT)
 
         print("Agent created. Sending user request...")
         print()

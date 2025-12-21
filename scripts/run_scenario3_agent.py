@@ -163,8 +163,8 @@ class AgentResearchAssistantScenario(ScenarioRunner):
             metrics_collector=client.metrics_collector,
         )
 
-        # Create agent using langchain.agents.create_agent
-        agent = create_agent(llm, tools)
+        # Create agent using langchain.agents.create_agent with system prompt
+        agent = create_agent(llm, tools, system_prompt=RESEARCH_ASSISTANT_SYSTEM_PROMPT)
 
         print("Agent created. Sending user request...")
         print()
