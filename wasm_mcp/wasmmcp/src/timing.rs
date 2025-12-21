@@ -9,9 +9,11 @@
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
-// Thread-local storage for I/O timing accumulator
+// Thread-local storage for timing data
 thread_local! {
     static IO_ACCUMULATOR: RefCell<Duration> = RefCell::new(Duration::ZERO);
+    static TOOL_EXEC_MS: RefCell<f64> = RefCell::new(0.0);
+    static IO_MS: RefCell<f64> = RefCell::new(0.0);
 }
 
 /// Reset the I/O accumulator (call before each tool execution)
@@ -31,6 +33,33 @@ pub fn add_io_duration(duration: Duration) {
 /// Get the accumulated I/O duration
 pub fn get_io_duration() -> Duration {
     IO_ACCUMULATOR.with(|acc| *acc.borrow())
+}
+
+/// Set tool execution time (for HTTP transport to read)
+pub fn set_tool_exec_ms(ms: f64) {
+    TOOL_EXEC_MS.with(|v| *v.borrow_mut() = ms);
+}
+
+/// Get tool execution time
+pub fn get_tool_exec_ms() -> f64 {
+    TOOL_EXEC_MS.with(|v| *v.borrow())
+}
+
+/// Set I/O time (for HTTP transport to read)
+pub fn set_io_ms(ms: f64) {
+    IO_MS.with(|v| *v.borrow_mut() = ms);
+}
+
+/// Get I/O time
+pub fn get_io_ms() -> f64 {
+    IO_MS.with(|v| *v.borrow())
+}
+
+/// Reset all timing values
+pub fn reset_timing() {
+    reset_io_accumulator();
+    TOOL_EXEC_MS.with(|v| *v.borrow_mut() = 0.0);
+    IO_MS.with(|v| *v.borrow_mut() = 0.0);
 }
 
 /// Measure an I/O operation and add to the accumulator

@@ -5,6 +5,7 @@
 use wasi::http::types::{
     Fields, IncomingRequest, OutgoingBody, OutgoingResponse, ResponseOutparam,
 };
+use crate::timing::{get_tool_exec_ms, get_io_ms};
 
 /// HTTP transport configuration
 pub struct HttpTransport {
@@ -69,6 +70,18 @@ pub fn handle_http_request<F>(
 
     // Process MCP request
     let response_body = handler_factory();
+
+    // Add timing headers (values set by handler during tool execution)
+    let tool_exec_ms = get_tool_exec_ms();
+    let io_ms = get_io_ms();
+    let _ = headers.set(
+        &"X-Tool-Exec-Ms".to_string(),
+        &[format!("{:.3}", tool_exec_ms).into_bytes()],
+    );
+    let _ = headers.set(
+        &"X-IO-Ms".to_string(),
+        &[format!("{:.3}", io_ms).into_bytes()],
+    );
 
     // Send response
     send_response(response_out, 200, headers, &response_body);
