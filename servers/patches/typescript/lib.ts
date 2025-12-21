@@ -149,8 +149,8 @@ export async function readFileAsBase64Stream(filePath: string): Promise<string> 
     const chunks: Buffer[] = [];
     const stream = createReadStream(filePath);
 
-    stream.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
+    stream.on('data', (chunk) => {
+      chunks.push(chunk as Buffer);
     });
 
     stream.on('end', () => {
