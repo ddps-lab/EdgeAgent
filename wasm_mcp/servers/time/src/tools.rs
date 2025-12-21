@@ -59,7 +59,8 @@ pub fn get_current_time(timezone: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -108,7 +109,8 @@ pub fn convert_time(source_timezone: &str, time: &str, target_timezone: &str) ->
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())

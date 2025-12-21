@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use serde::Serialize;
-use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use wasmmcp::timing::{measure_network_io, ToolTimer, get_wasm_total_ms};
 
 /// Provider info response
 #[derive(Debug, Serialize)]
@@ -54,8 +54,8 @@ pub fn http_post(url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16
     let outgoing_body = request.body()
         .map_err(|_| "Failed to get request body")?;
 
-    // Measure the entire HTTP I/O operation
-    let (status, content_str) = measure_io(|| {
+    // Measure the entire HTTP I/O operation (network I/O)
+    let (status, content_str) = measure_network_io(|| {
         // IMPORTANT: Start the request FIRST to avoid backpressure deadlock
         // See: https://github.com/bytecodealliance/wasmtime/issues/9653
         let future_response = outgoing_handler::handle(request, None)
@@ -198,7 +198,8 @@ pub fn summarize_text(
             "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
-                "io_ms": timing.io_ms,
+                "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
                 "compute_ms": timing.compute_ms
             }
         }).to_string());
@@ -214,7 +215,8 @@ pub fn summarize_text(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -250,7 +252,8 @@ pub fn summarize_documents(
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -267,7 +270,8 @@ pub fn get_provider_info(provider: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())

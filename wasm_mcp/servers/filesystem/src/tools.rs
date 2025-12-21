@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 use serde_json::json;
-use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use wasmmcp::timing::{measure_disk_io, ToolTimer, get_wasm_total_ms};
 
 // ============================================================================
 // Helper Functions
@@ -91,7 +91,7 @@ pub fn base64_encode(data: &[u8]) -> String {
 }
 
 fn build_directory_tree_json(path: &Path, exclude_patterns: &[String]) -> Result<serde_json::Value, String> {
-    let entries: Vec<_> = measure_io(|| fs::read_dir(path))
+    let entries: Vec<_> = measure_disk_io(|| fs::read_dir(path))
         .map_err(|e| format!("Failed to read directory: {}", e))?
         .filter_map(|e| e.ok())
         .collect();
@@ -133,7 +133,7 @@ fn build_directory_tree_json(path: &Path, exclude_patterns: &[String]) -> Result
 }
 
 fn search_files_recursive(dir: &Path, pattern: &str, exclude_patterns: &[String], results: &mut Vec<String>) -> Result<(), String> {
-    let entries = measure_io(|| fs::read_dir(dir))
+    let entries = measure_disk_io(|| fs::read_dir(dir))
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
     for entry in entries.filter_map(|e| e.ok()) {
@@ -183,7 +183,7 @@ fn search_files_recursive(dir: &Path, pattern: &str, exclude_patterns: &[String]
 /// 1. read_file (deprecated)
 pub fn read_file(path: &str, head: Option<usize>, tail: Option<usize>) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let content = measure_io(|| fs::read_to_string(path))
+    let content = measure_disk_io(|| fs::read_to_string(path))
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     if head.is_some() && tail.is_some() {
@@ -204,7 +204,8 @@ pub fn read_file(path: &str, head: Option<usize>, tail: Option<usize>) -> Result
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -218,7 +219,7 @@ pub fn read_text_file(path: &str, head: Option<usize>, tail: Option<usize>) -> R
 /// 3. read_media_file
 pub fn read_media_file(path: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let data = measure_io(|| fs::read(path))
+    let data = measure_disk_io(|| fs::read(path))
         .map_err(|e| format!("Failed to read media file: {}", e))?;
 
     let base64_data = base64_encode(&data);
@@ -230,7 +231,8 @@ pub fn read_media_file(path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -240,7 +242,7 @@ pub fn read_media_file(path: &str) -> Result<String, String> {
 pub fn read_multiple_files(paths: &[String]) -> Result<String, String> {
     let timer = ToolTimer::start();
     let results: Vec<String> = paths.iter().map(|path| {
-        match measure_io(|| fs::read_to_string(path)) {
+        match measure_disk_io(|| fs::read_to_string(path)) {
             Ok(content) => format!("{}:\n{}", path, content),
             Err(e) => format!("{}: Error - {}", path, e),
         }
@@ -252,7 +254,8 @@ pub fn read_multiple_files(paths: &[String]) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -261,7 +264,7 @@ pub fn read_multiple_files(paths: &[String]) -> Result<String, String> {
 /// 5. write_file
 pub fn write_file(path: &str, content: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    measure_io(|| fs::write(path, content))
+    measure_disk_io(|| fs::write(path, content))
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
     let timing = timer.finish("write_file");
@@ -270,7 +273,8 @@ pub fn write_file(path: &str, content: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -285,7 +289,7 @@ pub struct EditOp {
 /// 6. edit_file
 pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let original = measure_io(|| fs::read_to_string(path))
+    let original = measure_disk_io(|| fs::read_to_string(path))
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     let mut content = original.clone();
@@ -303,7 +307,7 @@ pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, 
     let result = if dry_run {
         format!("Dry run - changes that would be made:\n{}", changes.join("\n"))
     } else {
-        measure_io(|| fs::write(path, &content))
+        measure_disk_io(|| fs::write(path, &content))
             .map_err(|e| format!("Failed to write file: {}", e))?;
         format!("Applied {} edit(s) to {}", edits.len(), path)
     };
@@ -314,7 +318,8 @@ pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, 
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -323,7 +328,7 @@ pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, 
 /// 7. create_directory
 pub fn create_directory(path: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    measure_io(|| fs::create_dir_all(path))
+    measure_disk_io(|| fs::create_dir_all(path))
         .map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let timing = timer.finish("create_directory");
@@ -332,7 +337,8 @@ pub fn create_directory(path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -341,7 +347,7 @@ pub fn create_directory(path: &str) -> Result<String, String> {
 /// 8. list_directory
 pub fn list_directory(path: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let entries = measure_io(|| fs::read_dir(path))
+    let entries = measure_disk_io(|| fs::read_dir(path))
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut items = Vec::new();
@@ -369,7 +375,8 @@ pub fn list_directory(path: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -378,7 +385,7 @@ pub fn list_directory(path: &str) -> Result<String, String> {
 /// 9. list_directory_with_sizes
 pub fn list_directory_with_sizes(path: &str, sort_by: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    let entries = measure_io(|| fs::read_dir(path))
+    let entries = measure_disk_io(|| fs::read_dir(path))
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut items: Vec<(String, bool, u64)> = Vec::new();
@@ -391,7 +398,7 @@ pub fn list_directory_with_sizes(path: &str, sort_by: &str) -> Result<String, St
         let size = if is_dir {
             0
         } else {
-            measure_io(|| fs::metadata(&entry_path)).map(|m| m.len()).unwrap_or(0)
+            measure_disk_io(|| fs::metadata(&entry_path)).map(|m| m.len()).unwrap_or(0)
         };
         items.push((name, is_dir, size));
     }
@@ -435,7 +442,8 @@ pub fn list_directory_with_sizes(path: &str, sort_by: &str) -> Result<String, St
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -452,7 +460,8 @@ pub fn directory_tree(path: &str, exclude_patterns: &[String]) -> Result<String,
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -461,7 +470,7 @@ pub fn directory_tree(path: &str, exclude_patterns: &[String]) -> Result<String,
 /// 11. move_file
 pub fn move_file(source: &str, destination: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
-    measure_io(|| fs::rename(source, destination))
+    measure_disk_io(|| fs::rename(source, destination))
         .map_err(|e| format!("Failed to move file: {}", e))?;
 
     let timing = timer.finish("move_file");
@@ -470,7 +479,8 @@ pub fn move_file(source: &str, destination: &str) -> Result<String, String> {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -491,7 +501,8 @@ pub fn search_files(path: &str, pattern: &str, exclude_patterns: &[String]) -> R
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string())
@@ -501,7 +512,7 @@ pub fn search_files(path: &str, pattern: &str, exclude_patterns: &[String]) -> R
 pub fn get_file_info(path: &str) -> Result<String, String> {
     let timer = ToolTimer::start();
     let path = Path::new(path);
-    let metadata = measure_io(|| fs::metadata(path))
+    let metadata = measure_disk_io(|| fs::metadata(path))
         .map_err(|e| format!("Failed to get file info: {}", e))?;
 
     let file_type = if metadata.is_dir() {
@@ -533,7 +544,8 @@ pub fn get_file_info(path: &str) -> Result<String, String> {
     info["timing"] = json!({
         "wasm_total_ms": get_wasm_total_ms(),
         "fn_total_ms": timing.fn_total_ms,
-        "io_ms": timing.io_ms,
+        "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
         "compute_ms": timing.compute_ms
     });
 
@@ -550,7 +562,8 @@ pub fn list_allowed_directories() -> String {
         "timing": {
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
-            "io_ms": timing.io_ms,
+            "disk_io_ms": timing.disk_io_ms,
+            "network_io_ms": timing.network_io_ms,
             "compute_ms": timing.compute_ms
         }
     }).to_string()

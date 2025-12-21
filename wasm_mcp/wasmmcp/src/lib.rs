@@ -80,7 +80,7 @@ pub mod prelude {
     pub use crate::serde;
 
     // Timing utilities
-    pub use crate::timing::{measure_io, ToolTimer};
+    pub use crate::timing::{measure_io, measure_disk_io, measure_network_io, ToolTimer};
 }
 
 /// Error type for WasmMCP operations
