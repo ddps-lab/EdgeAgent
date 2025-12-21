@@ -300,6 +300,7 @@ class HeuristicScheduler(BaseScheduler):
                 self.tool_constraints[tool_name] = SchedulingConstraints(
                     requires_gpu=profile.get("requires_gpu", False),
                     privacy_sensitive=profile.get("privacy_sensitive", False),
+                    wasi_compatible=profile.get("wasi_compatible", True),
                 )
 
     def _get_constraints(self, tool_name: str) -> SchedulingConstraints:
@@ -355,13 +356,17 @@ class HeuristicScheduler(BaseScheduler):
 
         우선순위:
         1. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
-        2. privacy_sensitive → DEVICE
-        3. 기본값 → DEVICE
+        2. wasi_compatible=False → EDGE 제외 (DEVICE 반환)
+        3. privacy_sensitive → DEVICE
+        4. 기본값 → DEVICE
         """
         constraints = self._get_constraints(tool_name)
 
         if constraints.requires_gpu:
             return "CLOUD"
+
+        if not constraints.wasi_compatible:
+            return "DEVICE"  # EDGE 제외
 
         if constraints.privacy_sensitive:
             return "DEVICE"
@@ -380,24 +385,33 @@ class HeuristicScheduler(BaseScheduler):
         우선순위:
         1. Type C (local_data) → path 기반 노드 고정
         2. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
-        3. privacy_sensitive → DEVICE
-        4. 기본값 → DEVICE
+        3. wasi_compatible=False → EDGE 제외
+        4. privacy_sensitive → DEVICE
+        5. 기본값 → DEVICE
         """
+        constraints = self._get_constraints(tool_name)
+
         # 1. Type C (local_data) 체크 → 노드 고정
         fixed_location = self._extract_fixed_location(tool_name, args)
         if fixed_location:
+            # wasi_compatible=False이고 EDGE로 고정되면 DEVICE로 변경
+            if fixed_location == "EDGE" and not constraints.wasi_compatible:
+                return "DEVICE"
             return fixed_location
 
-        # 2, 3. Constraints
-        constraints = self._get_constraints(tool_name)
-
+        # 2. requires_gpu → CLOUD
         if constraints.requires_gpu:
             return "CLOUD"
 
+        # 3. wasi_compatible=False → EDGE 제외
+        if not constraints.wasi_compatible:
+            return "DEVICE"
+
+        # 4. privacy_sensitive → DEVICE
         if constraints.privacy_sensitive:
             return "DEVICE"
 
-        # 4. 기본값 DEVICE
+        # 5. 기본값 DEVICE
         return "DEVICE"
 
     def get_location_for_call_with_reason(
@@ -415,6 +429,9 @@ class HeuristicScheduler(BaseScheduler):
         # 1. Type C (local_data) 체크 → 노드 고정
         fixed_location = self._extract_fixed_location(tool_name, args)
         if fixed_location:
+            # wasi_compatible=False이고 EDGE로 고정되면 DEVICE로 변경
+            if fixed_location == "EDGE" and not constraints.wasi_compatible:
+                fixed_location = "DEVICE"
             decision_time_ns = time.perf_counter_ns() - start_time_ns
             return SchedulingResult(
                 tool_name=tool_name,
@@ -438,7 +455,19 @@ class HeuristicScheduler(BaseScheduler):
                 constraints=constraints,
             )
 
-        # 3. privacy_sensitive → DEVICE
+        # 3. wasi_compatible=False → EDGE 제외 (DEVICE 또는 CLOUD)
+        if not constraints.wasi_compatible:
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                tool_name=tool_name,
+                location="DEVICE",
+                reason="wasi_incompatible_no_edge",
+                available_locations=["DEVICE", "CLOUD"],
+                decision_time_ns=decision_time_ns,
+                constraints=constraints,
+            )
+
+        # 4. privacy_sensitive → DEVICE
         if constraints.privacy_sensitive:
             decision_time_ns = time.perf_counter_ns() - start_time_ns
             return SchedulingResult(
@@ -843,6 +872,10 @@ class BruteForceChainScheduler(BaseScheduler):
         data_locality = getattr(profile, 'data_locality', 'args_only')
         if data_locality == "local_data":
             location = self._get_local_data_location(args)
+            # wasi_compatible=False이고 EDGE로 고정되면 DEVICE로 변경
+            wasi_compatible = getattr(profile, 'wasi_compatible', True)
+            if location == "EDGE" and not wasi_compatible:
+                location = "DEVICE"
             return location, f"local_data_{location.lower()}"
 
         return None, None
@@ -930,11 +963,16 @@ class BruteForceChainScheduler(BaseScheduler):
                 fixed=True,
             )
 
+        # wasi_compatible 체크 - False면 EDGE 제외
+        profile = self.registry.get_profile(tool_name)
+        wasi_compatible = getattr(profile, 'wasi_compatible', True) if profile else True
+        candidate_locations = [loc for loc in LOCATIONS if wasi_compatible or loc != "EDGE"]
+
         # 모든 location 후보에 대해 cost 계산하여 최적 선택
         best_placement = None
         best_cost = float('inf')
 
-        for location in LOCATIONS:
+        for location in candidate_locations:
             cost, comp_cost, comm_cost = self.scoring_engine.compute_cost(
                 tool_name,
                 u=location,
@@ -999,7 +1037,13 @@ class BruteForceChainScheduler(BaseScheduler):
             if fixed_location:
                 candidate_nodes.append([fixed_location])
             else:
-                candidate_nodes.append(list(LOCATIONS))
+                # wasi_compatible 체크 - False면 EDGE 제외
+                profile = self.registry.get_profile(tool_name)
+                wasi_compatible = getattr(profile, 'wasi_compatible', True) if profile else True
+                if wasi_compatible:
+                    candidate_nodes.append(list(LOCATIONS))
+                else:
+                    candidate_nodes.append(["DEVICE", "CLOUD"])  # EDGE 제외
 
         # 2. 전체 탐색 공간 계산
         search_space_size = 1

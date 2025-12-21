@@ -10,6 +10,7 @@ ENV/
 *.egg-info/
 dist/
 build/
+.python-version
 
 # Environment variables
 .env
@@ -55,5 +56,5 @@ data/scenario4/sample_images/
 # Keep loghub samples (small, included in repo)
 !data/scenario2/
 
+measurements
 results
-.python-version

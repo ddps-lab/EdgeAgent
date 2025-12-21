@@ -1,21 +1,7 @@
-# EdgeAgent 3-Tier Configuration
-#
-# DEVICE + EDGE + CLOUD 3-Tier 테스트용 설정
-# - DEVICE: 로컬 stdio MCP 서버
-# - EDGE: Knative WASM (edge.edgeagent.ddps.cloud)
-# - CLOUD: Knative Container (cloud.edgeagent.ddps.cloud)
-#
-# 사용법:
-#   orchestrator = SubAgentOrchestrator("config/tools_3tier.yaml", config)
-
 tools:
-  # ==========================================================================
-  # DEVICE 전용 Tools (로컬 stdio)
-  # ==========================================================================
-
   filesystem:
     profile:
-      description: "Read, write, and search files on the filesystem"
+      description: Read, write, and search files on the filesystem
       data_affinity: DEVICE
       compute_intensity: LOW
       data_flow: EXPANSION
@@ -25,17 +11,18 @@ tools:
       DEVICE:
         transport: stdio
         command: mcp-server-filesystem
-        args: ["/home/mhsong/edgeagent", "/tmp/edgeagent_device_hy"]
+        args:
+        - /home/mhsong/edgeagent
+        - /tmp/edgeagent_device_hy
       EDGE:
         transport: streamable_http
-        url: "http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-filesystem.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-filesystem.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   git:
     profile:
-      description: "Git repository operations (diff, log, status)"
+      description: Git repository operations (diff, log, status)
       data_affinity: DEVICE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -49,18 +36,13 @@ tools:
         args: []
       EDGE:
         transport: streamable_http
-        url: "http://mcp-git.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-git.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-git.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
-  # ==========================================================================
-  # EDGE Tools (Knative WASM - edge.edgeagent.ddps.cloud)
-  # ==========================================================================
-
+        url: http://mcp-git.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   time:
     profile:
-      description: "Time operations and timezone conversion"
+      description: Time operations and timezone conversion
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: TRANSFORM
@@ -68,14 +50,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-time.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-time.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-time.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-time.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   log_parser:
     profile:
-      description: "Parse various log formats and extract structured data"
+      description: Parse various log formats and extract structured data
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -85,14 +66,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-log-parser.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-log-parser.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   data_aggregate:
     profile:
-      description: "Aggregate, merge, and summarize structured data"
+      description: Aggregate, merge, and summarize structured data
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -102,14 +82,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-data-aggregate.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-data-aggregate.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   fetch:
     profile:
-      description: "Fetch and convert URL content to Markdown"
+      description: Fetch and convert URL content to Markdown
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -119,14 +98,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-fetch.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-fetch.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-fetch.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-fetch.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   image_resize:
     profile:
-      description: "Image resizing, thumbnails, and duplicate detection"
+      description: Image resizing, thumbnails, and duplicate detection
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -136,14 +114,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-image-resize.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-image-resize.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-image-resize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
+        url: http://mcp-image-resize.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   sequentialthinking:
     profile:
-      description: "Step-by-step reasoning and thinking"
+      description: Step-by-step reasoning and thinking
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: EXPANSION
@@ -151,18 +128,13 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-sequentialthinking.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-sequentialthinking.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-sequentialthinking.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
-  # ==========================================================================
-  # CLOUD 전용 Tools (Knative Container - cloud.edgeagent.ddps.cloud)
-  # ==========================================================================
-
+        url: http://mcp-sequentialthinking.edgeagent.cloud.edgeagent.ddps.cloud/mcp
   summarize:
     profile:
-      description: "Text summarization using LLM API"
+      description: Text summarization using LLM API
       data_affinity: CLOUD
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -172,35 +144,22 @@ tools:
     endpoints:
       EDGE:
         transport: streamable_http
-        url: "http://mcp-summarize.edgeagent.edge.edgeagent.ddps.cloud/mcp"
+        url: http://mcp-summarize.edgeagent.edge.edgeagent.ddps.cloud/mcp
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-summarize.edgeagent.cloud.edgeagent.ddps.cloud/mcp"
-
-# ==========================================================================
-# SubAgent Endpoints (for Orchestrator)
-# ==========================================================================
+        url: http://mcp-summarize.edgeagent.cloud.edgeagent.ddps.cloud/mcp
 subagents:
   EDGE:
-    url: "http://edge-subagent.edgeagent.edge.edgeagent.ddps.cloud/execute"
+    url: http://edge-subagent.edgeagent.edge.edgeagent.ddps.cloud/execute
   CLOUD:
-    url: "http://cloud-subagent.edgeagent.cloud.edgeagent.ddps.cloud/execute"
-
-# ==========================================================================
-# Static Mapping (default location for scheduling)
-# ==========================================================================
+    url: http://cloud-subagent.edgeagent.cloud.edgeagent.ddps.cloud/execute
 static_mapping:
-  # DEVICE tools (로컬 파일시스템 접근)
   filesystem: DEVICE
   git: DEVICE
-
-  # EDGE tools (WASM - 빠른 cold start)
   time: EDGE
   log_parser: EDGE
   data_aggregate: EDGE
   fetch: EDGE
   image_resize: EDGE
   sequentialthinking: EDGE
-
-  # CLOUD tools (Container - 완전한 기능)
   summarize: CLOUD

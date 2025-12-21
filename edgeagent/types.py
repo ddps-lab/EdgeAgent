@@ -51,6 +51,7 @@ class SchedulingConstraints:
     """
     requires_gpu: bool = False          # GPU 필요 여부 (CLOUD에서만 실행)
     privacy_sensitive: bool = False     # 프라이버시 민감 여부
+    wasi_compatible: bool = True        # WASI 호환 여부 (False면 EDGE 배치 불가)
     tool_available: bool = True         # 해당 위치에서 툴 실행 가능 여부 (TODO: 스케줄러에서 로직 구현)
 
 
