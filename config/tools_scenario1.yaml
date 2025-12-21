@@ -26,7 +26,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 1312.38
             device-rpi: 11910.785
-            edge-nuc: 59.46
+            edge-nuc: 102.096
       write_file:
         description: Write content to a file
         data_locality: local_data
@@ -39,7 +39,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 650.955
             device-rpi: 6445.764
-            edge-nuc: 110.62
+            edge-nuc: 110.493
       read_multiple_files:
         description: Read multiple files at once
         data_locality: local_data
@@ -52,7 +52,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 392.817
             device-rpi: 3606.985
-            edge-nuc: 9.63
+            edge-nuc: 54.873
       list_directory:
         description: List directory contents
         data_locality: local_data
@@ -65,7 +65,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 390.097
             device-rpi: 3456.105
-            edge-nuc: 10.61
+            edge-nuc: 55.762
       list_directory_with_sizes:
         description: List directory with file sizes
         data_locality: local_data
@@ -78,7 +78,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 396.189
             device-rpi: 3459.11
-            edge-nuc: 10.71
+            edge-nuc: 55.465
       directory_tree:
         description: Get directory tree structure
         data_locality: local_data
@@ -91,7 +91,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 412.179
             device-rpi: 3664.679
-            edge-nuc: 27.78
+            edge-nuc: 83.658
       search_files:
         description: Search for files by pattern
         data_locality: local_data
@@ -104,7 +104,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 446.56
             device-rpi: 4364.873
-            edge-nuc: 24.8
+            edge-nuc: 55.529
       get_file_info:
         description: Get file metadata
         data_locality: local_data
@@ -117,7 +117,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 392.359
             device-rpi: 3599.487
-            edge-nuc: 8.75
+            edge-nuc: 55.152
       create_directory:
         description: Create a new directory
         data_locality: local_data
@@ -130,7 +130,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 389.132
             device-rpi: 3492.61
-            edge-nuc: 9.73
+            edge-nuc: 55.002
       move_file:
         description: Move or rename a file
         data_locality: local_data
@@ -143,7 +143,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 398.0
             device-rpi: 3638.895
-            edge-nuc: 9.6
+            edge-nuc: 55.546
       edit_file:
         description: Edit file contents
         data_locality: local_data
@@ -156,7 +156,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 393.284
             device-rpi: 3451.681
-            edge-nuc: 10.46
+            edge-nuc: 55.079
       read_text_file:
         description: Read text file contents
         data_locality: local_data
@@ -169,7 +169,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 1280.553
             device-rpi: 11408.156
-            edge-nuc: 57.21
+            edge-nuc: 102.044
       read_media_file:
         description: Read media file as base64
         data_locality: local_data
@@ -182,7 +182,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 2473.876
             device-rpi: 19069.187
-            edge-nuc: 136.87
+            edge-nuc: 169.97
       list_allowed_directories:
         description: List allowed directories for access
         data_locality: args_only
@@ -195,7 +195,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 389.387
             device-rpi: 3492.234
-            edge-nuc: 10.32
+            edge-nuc: 55.379
   git:
     endpoints:
       DEVICE:
@@ -224,7 +224,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 589.784
             device-rpi: 61.48
-            edge-nuc: 10.8
+            edge-nuc: 54.745
       git_log:
         description: Get commit history
         data_locality: local_data
@@ -237,7 +237,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 599.411
             device-rpi: 58.44
-            edge-nuc: 9.84
+            edge-nuc: 55.861
       git_diff:
         description: Get diff between commits or branches
         data_locality: local_data
@@ -250,7 +250,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 596.691
             device-rpi: 66.72
-            edge-nuc: 12.45
+            edge-nuc: 86.959
       git_diff_staged:
         description: Get staged changes
         data_locality: local_data
@@ -263,7 +263,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 585.741
             device-rpi: 59.05
-            edge-nuc: 9.27
+            edge-nuc: 55.018
       git_diff_unstaged:
         description: Get unstaged changes
         data_locality: local_data
@@ -276,7 +276,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 598.641
             device-rpi: 63.28
-            edge-nuc: 9.09
+            edge-nuc: 54.736
       git_show:
         description: Show commit details
         data_locality: local_data
@@ -289,7 +289,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 592.51
             device-rpi: 58.45
-            edge-nuc: 9.95
+            edge-nuc: 55.299
       git_commit:
         description: Records changes to the repository
         data_locality: local_data
@@ -302,7 +302,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 604.06
             device-rpi: 63.55
-            edge-nuc: 12.74
+            edge-nuc: 61.843
       git_add:
         description: Adds file contents to the staging area
         data_locality: local_data
@@ -315,7 +315,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 592.814
             device-rpi: 4606.996
-            edge-nuc: 9.23
+            edge-nuc: 54.928
       git_reset:
         description: Unstages all staged changes
         data_locality: local_data
@@ -328,7 +328,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 589.774
             device-rpi: 62.86
-            edge-nuc: 9.25
+            edge-nuc: 55.243
       git_create_branch:
         description: Creates a new branch from an optional base branch
         data_locality: local_data
@@ -341,7 +341,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 591.172
             device-rpi: 74.97
-            edge-nuc: 11.48
+            edge-nuc: 54.405
       git_checkout:
         description: Switches branches
         data_locality: local_data
@@ -354,7 +354,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 597.404
             device-rpi: 54.87
-            edge-nuc: 8.58
+            edge-nuc: 54.604
       git_branch:
         description: List Git branches
         data_locality: local_data
@@ -367,7 +367,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 590.123
             device-rpi: 61.94
-            edge-nuc: 10.72
+            edge-nuc: 55.103
   summarize:
     endpoints:
       DEVICE:
@@ -397,7 +397,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 1876.252
             device-rpi: 9601.082
-            edge-nuc: 1296.87
+            edge-nuc: 717.199
       summarize_documents:
         description: Summarize multiple documents.
         data_locality: external_data
@@ -410,7 +410,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 2140.833
             device-rpi: 10916.954
-            edge-nuc: 9.69
+            edge-nuc: 827.667
       get_provider_info:
         description: Get information about the current summarization provider
         data_locality: args_only
@@ -423,7 +423,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 878.271
             device-rpi: 6256.249
-            edge-nuc: 8.04
+            edge-nuc: 54.657
   data_aggregate:
     endpoints:
       DEVICE:
@@ -451,7 +451,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 876.312
             device-rpi: 6340.179
-            edge-nuc: 23.8
+            edge-nuc: 280.73
       merge_summaries:
         description: Merge multiple summary dictionaries
         data_locality: args_only
@@ -464,7 +464,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 879.801
             device-rpi: 6352.731
-            edge-nuc: 9.47
+            edge-nuc: 243.526
       combine_research_results:
         description: Combine research/search results into summary
         data_locality: args_only
@@ -477,7 +477,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 876.138
             device-rpi: 6343.378
-            edge-nuc: 17.43
+            edge-nuc: 1172.45
       deduplicate:
         description: Remove duplicate items based on key fields
         data_locality: args_only
@@ -490,7 +490,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 878.966
             device-rpi: 6705.115
-            edge-nuc: 12.46
+            edge-nuc: 414.731
       compute_trends:
         description: Compute trends from time-series data
         data_locality: args_only
@@ -503,7 +503,7 @@ tools:
           T_exec_ms:
             cloud-x8aedz.xlarge: 882.984
             device-rpi: 6752.491
-            edge-nuc: 29.25
+            edge-nuc: 254.894
 static_mapping:
   filesystem: DEVICE
   git: DEVICE
