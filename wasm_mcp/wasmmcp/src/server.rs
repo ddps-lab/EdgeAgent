@@ -2,7 +2,9 @@
 //!
 //! The core server struct that manages tool registration and transport handling.
 
-use crate::transport::{Transport, StdioTransport};
+use crate::transport::Transport;
+#[cfg(feature = "transport-stdio")]
+use crate::transport::StdioTransport;
 use crate::{Error, Result};
 use rmcp::{ServerHandler, ServiceExt};
 
