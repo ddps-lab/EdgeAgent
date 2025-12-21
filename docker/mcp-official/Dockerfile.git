@@ -1,6 +1,6 @@
-# MCP Git Server with mcp-proxy (stateless HTTP mode)
+# MCP Git Server with mcp-proxy (stateless HTTP mode) - PATCHED with ToolTimer
 #
-# Uses mcp-proxy to expose stdio-based MCP server over HTTP
+# Uses patched git_server_patched.py with timing instrumentation
 #
 # Usage:
 #   docker build -f Dockerfile.git -t edgeagent-mcp-git .
@@ -16,9 +16,13 @@ RUN apt-get update && apt-get install -y git curl && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install mcp-proxy (Node) and git server (Python)
+# Install mcp-proxy (Node) and git dependencies (Python)
 RUN npm install -g mcp-proxy && \
-    pip install --no-cache-dir mcp-server-git
+    pip install --no-cache-dir mcp gitpython pydantic
+
+# Copy patched server and timing module
+COPY servers/timing.py /app/
+COPY servers/git_server_patched.py /app/
 
 # Environment variables
 ENV MCP_PORT=8080
@@ -26,5 +30,5 @@ ENV MCP_PORT=8080
 # Expose HTTP port
 EXPOSE 8080
 
-# Run mcp-proxy in stateless mode
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-git"]
+# Run mcp-proxy with patched server
+CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless python /app/git_server_patched.py"]
