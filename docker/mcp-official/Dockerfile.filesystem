@@ -1,26 +1,73 @@
-# MCP Filesystem Server with mcp-proxy (stateless HTTP mode)
+# MCP Filesystem Server with mcp-proxy + ToolTimer instrumentation
 #
-# Uses mcp-proxy to expose stdio-based MCP server over HTTP
-# https://github.com/punkpeye/mcp-proxy
+# Builds patched version from source with I/O timing measurement
 #
 # Usage:
 #   docker build -f Dockerfile.filesystem -t edgeagent-mcp-filesystem .
 #   docker run -p 8080:8080 -e ALLOWED_PATH=/data -v /my/data:/data edgeagent-mcp-filesystem
 
+FROM node:20-slim AS builder
+
+WORKDIR /build
+
+# Install git for cloning
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Clone MCP servers source
+RUN git clone --depth 1 https://github.com/modelcontextprotocol/servers.git /tmp/mcp_servers
+
+# Copy filesystem source
+RUN cp -r /tmp/mcp_servers/src/filesystem/* /build/
+
+# Copy patched files
+COPY servers/patches/typescript/timing.ts /build/
+COPY servers/patches/typescript/lib.ts /build/
+
+# Patch index.ts - add ToolTimer import and monkey-patch
+RUN head -29 /build/index.ts > /build/index.ts.new && \
+    echo 'import { ToolTimer } from "./timing.js";' >> /build/index.ts.new && \
+    echo '' >> /build/index.ts.new && \
+    echo '// ToolTimer Monkey-Patch' >> /build/index.ts.new && \
+    echo 'const _origRegisterTool = McpServer.prototype.registerTool;' >> /build/index.ts.new && \
+    echo '(McpServer.prototype as any).registerTool = function(name: string, config: any, handler: any) {' >> /build/index.ts.new && \
+    echo '    const wrappedHandler = async (...args: any[]) => {' >> /build/index.ts.new && \
+    echo '        const timer = new ToolTimer(name);' >> /build/index.ts.new && \
+    echo '        try { return await handler(...args); }' >> /build/index.ts.new && \
+    echo '        finally { timer.finish(); }' >> /build/index.ts.new && \
+    echo '    };' >> /build/index.ts.new && \
+    echo '    return _origRegisterTool.call(this, name, config, wrappedHandler);' >> /build/index.ts.new && \
+    echo '};' >> /build/index.ts.new && \
+    echo '' >> /build/index.ts.new && \
+    tail -n +30 /build/index.ts >> /build/index.ts.new && \
+    mv /build/index.ts.new /build/index.ts
+
+# Create package.json
+RUN echo '{"name":"mcp-server-filesystem-patched","version":"0.2.0","type":"module","main":"dist/index.js","bin":{"mcp-server-filesystem":"dist/index.js"},"scripts":{"build":"tsc"},"dependencies":{"@modelcontextprotocol/sdk":"^1.0.0","diff":"^5.0.0","minimatch":"^9.0.0","zod":"^3.0.0"},"devDependencies":{"@types/diff":"^5.0.0","@types/node":"^20.0.0","typescript":"^5.0.0"}}' > /build/package.json
+
+# Create tsconfig.json
+RUN echo '{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","esModuleInterop":true,"strict":true,"outDir":"./dist","rootDir":".","declaration":true,"skipLibCheck":true},"include":["*.ts"],"exclude":["node_modules","dist"]}' > /build/tsconfig.json
+
+# Install dependencies and build
+RUN npm install && npm run build
+
+# Runtime stage
 FROM node:20-slim
 
 WORKDIR /app
 
-# Install mcp-proxy and filesystem server
-RUN npm install -g mcp-proxy @modelcontextprotocol/server-filesystem
+# Install mcp-proxy
+RUN npm install -g mcp-proxy
+
+# Copy built server
+COPY --from=builder /build/dist /app/dist
+COPY --from=builder /build/node_modules /app/node_modules
+COPY --from=builder /build/package.json /app/
 
 # Environment variables
 ENV MCP_PORT=8080
 ENV ALLOWED_PATH=/data
 
-# Expose HTTP port
 EXPOSE 8080
 
-# Run mcp-proxy in stateless mode wrapping filesystem server
-# --stateless: No session state, each request is independent
-CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless mcp-server-filesystem ${ALLOWED_PATH}"]
+# Run with mcp-proxy
+CMD ["sh", "-c", "mcp-proxy --port ${MCP_PORT} --stateless node /app/dist/index.js ${ALLOWED_PATH}"]
