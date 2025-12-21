@@ -27,6 +27,7 @@ import base64
 from pathlib import Path
 from typing import Literal
 from fastmcp import FastMCP
+from timing import ToolTimer, measure_io
 
 mcp = FastMCP("image_resize")
 
@@ -77,21 +78,27 @@ def get_image_info(image_path: str) -> dict:
         - size_bytes: File size
         - mode: Color mode (RGB, RGBA, etc.)
     """
+    timer = ToolTimer("get_image_info")
     _ensure_pil()
     from PIL import Image
 
     try:
-        with Image.open(image_path) as img:
-            return {
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
+            size_bytes = measure_io(lambda: os.path.getsize(image_path))
+            result = {
                 "path": image_path,
                 "format": img.format,
                 "mode": img.mode,
                 "width": img.width,
                 "height": img.height,
-                "size_bytes": os.path.getsize(image_path),
+                "size_bytes": size_bytes,
                 "aspect_ratio": round(img.width / img.height, 2) if img.height > 0 else 0,
             }
+        timer.finish()
+        return result
     except Exception as e:
+        timer.finish()
         return {"path": image_path, "error": str(e)}
 
 
@@ -125,15 +132,17 @@ def resize_image(
         - original_bytes, output_bytes: Size comparison
         - data_base64: Base64-encoded output image
     """
+    timer = ToolTimer("resize_image")
     _ensure_pil()
     from PIL import Image
 
     try:
-        with Image.open(image_path) as img:
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
             original_size = img.size
-            original_bytes = os.path.getsize(image_path)
+            original_bytes = measure_io(lambda: os.path.getsize(image_path))
 
-            # Calculate new size
+            # Calculate new size (compute - no I/O)
             if max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             elif width and height:
@@ -149,7 +158,7 @@ def resize_image(
                     (int(img.width * ratio), height), Image.Resampling.LANCZOS
                 )
             else:
-                # No resize parameters given, just return info
+                timer.finish()
                 return {
                     "success": False,
                     "error": "No resize parameters provided (width, height, or max_size)",
@@ -160,7 +169,7 @@ def resize_image(
             if output_format == "JPEG" and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            # Save to buffer
+            # Save to buffer (in-memory, not I/O)
             buffer = io.BytesIO()
             img.save(buffer, format=output_format, quality=quality)
             buffer.seek(0)
@@ -168,7 +177,7 @@ def resize_image(
             output_bytes = len(buffer.getvalue())
             output_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-            return {
+            result = {
                 "success": True,
                 "path": image_path,
                 "original_size": original_size,
@@ -179,7 +188,10 @@ def resize_image(
                 "format": output_format,
                 "data_base64": output_b64,
             }
+        timer.finish()
+        return result
     except Exception as e:
+        timer.finish()
         return {"success": False, "error": str(e), "path": image_path}
 
 
@@ -208,11 +220,14 @@ def scan_directory(
         - image_paths: List of image paths (use these with other tools)
         - total_size_bytes: Combined size of all images
     """
+    timer = ToolTimer("scan_directory")
+
     if extensions is None:
         extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"]
 
     path = Path(directory)
     if not path.exists():
+        timer.finish()
         return {"error": f"Directory not found: {directory}"}
 
     image_paths = []
@@ -222,7 +237,7 @@ def scan_directory(
     for file_path in path.glob(pattern):
         if file_path.is_file() and file_path.suffix.lower() in extensions:
             image_paths.append(str(file_path))
-            total_size += file_path.stat().st_size
+            total_size += measure_io(lambda fp=file_path: fp.stat().st_size)
 
     result = {
         "directory": directory,
@@ -240,6 +255,7 @@ def scan_directory(
             images_info.append(info)
         result["images"] = images_info
 
+    timer.finish()
     return result
 
 
@@ -263,6 +279,7 @@ def compute_image_hash(
         - hash: Computed hash value (string)
         - hash_type: Type of hash used
     """
+    timer = ToolTimer("compute_image_hash")
     _ensure_pil()
     _ensure_imagehash()
     from PIL import Image
@@ -276,15 +293,20 @@ def compute_image_hash(
     }
 
     try:
-        with Image.open(image_path) as img:
+        img = measure_io(lambda: Image.open(image_path))
+        with img:
             hash_func = hash_funcs.get(hash_type, imagehash.phash)
+            # hash computation is CPU-bound (compute, not I/O)
             hash_value = hash_func(img)
-            return {
+            result = {
                 "path": image_path,
                 "hash": str(hash_value),
                 "hash_type": hash_type,
             }
+        timer.finish()
+        return result
     except Exception as e:
+        timer.finish()
         return {"path": image_path, "error": str(e)}
 
 
@@ -322,10 +344,11 @@ def compare_hashes(
         - unique_count: Number of unique images
         - total_compared: Total images compared
     """
+    timer = ToolTimer("compare_hashes")
     _ensure_imagehash()
     import imagehash
 
-    # Filter out errors
+    # Filter out errors (pure compute, no I/O)
     valid_hashes = {
         h["path"]: h["hash"]
         for h in hashes
@@ -333,6 +356,7 @@ def compare_hashes(
     }
 
     if len(valid_hashes) < 2:
+        timer.finish()
         return {
             "total_compared": len(valid_hashes),
             "duplicate_groups": [],
@@ -340,7 +364,7 @@ def compare_hashes(
             "errors": [h for h in hashes if "error" in h],
         }
 
-    # Find similar pairs
+    # Find similar pairs (pure compute)
     groups = []
     processed = set()
 
@@ -372,7 +396,7 @@ def compare_hashes(
 
     unique = [p for p in valid_hashes.keys() if p not in all_duplicates]
 
-    return {
+    result = {
         "total_compared": len(valid_hashes),
         "duplicate_groups": groups,
         "duplicate_group_count": len(groups),
@@ -381,6 +405,8 @@ def compare_hashes(
         "threshold": threshold,
         "errors": [h for h in hashes if "error" in h],
     }
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -422,6 +448,7 @@ def batch_resize(
         - failed: Number of failures
         - overall_reduction: Ratio of output size to input size (e.g., 0.1 = 90% reduction)
     """
+    timer = ToolTimer("batch_resize")
     results = []
     total_input = 0
     total_output = 0
@@ -429,16 +456,16 @@ def batch_resize(
     failed = 0
 
     for path in image_paths:
-        # Call resize_image directly (internal helper, not via MCP)
         _ensure_pil()
         from PIL import Image
 
         try:
-            with Image.open(path) as img:
-                original_bytes = os.path.getsize(path)
+            img = measure_io(lambda p=path: Image.open(p))
+            with img:
+                original_bytes = measure_io(lambda p=path: os.path.getsize(p))
                 total_input += original_bytes
 
-                # Create thumbnail
+                # Create thumbnail (compute, not I/O)
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 
                 if output_format == "JPEG" and img.mode in ("RGBA", "P"):
@@ -466,7 +493,7 @@ def batch_resize(
             })
             failed += 1
 
-    return {
+    result = {
         "total_images": len(image_paths),
         "successful": successful,
         "failed": failed,
@@ -475,6 +502,8 @@ def batch_resize(
         "overall_reduction": round(total_output / total_input, 4) if total_input > 0 else 0,
         "results": results,
     }
+    timer.finish()
+    return result
 
 
 if __name__ == "__main__":

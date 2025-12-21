@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Literal
 from fastmcp import FastMCP
+from timing import ToolTimer, measure_io
 
 # Load .env file from project root
 try:
@@ -46,7 +47,8 @@ def _summarize_openai(text: str, max_length: int, style: str) -> str:
         "bullet": "Summarize as bullet points.",
     }
 
-    response = client.chat.completions.create(
+    # Network I/O - measure API call
+    response = measure_io(lambda: client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
@@ -56,7 +58,7 @@ def _summarize_openai(text: str, max_length: int, style: str) -> str:
             {"role": "user", "content": f"Summarize the following text:\n\n{text}"},
         ],
         max_tokens=max_length * 2,  # Approximate token count
-    )
+    ))
     return response.choices[0].message.content
 
 
@@ -74,8 +76,8 @@ def _summarize_upstage(text: str, max_length: int, style: str) -> str:
         "bullet": "Summarize as bullet points.",
     }
 
-    # Use Upstage Solar API (chat completions compatible)
-    response = httpx.post(
+    # Network I/O - measure API call
+    response = measure_io(lambda: httpx.post(
         "https://api.upstage.ai/v1/solar/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -96,7 +98,7 @@ def _summarize_upstage(text: str, max_length: int, style: str) -> str:
             "max_tokens": max_length * 2,
         },
         timeout=60.0,
-    )
+    ))
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
@@ -139,7 +141,10 @@ def summarize_text(
     Returns:
         Summarized text
     """
-    return _summarize_text_impl(text, max_length, style)
+    timer = ToolTimer("summarize_text")
+    result = _summarize_text_impl(text, max_length, style)
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -159,7 +164,10 @@ def summarize_documents(
     Returns:
         List of summarized documents
     """
-    return [_summarize_text_impl(doc, max_length_per_doc, style) for doc in documents]
+    timer = ToolTimer("summarize_documents")
+    result = [_summarize_text_impl(doc, max_length_per_doc, style) for doc in documents]
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -170,11 +178,14 @@ def get_provider_info() -> dict:
     Returns:
         Dictionary with provider information
     """
-    return {
+    timer = ToolTimer("get_provider_info")
+    result = {
         "provider": PROVIDER,
         "available_styles": ["concise", "detailed", "bullet"],
         "default_max_length": 150,
     }
+    timer.finish()
+    return result
 
 
 if __name__ == "__main__":

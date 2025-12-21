@@ -492,6 +492,18 @@ pub fn export_http(input: TokenStream) -> TokenStream {
 
                 let response = result.to_response(id);
 
+                // Add timing headers (values set by handle_tools_call during execution)
+                let tool_exec_ms = wasmmcp::timing::get_tool_exec_ms();
+                let io_ms = wasmmcp::timing::get_io_ms();
+                let _ = headers.set(
+                    &"X-Tool-Exec-Ms".to_string(),
+                    &[format!("{:.3}", tool_exec_ms).into_bytes()],
+                );
+                let _ = headers.set(
+                    &"X-IO-Ms".to_string(),
+                    &[format!("{:.3}", io_ms).into_bytes()],
+                );
+
                 let response_body = match serde_json::to_vec(&response) {
                     Ok(body) => body,
                     Err(e) => {

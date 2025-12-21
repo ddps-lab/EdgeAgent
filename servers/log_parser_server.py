@@ -25,6 +25,7 @@ import json
 from typing import Literal, Any
 from collections import Counter
 from fastmcp import FastMCP
+from timing import ToolTimer
 
 mcp = FastMCP("log_parser")
 
@@ -162,6 +163,8 @@ def parse_logs(
         - parsed_count: Number of successfully parsed entries
         - error_count: Number of lines that couldn't be parsed
     """
+    timer = ToolTimer("parse_logs")
+
     lines = log_content.split("\n")
 
     # Auto-detect format if needed
@@ -180,13 +183,15 @@ def parse_logs(
         elif line.strip():  # Only count non-empty lines as errors
             errors += 1
 
-    return {
+    result = {
         "format_detected": detected_format,
         "total_lines": len(lines),
         "parsed_count": len(parsed_entries),
         "error_count": errors,
         "entries": parsed_entries,
     }
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -223,6 +228,8 @@ def filter_entries(
         - by_level: Count per severity level
         - levels_included: Which levels are in the result
     """
+    timer = ToolTimer("filter_entries")
+
     if include_levels:
         # Filter by specific levels
         target_levels = set(level.lower() for level in include_levels)
@@ -241,13 +248,15 @@ def filter_entries(
     # Count levels in result
     level_counts = Counter(entry.get("_level", "unknown") for entry in filtered)
 
-    return {
+    result = {
         "original_count": len(entries),
         "filtered_count": len(filtered),
         "levels_included": list(level_counts.keys()),
         "by_level": dict(level_counts),
         "entries": filtered,
     }
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -279,7 +288,10 @@ def compute_log_statistics(entries: list) -> dict:
         - top_ips: Most frequent IP addresses (if applicable)
         - top_paths: Most frequent paths (if applicable)
     """
+    timer = ToolTimer("compute_log_statistics")
+
     if not entries:
+        timer.finish()
         return {"entry_count": 0, "by_level": {}}
 
     level_counts = Counter(entry.get("_level", "unknown") for entry in entries)
@@ -297,13 +309,15 @@ def compute_log_statistics(entries: list) -> dict:
         if "path" in entry:
             path_counts[entry["path"]] += 1
 
-    return {
+    result = {
         "entry_count": len(entries),
         "by_level": dict(level_counts),
         "by_status": dict(status_counts.most_common(10)) if status_counts else None,
         "top_ips": dict(ip_counts.most_common(10)) if ip_counts else None,
         "top_paths": dict(path_counts.most_common(10)) if path_counts else None,
     }
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -336,6 +350,8 @@ def search_entries(
         - search_pattern: The pattern used
         - total_entries: Total entries searched
     """
+    timer = ToolTimer("search_entries")
+
     if fields is None:
         fields = ["message", "raw"]
 
@@ -354,13 +370,15 @@ def search_entries(
                 })
                 break  # One match per entry is enough
 
-    return {
+    result = {
         "search_pattern": pattern,
         "fields_searched": fields,
         "total_entries": len(entries),
         "match_count": len(matches),
         "matches": matches[:100],  # Limit output
     }
+    timer.finish()
+    return result
 
 
 @mcp.tool()
@@ -385,6 +403,8 @@ def extract_time_range(entries: list) -> dict:
         - last_timestamp: Last timestamp in logs
         - entry_count: Number of entries analyzed
     """
+    timer = ToolTimer("extract_time_range")
+
     times = []
     for entry in entries:
         time_val = entry.get("time", entry.get("timestamp"))
@@ -392,15 +412,18 @@ def extract_time_range(entries: list) -> dict:
             times.append(str(time_val))
 
     if not times:
+        timer.finish()
         return {"has_timestamps": False, "entry_count": len(entries)}
 
-    return {
+    result = {
         "has_timestamps": True,
         "entry_count": len(entries),
         "first_timestamp": times[0] if times else None,
         "last_timestamp": times[-1] if times else None,
         "sample_timestamps": times[:5],
     }
+    timer.finish()
+    return result
 
 
 if __name__ == "__main__":

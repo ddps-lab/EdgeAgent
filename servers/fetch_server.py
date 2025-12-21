@@ -12,6 +12,7 @@ import httpx
 from fastmcp import FastMCP
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
+from timing import ToolTimer, measure_io_async
 
 mcp = FastMCP("fetch")
 
@@ -119,11 +120,14 @@ async def fetch(url: str, max_length: int = 50000) -> str:
     Returns:
         The page content converted to markdown
     """
+    timer = ToolTimer("fetch")
     try:
         # Check if this is a Semantic Scholar paper URL - use API instead
         s2_paper_id = _extract_s2_paper_id(url)
         if s2_paper_id:
-            return await _fetch_s2_paper_via_api(s2_paper_id, max_length)
+            result = await _fetch_s2_paper_via_api(s2_paper_id, max_length)
+            timer.finish()
+            return result
 
         async with httpx.AsyncClient(
             timeout=30.0,
@@ -136,10 +140,12 @@ async def fetch(url: str, max_length: int = 50000) -> str:
                 "Connection": "keep-alive",
             }
         ) as client:
-            response = await client.get(url)
+            # Network I/O - measure it
+            response = await measure_io_async(lambda: client.get(url))
 
             # Handle HTTP 202 (Accepted but not ready) - common with Semantic Scholar
             if response.status_code == 202:
+                timer.finish()
                 return f"Error: HTTP 202 Accepted - Content not ready. This URL ({url}) requires server-side processing. Try a different URL or wait and retry later."
 
             response.raise_for_status()
@@ -147,7 +153,7 @@ async def fetch(url: str, max_length: int = 50000) -> str:
             content_type = response.headers.get("content-type", "")
 
             if "text/html" in content_type:
-                # Parse HTML and convert to markdown
+                # Parse HTML and convert to markdown (compute, not I/O)
                 soup = BeautifulSoup(response.text, "html.parser")
 
                 # Remove script and style elements
@@ -168,20 +174,26 @@ async def fetch(url: str, max_length: int = 50000) -> str:
                 if len(markdown) > max_length:
                     markdown = markdown[:max_length] + "\n\n[Content truncated...]"
 
+                timer.finish()
                 return markdown
 
             elif "application/json" in content_type:
+                timer.finish()
                 return response.text[:max_length]
 
             else:
                 # Plain text or other
+                timer.finish()
                 return response.text[:max_length]
 
     except httpx.HTTPStatusError as e:
+        timer.finish()
         return f"HTTP Error {e.response.status_code}: {e.response.reason_phrase}"
     except httpx.RequestError as e:
+        timer.finish()
         return f"Request Error: {str(e)}"
     except Exception as e:
+        timer.finish()
         return f"Error fetching URL: {str(e)}"
 
 
