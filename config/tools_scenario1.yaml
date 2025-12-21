@@ -19,6 +19,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 52.4288
           output_datasize_mb: 52.521119
@@ -31,6 +32,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 49.350046
           output_datasize_mb: 0.00012
@@ -43,6 +45,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 104.8576
           output_datasize_mb: 106.343789
@@ -55,6 +58,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 1.6e-05
           output_datasize_mb: 0.000758
@@ -67,6 +71,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 1.6e-05
           output_datasize_mb: 0.001249
@@ -79,21 +84,25 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
       search_files:
         description: Search for files by pattern
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
       get_file_info:
         description: Get file metadata
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
       create_directory:
         description: Create a new directory
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 2.9e-05
           output_datasize_mb: 0.000127
@@ -106,6 +115,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 7.7e-05
           output_datasize_mb: 0.000146
@@ -116,6 +126,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 9.9e-05
           output_datasize_mb: 0.000134
@@ -128,6 +139,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 52.4288
           output_datasize_mb: 52.521119
@@ -140,6 +152,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 52.4288
           output_datasize_mb: 64.026125
@@ -152,6 +165,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 2.0e-06
           output_datasize_mb: 0.000209
@@ -180,6 +194,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 3.0e-05
           output_datasize_mb: 0.000156
@@ -192,6 +207,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 4.7e-05
           output_datasize_mb: 0.000244
@@ -204,6 +220,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 5.0e-05
           output_datasize_mb: 8.9e-05
@@ -216,6 +233,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 3.0e-05
           output_datasize_mb: 9.6e-05
@@ -228,6 +246,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 3.0e-05
           output_datasize_mb: 9.8e-05
@@ -240,6 +259,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 5.0e-05
           output_datasize_mb: 0.000192
@@ -252,6 +272,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 5.6e-05
           output_datasize_mb: 0.000134
@@ -264,6 +285,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 5.4e-05
           output_datasize_mb: 0.000104
@@ -276,6 +298,7 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 3.0e-05
           output_datasize_mb: 0.000103
@@ -288,16 +311,19 @@ tools:
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
       git_checkout:
         description: Switches branches
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
       git_branch:
         description: List Git branches
         data_locality: local_data
         requires_gpu: false
         privacy_sensitive: true
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 5.2e-05
           output_datasize_mb: 8.9e-05
@@ -327,6 +353,7 @@ tools:
         data_locality: external_data
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 0.001972
           output_datasize_mb: 0.000184
@@ -338,11 +365,13 @@ tools:
         data_locality: external_data
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
       get_provider_info:
         description: Get information about the current summarization provider
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 4.3e-05
           output_datasize_mb: 0.000231
@@ -369,6 +398,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 54.377814
           output_datasize_mb: 0.000303
@@ -381,6 +411,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 51.07779
           output_datasize_mb: 0.000257
@@ -393,6 +424,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 48.475013
           output_datasize_mb: 14.255749
@@ -405,6 +437,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 54.070584
           output_datasize_mb: 0.004876
@@ -417,6 +450,7 @@ tools:
         data_locality: args_only
         requires_gpu: false
         privacy_sensitive: false
+        wasi_compatible: true
         measurements:
           input_datasize_mb: 54.377816
           output_datasize_mb: 0.000348

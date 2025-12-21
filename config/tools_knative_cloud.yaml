@@ -1,503 +1,602 @@
-# EdgeAgent Tools Configuration for Cloud Subagent (EKS Cluster)
-#
-# This config is used by cloud-subagent running in Cloud EKS cluster.
-# MCP servers are accessed via Knative internal DNS within Cloud cluster.
-
 tools:
-  # ==========================================================================
-  # Filesystem - Cloud Knative MCP Server
-  # ==========================================================================
   filesystem:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-filesystem.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-filesystem.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       read_file:
-        description: "Read file contents from filesystem"
+        description: Read file contents from filesystem
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       write_file:
-        description: "Write content to a file"
+        description: Write content to a file
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       read_multiple_files:
-        description: "Read multiple files at once"
+        description: Read multiple files at once
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       list_directory:
-        description: "List directory contents"
+        description: List directory contents
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       list_directory_with_sizes:
-        description: "List directory with file sizes"
+        description: List directory with file sizes
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       directory_tree:
-        description: "Get directory tree structure"
+        description: Get directory tree structure
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       search_files:
-        description: "Search for files by pattern"
+        description: Search for files by pattern
         data_locality: local_data
+        privacy_sensitive: true
+        wasi_compatible: true
         alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: true
-
       get_file_info:
-        description: "Get file metadata"
+        description: Get file metadata
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       create_directory:
-        description: "Create a new directory"
+        description: Create a new directory
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       move_file:
-        description: "Move or rename a file"
+        description: Move or rename a file
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       edit_file:
-        description: "Edit file contents"
+        description: Edit file contents
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       read_text_file:
-        description: "Read text file contents"
+        description: Read text file contents
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       read_media_file:
-        description: "Read media file as base64"
+        description: Read media file as base64
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
-      list_allowed_directories:
-        description: "List allowed directories for access"
-        data_locality: args_only
-        alpha: 0.1
-        P_exec: [1.0, 0.3, 0.0]
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
+      list_allowed_directories:
+        description: List allowed directories for access
+        data_locality: args_only
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Git - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.1
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   git:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-git.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-git.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       git_diff:
-        description: "Show changes between commits, commit and working tree"
+        description: Show changes between commits, commit and working tree
         data_locality: local_data
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_log:
-        description: "Show commit logs"
+        description: Show commit logs
         data_locality: local_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_status:
-        description: "Show working tree status"
+        description: Show working tree status
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_show:
-        description: "Show various types of objects"
+        description: Show various types of objects
         data_locality: local_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_diff_staged:
-        description: "Show changes staged for commit"
+        description: Show changes staged for commit
         data_locality: local_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_diff_unstaged:
-        description: "Show changes not staged for commit"
+        description: Show changes not staged for commit
         data_locality: local_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_commit:
-        description: "Commit changes to the repository"
+        description: Commit changes to the repository
         data_locality: local_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_add:
-        description: "Stage files for commit"
+        description: Stage files for commit
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_reset:
-        description: "Unstage files from staging area"
+        description: Unstage files from staging area
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_create_branch:
-        description: "Create a new branch"
+        description: Create a new branch
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_checkout:
-        description: "Switch branches or restore working tree files"
+        description: Switch branches or restore working tree files
         data_locality: local_data
+        privacy_sensitive: true
+        wasi_compatible: true
         alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: true
-
       git_list_branches:
-        description: "List all branches"
+        description: List all branches
         data_locality: local_data
-        alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
+        wasi_compatible: true
+        alpha: 0.2
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       git_init:
-        description: "Initialize a new Git repository"
+        description: Initialize a new Git repository
         data_locality: local_data
+        privacy_sensitive: true
+        wasi_compatible: true
         alpha: 0.2
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: true
-
       git_clone:
-        description: "Clone a repository"
+        description: Clone a repository
         data_locality: local_data
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: true
-
-  # ==========================================================================
-  # Time - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   time:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-time.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-time.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       get_current_time:
-        description: "Get current time in a timezone"
+        description: Get current time in a timezone
         data_locality: args_only
-        alpha: 0.1
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Sequential Thinking - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.1
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   sequentialthinking:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-sequentialthinking.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-sequentialthinking.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       sequentialthinking:
-        description: "Step-by-step reasoning and thinking"
+        description: Step-by-step reasoning and thinking
         data_locality: args_only
-        alpha: 0.7
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Fetch - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.7
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   fetch:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-fetch.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-fetch.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       fetch:
-        description: "Fetch URL content and convert to markdown"
+        description: Fetch URL content and convert to markdown
         data_locality: external_data
-        alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Log Parser - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.3
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   log_parser:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-log-parser.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-log-parser.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       parse_logs:
-        description: "Parse log file and extract structured data"
+        description: Parse log file and extract structured data
         data_locality: args_only
-        alpha: 0.6
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
+        wasi_compatible: true
+        alpha: 0.6
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       filter_entries:
-        description: "Filter log entries by severity level"
+        description: Filter log entries by severity level
         data_locality: args_only
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.4
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       compute_log_statistics:
-        description: "Compute statistics from log data"
+        description: Compute statistics from log data
         data_locality: args_only
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.6
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       search_entries:
-        description: "Search log entries by regex pattern"
+        description: Search log entries by regex pattern
         data_locality: args_only
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Summarize - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   summarize:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-summarize.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-summarize.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       summarize_text:
-        description: "Summarize text using LLM"
+        description: Summarize text using LLM
         data_locality: external_data
-        alpha: 0.7
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: true
         privacy_sensitive: false
-
+        wasi_compatible: true
+        alpha: 0.7
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: true
       summarize_documents:
-        description: "Summarize multiple documents"
+        description: Summarize multiple documents
         data_locality: external_data
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.7
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: true
-        privacy_sensitive: false
-
       get_provider_info:
-        description: "Get summarization provider info"
+        description: Get summarization provider info
         data_locality: args_only
-        alpha: 0.1
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Data Aggregate - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.1
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   data_aggregate:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-data-aggregate.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-data-aggregate.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       aggregate_list:
-        description: "Aggregate list of items by grouping/counting/summing"
+        description: Aggregate list of items by grouping/counting/summing
         data_locality: args_only
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       merge_summaries:
-        description: "Merge multiple summary dictionaries"
+        description: Merge multiple summary dictionaries
         data_locality: args_only
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       combine_research_results:
-        description: "Combine research/search results into summary"
+        description: Combine research/search results into summary
         data_locality: args_only
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
       deduplicate:
-        description: "Remove duplicate items based on key fields"
+        description: Remove duplicate items based on key fields
         data_locality: args_only
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       compute_trends:
-        description: "Compute trends from time-series data"
+        description: Compute trends from time-series data
         data_locality: args_only
-        alpha: 0.6
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-  # ==========================================================================
-  # Image Resize - Cloud Knative MCP Server
-  # ==========================================================================
+        wasi_compatible: true
+        alpha: 0.6
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
   image_resize:
     endpoints:
       CLOUD:
         transport: streamable_http
-        url: "http://mcp-image-resize.edgeagent.svc.cluster.local/mcp"
-
+        url: http://mcp-image-resize.edgeagent.svc.cluster.local/mcp
     tool_profiles:
       scan_directory:
-        description: "Scan directory for images and get metadata"
+        description: Scan directory for images and get metadata
         data_locality: local_data
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.6
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       get_image_info:
-        description: "Get detailed image metadata"
+        description: Get detailed image metadata
         data_locality: local_data
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.3
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       resize_image:
-        description: "Resize a single image"
+        description: Resize a single image
         data_locality: local_data
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.8
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       batch_resize:
-        description: "Resize multiple images at once"
+        description: Resize multiple images at once
         data_locality: args_only
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.9
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       compute_image_hash:
-        description: "Compute perceptual hash for duplicate detection"
+        description: Compute perceptual hash for duplicate detection
         data_locality: local_data
+        privacy_sensitive: false
+        wasi_compatible: true
         alpha: 0.7
-        P_exec: [1.0, 0.3, 0.0]
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
         requires_cloud_api: false
-        privacy_sensitive: false
-
       compare_hashes:
-        description: "Compare image hashes to find duplicates"
+        description: Compare image hashes to find duplicates
         data_locality: args_only
-        alpha: 0.5
-        P_exec: [1.0, 0.3, 0.0]
-        requires_cloud_api: false
         privacy_sensitive: false
-
-# ==========================================================================
-# SubAgent Endpoints (for Orchestrator to call)
-# ==========================================================================
+        wasi_compatible: true
+        alpha: 0.5
+        P_exec:
+        - 1.0
+        - 0.3
+        - 0.0
+        requires_cloud_api: false
 subagent_endpoints:
   CLOUD:
-    host: "cloud-subagent.edgeagent.svc.cluster.local"
+    host: cloud-subagent.edgeagent.svc.cluster.local
     port: 80
     timeout: 600.0
-
-# ==========================================================================
-# Static Mapping (default location for each tool)
-# ==========================================================================
 static_mapping:
   filesystem: CLOUD
   git: CLOUD

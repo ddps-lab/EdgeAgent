@@ -1,21 +1,7 @@
-# EdgeAgent Tool Configuration
-#
-# Multi-endpoint tool 설정 - 하나의 tool에 여러 location endpoint
-# Middleware가 호출 시점에 적절한 location으로 routing
-
-# ============================================================================
-# Tools Configuration
-# ============================================================================
-
 tools:
-  # ==========================================================================
-  # 공식 MCP 서버 (npm) - 6개
-  # ==========================================================================
-
-  # filesystem: 파일시스템 접근 (DEVICE/EDGE/CLOUD 모두 배포)
   filesystem:
     profile:
-      description: "Read, write, and search files on the filesystem"
+      description: Read, write, and search files on the filesystem
       data_affinity: DEVICE
       compute_intensity: LOW
       data_flow: EXPANSION
@@ -24,34 +10,28 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       DEVICE:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_device_hy"
+        - /tmp/edgeagent_device_hy
         env: {}
-
       EDGE:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_edge_hy"
+        - /tmp/edgeagent_edge_hy
         env: {}
-
       CLOUD:
         transport: stdio
         command: mcp-server-filesystem
         args:
-          - "/tmp/edgeagent_cloud_hy"
+        - /tmp/edgeagent_cloud_hy
         env: {}
-
-  # git: Git 저장소 관련 작업 (DEVICE에만 배포)
-  # Python: mcp-server-git (pip install mcp-server-git)
   git:
     profile:
-      description: "Git repository operations (diff, log, status)"
+      description: Git repository operations (diff, log, status)
       data_affinity: DEVICE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -60,19 +40,15 @@ tools:
       privacy_sensitive: true
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       DEVICE:
         transport: stdio
         command: mcp-server-git
         args: []
         env: {}
-
-  # fetch: URL에서 콘텐츠 가져오기 (EDGE에 배포)
-  # Python: mcp-server-fetch (pip install mcp-server-fetch)
   fetch:
     profile:
-      description: "Fetch and convert URL content to Markdown"
+      description: Fetch and convert URL content to Markdown
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -81,19 +57,15 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: mcp-server-fetch
         args: []
         env: {}
-
-  # brave-search: 웹 검색 (CLOUD에만 배포 - API 필요)
-  # npm: @brave/brave-search-mcp-server
   brave-search:
     profile:
-      description: "Brave web search API"
+      description: Brave web search API
       data_affinity: CLOUD
       compute_intensity: LOW
       data_flow: EXPANSION
@@ -101,20 +73,16 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       CLOUD:
         transport: stdio
         command: brave-search-mcp-server
         args: []
         env:
-          BRAVE_API_KEY: "${BRAVE_API_KEY}"
-
-  # sequentialthinking: 단계별 추론 (EDGE에 배포)
-  # npm: @modelcontextprotocol/server-sequential-thinking (globally installed)
+          BRAVE_API_KEY: ${BRAVE_API_KEY}
   sequentialthinking:
     profile:
-      description: "Step-by-step reasoning and thinking"
+      description: Step-by-step reasoning and thinking
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: EXPANSION
@@ -122,19 +90,15 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: mcp-server-sequential-thinking
         args: []
         env: {}
-
-  # time: 시간 관련 작업 (EDGE에 배포)
-  # Python: mcp-server-time (pip install mcp-server-time)
   time:
     profile:
-      description: "Time operations and timezone conversion"
+      description: Time operations and timezone conversion
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: TRANSFORM
@@ -142,22 +106,15 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: mcp-server-time
         args: []
         env: {}
-
-  # ==========================================================================
-  # 신규 FastMCP 서버 (Python) - 4개
-  # ==========================================================================
-
-  # summarize: 텍스트 요약 (OpenAI/Upstage 지원)
   summarize:
     profile:
-      description: "Text summarization using OpenAI or Upstage API"
+      description: Text summarization using OpenAI or Upstage API
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -166,22 +123,19 @@ tools:
       privacy_sensitive: false
       wasi_compatible: false
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: python
         args:
-          - "servers/summarize_server.py"
+        - servers/summarize_server.py
         env:
-          SUMMARIZE_PROVIDER: "${SUMMARIZE_PROVIDER:-openai}"
-          OPENAI_API_KEY: "${OPENAI_API_KEY}"
-          UPSTAGE_API_KEY: "${UPSTAGE_API_KEY}"
-
-  # log_parser: 로그 파싱 및 분석
+          SUMMARIZE_PROVIDER: ${SUMMARIZE_PROVIDER:-openai}
+          OPENAI_API_KEY: ${OPENAI_API_KEY}
+          UPSTAGE_API_KEY: ${UPSTAGE_API_KEY}
   log_parser:
     profile:
-      description: "Parse various log formats and extract structured data"
+      description: Parse various log formats and extract structured data
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -190,19 +144,16 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: python
         args:
-          - "servers/log_parser_server.py"
+        - servers/log_parser_server.py
         env: {}
-
-  # data_aggregate: 데이터 집계 및 병합
   data_aggregate:
     profile:
-      description: "Aggregate, merge, and summarize structured data"
+      description: Aggregate, merge, and summarize structured data
       data_affinity: EDGE
       compute_intensity: LOW
       data_flow: REDUCTION
@@ -211,19 +162,16 @@ tools:
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: python
         args:
-          - "servers/data_aggregate_server.py"
+        - servers/data_aggregate_server.py
         env: {}
-
-  # image_resize: 이미지 처리 및 중복 감지
   image_resize:
     profile:
-      description: "Image resizing, thumbnails, and duplicate detection"
+      description: Image resizing, thumbnails, and duplicate detection
       data_affinity: EDGE
       compute_intensity: MEDIUM
       data_flow: REDUCTION
@@ -232,124 +180,99 @@ tools:
       privacy_sensitive: false
       wasi_compatible: false
       requires_gpu: false
-
     endpoints:
       EDGE:
         transport: stdio
         command: python
         args:
-          - "servers/image_resize_server.py"
+        - servers/image_resize_server.py
         env: {}
-
-  # ==========================================================================
-  # Legacy Mock 서버 (테스트용)
-  # ==========================================================================
-
   slack:
     profile:
-      description: "Slack messaging API"
+      description: Slack messaging API
       data_affinity: CLOUD
       compute_intensity: LOW
       requires_cloud_api: true
       privacy_sensitive: false
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       CLOUD:
         transport: stdio
         command: python
         args:
-          - "scripts/mock_mcp_server.py"
-          - "slack"
-          - "--location"
-          - "CLOUD"
+        - scripts/mock_mcp_server.py
+        - slack
+        - --location
+        - CLOUD
         env: {}
-
   credentials:
     profile:
-      description: "Secure credential storage"
+      description: Secure credential storage
       data_affinity: DEVICE
       compute_intensity: LOW
       requires_cloud_api: false
       privacy_sensitive: true
       wasi_compatible: true
       requires_gpu: false
-
     endpoints:
       DEVICE:
         transport: stdio
         command: python
         args:
-          - "scripts/mock_mcp_server.py"
-          - "credentials"
-          - "--location"
-          - "DEVICE"
+        - scripts/mock_mcp_server.py
+        - credentials
+        - --location
+        - DEVICE
         env: {}
-
       EDGE:
         transport: stdio
         command: python
         args:
-          - "scripts/mock_mcp_server.py"
-          - "credentials"
-          - "--location"
-          - "EDGE"
+        - scripts/mock_mcp_server.py
+        - credentials
+        - --location
+        - EDGE
         env: {}
-
   compute:
     profile:
-      description: "GPU-accelerated compute operations"
+      description: GPU-accelerated compute operations
       data_affinity: CLOUD
       compute_intensity: HIGH
       requires_cloud_api: false
       privacy_sensitive: false
       wasi_compatible: false
       requires_gpu: true
-
     endpoints:
       EDGE:
         transport: stdio
         command: python
         args:
-          - "scripts/mock_mcp_server.py"
-          - "compute"
-          - "--location"
-          - "EDGE"
+        - scripts/mock_mcp_server.py
+        - compute
+        - --location
+        - EDGE
         env: {}
-
       CLOUD:
         transport: stdio
         command: python
         args:
-          - "scripts/mock_mcp_server.py"
-          - "compute"
-          - "--location"
-          - "CLOUD"
+        - scripts/mock_mcp_server.py
+        - compute
+        - --location
+        - CLOUD
         env: {}
-
-
-# ============================================================================
-# Static Mapping
-# ============================================================================
-# Tool → 기본 Location 매핑
-
 static_mapping:
-  # 공식 MCP 서버
   filesystem: DEVICE
   git: DEVICE
   fetch: EDGE
   brave-search: CLOUD
   sequentialthinking: EDGE
   time: EDGE
-
-  # 신규 FastMCP 서버
   summarize: EDGE
   log_parser: EDGE
   data_aggregate: EDGE
   image_resize: EDGE
-
-  # Legacy Mock 서버
   slack: CLOUD
   credentials: DEVICE
   compute: CLOUD
