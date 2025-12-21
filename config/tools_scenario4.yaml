@@ -25,7 +25,7 @@ tools:
           output_datasize_mb: 10.13
           T_exec_ms:
             cloud-x8aedz.xlarge: 1312.38
-            device-rpi: 342.23
+            device-rpi: 11910.785
             edge-nuc: 59.46
       write_file:
         description: Write content to a file
@@ -38,7 +38,7 @@ tools:
           output_datasize_mb: 2.60e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 650.955
-            device-rpi: 444.46
+            device-rpi: 6445.764
             edge-nuc: 110.62
       read_multiple_files:
         description: Read multiple files at once
@@ -51,7 +51,7 @@ tools:
           output_datasize_mb: 0.001287
           T_exec_ms:
             cloud-x8aedz.xlarge: 392.817
-            device-rpi: 54.24
+            device-rpi: 3606.985
             edge-nuc: 9.63
       list_directory:
         description: List directory contents
@@ -64,7 +64,7 @@ tools:
           output_datasize_mb: 0.002316
           T_exec_ms:
             cloud-x8aedz.xlarge: 390.097
-            device-rpi: 71.06
+            device-rpi: 3456.105
             edge-nuc: 10.61
       list_directory_with_sizes:
         description: List directory with file sizes
@@ -77,7 +77,7 @@ tools:
           output_datasize_mb: 0.005044
           T_exec_ms:
             cloud-x8aedz.xlarge: 396.189
-            device-rpi: 65.57
+            device-rpi: 3459.11
             edge-nuc: 10.71
       directory_tree:
         description: Get directory tree structure
@@ -90,7 +90,7 @@ tools:
           output_datasize_mb: 0.086999
           T_exec_ms:
             cloud-x8aedz.xlarge: 412.179
-            device-rpi: 172.67
+            device-rpi: 3664.679
             edge-nuc: 27.78
       search_files:
         description: Search for files by pattern
@@ -103,7 +103,7 @@ tools:
           output_datasize_mb: 0.122981
           T_exec_ms:
             cloud-x8aedz.xlarge: 446.56
-            device-rpi: 161.7
+            device-rpi: 4364.873
             edge-nuc: 24.8
       get_file_info:
         description: Get file metadata
@@ -116,7 +116,7 @@ tools:
           output_datasize_mb: 2.57e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 392.359
-            device-rpi: 64.54
+            device-rpi: 3599.487
             edge-nuc: 8.75
       create_directory:
         description: Create a new directory
@@ -129,7 +129,7 @@ tools:
           output_datasize_mb: 2.64e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 389.132
-            device-rpi: 51.76
+            device-rpi: 3492.61
             edge-nuc: 9.73
       move_file:
         description: Move or rename a file
@@ -142,7 +142,7 @@ tools:
           output_datasize_mb: 2.91e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 398.0
-            device-rpi: 75.19
+            device-rpi: 3638.895
             edge-nuc: 9.6
       edit_file:
         description: Edit file contents
@@ -155,7 +155,7 @@ tools:
           output_datasize_mb: 3.00e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 393.284
-            device-rpi: 63.16
+            device-rpi: 3451.681
             edge-nuc: 10.46
       read_text_file:
         description: Read text file contents
@@ -168,7 +168,7 @@ tools:
           output_datasize_mb: 10.13
           T_exec_ms:
             cloud-x8aedz.xlarge: 1280.553
-            device-rpi: 276.32
+            device-rpi: 11408.156
             edge-nuc: 57.21
       read_media_file:
         description: Read media file as base64
@@ -181,7 +181,7 @@ tools:
           output_datasize_mb: 15.278
           T_exec_ms:
             cloud-x8aedz.xlarge: 2473.876
-            device-rpi: 669.54
+            device-rpi: 19069.187
             edge-nuc: 136.87
       list_allowed_directories:
         description: List allowed directories for access
@@ -194,7 +194,7 @@ tools:
           output_datasize_mb: 3.43e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 389.387
-            device-rpi: 70.59
+            device-rpi: 3492.234
             edge-nuc: 10.32
   image_resize:
     endpoints:
@@ -222,7 +222,7 @@ tools:
           output_datasize_mb: 2.78e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 887.403
-            device-rpi: 94.8
+            device-rpi: 6290.847
             edge-nuc: 15.75
       get_image_info:
         description: Get detailed image metadata
@@ -235,7 +235,7 @@ tools:
           output_datasize_mb: 2.79e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 883.88
-            device-rpi: 104.79
+            device-rpi: 7514.336
             edge-nuc: 15.89
       resize_image:
         description: Resize a single image
@@ -248,7 +248,7 @@ tools:
           output_datasize_mb: 2.79e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 936.676
-            device-rpi: 90.76
+            device-rpi: 6809.156
             edge-nuc: 15.93
       batch_resize:
         description: Resize multiple images at once (thumbnails)
@@ -261,7 +261,7 @@ tools:
           output_datasize_mb: 2.80e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 922.376
-            device-rpi: 103.14
+            device-rpi: 6978.848
             edge-nuc: 15.6
       compute_image_hash:
         description: Compute perceptual hash for duplicate detection
@@ -274,7 +274,7 @@ tools:
           output_datasize_mb: 2.79e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 1129.18
-            device-rpi: 86.92
+            device-rpi: 7985.919
             edge-nuc: 14.56
       compare_hashes:
         description: Compare image hashes to find duplicates
@@ -287,7 +287,7 @@ tools:
           output_datasize_mb: 2.76e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 901.723
-            device-rpi: 90.82
+            device-rpi: 6585.638
             edge-nuc: 14.87
   data_aggregate:
     endpoints:
@@ -315,7 +315,7 @@ tools:
           output_datasize_mb: 2.77e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 876.312
-            device-rpi: 116.66
+            device-rpi: 6340.179
             edge-nuc: 23.8
       merge_summaries:
         description: Merge multiple summary dictionaries
@@ -328,7 +328,7 @@ tools:
           output_datasize_mb: 2.82e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 879.801
-            device-rpi: 63.64
+            device-rpi: 6352.731
             edge-nuc: 9.47
       combine_research_results:
         description: Combine research/search results into summary
@@ -341,7 +341,7 @@ tools:
           output_datasize_mb: 0.039001
           T_exec_ms:
             cloud-x8aedz.xlarge: 876.138
-            device-rpi: 84.95
+            device-rpi: 6343.378
             edge-nuc: 17.43
       deduplicate:
         description: Remove duplicate items based on key fields
@@ -354,7 +354,7 @@ tools:
           output_datasize_mb: 2.81e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 878.966
-            device-rpi: 75.32
+            device-rpi: 6705.115
             edge-nuc: 12.46
       compute_trends:
         description: Compute trends from time-series data
@@ -367,7 +367,7 @@ tools:
           output_datasize_mb: 2.82e-04
           T_exec_ms:
             cloud-x8aedz.xlarge: 882.984
-            device-rpi: 130.5
+            device-rpi: 6752.491
             edge-nuc: 29.25
 static_mapping:
   filesystem: DEVICE
