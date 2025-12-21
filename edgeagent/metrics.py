@@ -163,6 +163,14 @@ class MetricEntry:
     request_bytes: int = 0  # client → tool
     response_bytes: int = 0  # tool → client
 
+    # === WASM Timing (from HTTP headers) ===
+    wasm_fn_total_ms: float = 0.0  # Total tool function time (X-Tool-Exec-Ms)
+    wasm_io_ms: float = 0.0  # Legacy total I/O time (X-IO-Ms)
+    wasm_disk_io_ms: float = 0.0  # Disk I/O time (X-Disk-IO-Ms)
+    wasm_network_io_ms: float = 0.0  # Network I/O time (X-Network-IO-Ms)
+    wasm_compute_ms: float = 0.0  # Compute time (X-Compute-Ms)
+    wasm_total_ms: float = 0.0  # WASM total execution time
+
     # === Extensible ===
     args_keys: list[str] = field(default_factory=list)
     custom_metadata: dict = field(default_factory=dict)
@@ -229,6 +237,14 @@ class MetricEntry:
                 "network_type": self.network_type,
                 "request_bytes": self.request_bytes,
                 "response_bytes": self.response_bytes,
+            },
+            "wasm_timing": {
+                "fn_total_ms": self.wasm_fn_total_ms,
+                "io_ms": self.wasm_io_ms,
+                "disk_io_ms": self.wasm_disk_io_ms,
+                "network_io_ms": self.wasm_network_io_ms,
+                "compute_ms": self.wasm_compute_ms,
+                "wasm_total_ms": self.wasm_total_ms,
             },
             "args_keys": self.args_keys,
             "custom_metadata": self.custom_metadata,
@@ -1028,6 +1044,14 @@ class CallContext:
         self.llm_input_tokens: int = 0
         self.llm_output_tokens: int = 0
 
+        # WASM timing (from HTTP headers)
+        self.wasm_fn_total_ms: float = 0.0
+        self.wasm_io_ms: float = 0.0
+        self.wasm_disk_io_ms: float = 0.0
+        self.wasm_network_io_ms: float = 0.0
+        self.wasm_compute_ms: float = 0.0
+        self.wasm_total_ms: float = 0.0
+
     async def __aenter__(self) -> "CallContext":
         """Start timing and resource tracking"""
         self.timestamp = time.time()
@@ -1120,6 +1144,13 @@ class CallContext:
             network_type=network_type,
             request_bytes=input_size,
             response_bytes=output_size,
+            # WASM timing
+            wasm_fn_total_ms=self.wasm_fn_total_ms,
+            wasm_io_ms=self.wasm_io_ms,
+            wasm_disk_io_ms=self.wasm_disk_io_ms,
+            wasm_network_io_ms=self.wasm_network_io_ms,
+            wasm_compute_ms=self.wasm_compute_ms,
+            wasm_total_ms=self.wasm_total_ms,
             args_keys=list(self.args.keys()),
         )
 
@@ -1167,6 +1198,23 @@ class CallContext:
         """Add MCP protocol timing"""
         self.mcp_serialization_time_ms = serialization_ms
         self.mcp_deserialization_time_ms = deserialization_ms
+
+    def set_wasm_timing(
+        self,
+        fn_total_ms: float = 0.0,
+        io_ms: float = 0.0,
+        disk_io_ms: float = 0.0,
+        network_io_ms: float = 0.0,
+        compute_ms: float = 0.0,
+        wasm_total_ms: float = 0.0,
+    ):
+        """Set WASM timing from HTTP response headers"""
+        self.wasm_fn_total_ms = fn_total_ms
+        self.wasm_io_ms = io_ms
+        self.wasm_disk_io_ms = disk_io_ms
+        self.wasm_network_io_ms = network_io_ms
+        self.wasm_compute_ms = compute_ms
+        self.wasm_total_ms = wasm_total_ms
 
     def set_error(self, error: Exception):
         """Set error information for failed tool calls"""

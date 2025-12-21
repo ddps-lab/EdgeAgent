@@ -16,6 +16,7 @@ LangChain MCP Adapters를 확장하여 location-aware tool routing을 제공
 """
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any, Optional
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -152,12 +153,51 @@ class MetricsWrappedTool(BaseTool):
                     result = await self.backend_tool.ainvoke(kwargs)
                     ctx.set_result(result)
                     ctx.set_actual_location(self.location, fallback=False)
+
+                    # Extract WASM timing from MCP response if present
+                    self._extract_wasm_timing(result, ctx)
+
                     return result
                 except Exception as e:
                     ctx.set_error(e)
                     raise
         else:
             return await self.backend_tool.ainvoke(kwargs)
+
+    def _extract_wasm_timing(self, result: Any, ctx: Any):
+        """Extract WASM timing from MCP response _wasm_timing field"""
+        try:
+            # MCP response format: list of content items, possibly with _wasm_timing
+            wasm_timing = None
+
+            if isinstance(result, dict):
+                wasm_timing = result.get("_wasm_timing")
+            elif isinstance(result, list) and len(result) > 0:
+                # Check if the list contains a dict with _wasm_timing at top level
+                # This handles the case where result is [{"type": "text", "text": "..."}, ...]
+                # and _wasm_timing might be in a wrapper dict
+                pass
+
+            # If not found in direct result, check if result is string and parse
+            if wasm_timing is None and isinstance(result, str):
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, dict):
+                        wasm_timing = parsed.get("_wasm_timing")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if wasm_timing and isinstance(wasm_timing, dict):
+                ctx.set_wasm_timing(
+                    fn_total_ms=wasm_timing.get("fn_total_ms", 0.0),
+                    io_ms=wasm_timing.get("io_ms", 0.0),
+                    disk_io_ms=wasm_timing.get("disk_io_ms", 0.0),
+                    network_io_ms=wasm_timing.get("network_io_ms", 0.0),
+                    compute_ms=wasm_timing.get("compute_ms", 0.0),
+                )
+        except Exception:
+            # Silently ignore timing extraction errors
+            pass
 
     def __repr__(self) -> str:
         return f"MetricsWrappedTool({self.name}, location={self.location}, initialized={self._initialized})"

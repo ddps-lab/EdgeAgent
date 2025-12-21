@@ -4,7 +4,10 @@
 //! The builder can be used to create both stdio and HTTP servers.
 
 use crate::registry::{Tool, ToolRegistry};
-use crate::timing::{reset_io_accumulator, get_io_duration, set_tool_exec_ms, set_io_ms};
+use crate::timing::{
+    reset_io_accumulators, get_io_duration, get_disk_io_duration, get_network_io_duration,
+    set_tool_exec_ms, set_io_ms, set_disk_io_ms, set_network_io_ms, set_compute_ms,
+};
 use serde_json::{json, Value};
 use schemars::JsonSchema;
 use std::time::Instant;
@@ -130,25 +133,37 @@ impl McpServer {
 
     /// Handle MCP tools/call request
     pub fn handle_tools_call(&self, name: &str, args: Value) -> Result<Value, String> {
-        // Reset I/O accumulator before tool execution
-        reset_io_accumulator();
+        // Reset all I/O accumulators before tool execution
+        reset_io_accumulators();
 
         // Measure tool execution time
         let start = Instant::now();
         let result = self.registry.call(name, args)?;
         let tool_exec_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        // Get I/O timing (accumulated during tool execution via measure_io)
+        // Get I/O timing (accumulated during tool execution via measure_io/measure_disk_io/measure_network_io)
         let io_duration = get_io_duration();
+        let disk_io_duration = get_disk_io_duration();
+        let network_io_duration = get_network_io_duration();
+
         let io_ms = io_duration.as_secs_f64() * 1000.0;
+        let disk_io_ms = disk_io_duration.as_secs_f64() * 1000.0;
+        let network_io_ms = network_io_duration.as_secs_f64() * 1000.0;
+        let compute_ms = (tool_exec_ms - disk_io_ms - network_io_ms).max(0.0);
 
         // Store timing values for HTTP transport to read
         set_tool_exec_ms(tool_exec_ms);
         set_io_ms(io_ms);
+        set_disk_io_ms(disk_io_ms);
+        set_network_io_ms(network_io_ms);
+        set_compute_ms(compute_ms);
 
         // Also output to stderr for CLI mode
         eprintln!("---TOOL_EXEC---{:.3}", tool_exec_ms);
         eprintln!("---IO---{:.3}", io_ms);
+        eprintln!("---DISK_IO---{:.3}", disk_io_ms);
+        eprintln!("---NETWORK_IO---{:.3}", network_io_ms);
+        eprintln!("---COMPUTE---{:.3}", compute_ms);
 
         // Format as MCP content response
         let text = if result.is_string() {
@@ -157,11 +172,19 @@ impl McpServer {
             serde_json::to_string(&result).unwrap_or_else(|_| result.to_string())
         };
 
+        // Include timing metadata in response for MCP clients that cannot access HTTP headers
         Ok(json!({
             "content": [{
                 "type": "text",
                 "text": text
-            }]
+            }],
+            "_wasm_timing": {
+                "fn_total_ms": tool_exec_ms,
+                "io_ms": io_ms,
+                "disk_io_ms": disk_io_ms,
+                "network_io_ms": network_io_ms,
+                "compute_ms": compute_ms
+            }
         }))
     }
 
