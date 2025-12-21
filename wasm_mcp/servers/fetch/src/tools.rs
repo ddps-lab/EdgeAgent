@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use url::Url;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::measure_network_io;
 use regex::Regex;
 
 /// Make HTTP request using wasi:http/outgoing-handler
@@ -51,8 +51,8 @@ pub fn http_get(url_str: &str) -> Result<(u16, String), String> {
     request.set_path_with_query(Some(&path_and_query))
         .map_err(|_| "Failed to set path")?;
 
-    // Measure the entire HTTP I/O operation
-    let (status, content_str) = measure_io(|| {
+    // Measure the entire HTTP I/O operation (network)
+    let (status, content_str) = measure_network_io(|| {
         let future_response = outgoing_handler::handle(request, None)
             .map_err(|e| format!("Failed to send request: {:?}", e))?;
 

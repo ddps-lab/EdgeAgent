@@ -82,7 +82,18 @@ pub mod prelude {
     pub use crate::serde;
 
     // Timing utilities
-    pub use crate::timing::{measure_io, ToolTimer, get_tool_exec_ms, get_io_ms, set_tool_exec_ms, set_io_ms, reset_timing};
+    pub use crate::timing::{
+        // Legacy I/O measurement
+        measure_io,
+        // New: separate disk/network I/O measurement
+        measure_disk_io, measure_network_io,
+        // Timer
+        ToolTimer,
+        // Getters/setters for HTTP transport
+        get_tool_exec_ms, get_io_ms, get_disk_io_ms, get_network_io_ms, get_compute_ms,
+        set_tool_exec_ms, set_io_ms, set_disk_io_ms, set_network_io_ms, set_compute_ms,
+        reset_timing,
+    };
 }
 
 /// Error type for WasmMCP operations

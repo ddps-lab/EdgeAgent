@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use serde::Serialize;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::measure_network_io;
 
 /// Provider info response
 #[derive(Debug, Serialize)]
@@ -68,8 +68,8 @@ pub fn http_post(url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16
     OutgoingBody::finish(outgoing_body, None)
         .map_err(|_| "Failed to finish body")?;
 
-    // Measure the entire HTTP I/O operation
-    let (status, content_str) = measure_io(|| {
+    // Measure the entire HTTP I/O operation (network)
+    let (status, content_str) = measure_network_io(|| {
         // Send request
         let future_response = outgoing_handler::handle(request, None)
             .map_err(|e| format!("Failed to send request: {:?}", e))?;
