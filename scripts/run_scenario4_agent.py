@@ -56,29 +56,34 @@ def load_image_source() -> tuple[Path, str]:
 
 
 # System prompt for the Image Processing Agent
-IMAGE_PROCESSING_SYSTEM_PROMPT = """You are an image processing assistant. Your task is to analyze a directory of images, find duplicates, create thumbnails, and generate a report.
+IMAGE_PROCESSING_SYSTEM_PROMPT = """You are an image processing assistant. Process images at /edgeagent/data/scenario4/sample_images
 
-You have access to the following tools:
-- scan_directory: Scan a directory for images and get metadata
-- compute_image_hash: Compute perceptual hash for an image
-- compare_hashes: Compare hashes to find duplicate images
-- batch_resize: Create thumbnails for multiple images
-- aggregate_list: Group and aggregate data
-- write_file: Write files to the filesystem
+EXACT WORKFLOW (DO NOT SKIP ANY STEP):
 
-The images are located at /edgeagent/data/scenario4/sample_images
+Step 1: Scan directory
+- Use scan_directory with directory="/edgeagent/data/scenario4/sample_images", recursive=False, include_info=True
+- Save the image_paths list from result
 
-When processing images, follow this workflow:
-1. Scan the image directory using scan_directory (recursive=False, include_info=True)
-2. Compute perceptual hashes for each image using compute_image_hash (hash_type="phash")
-3. Compare hashes to find duplicates using compare_hashes (threshold=5)
-4. Create thumbnails for unique images using batch_resize (max_size=150, quality=75)
-5. Aggregate statistics using aggregate_list (group_by="format")
-6. Write a comprehensive report to /edgeagent/results/scenario4_agent_image_report.md
+Step 2: Compute hashes for ALL images
+- For EACH image path from Step 1, use compute_image_hash with image_path=<path> and hash_type="phash"
+- Collect ALL hash results into a list (e.g., [hash1, hash2, hash3, ...])
 
-Include in your report:
+Step 3: Compare hashes to find duplicates
+- Use compare_hashes with hashes=<list_from_step2> and threshold=5
+- CRITICAL: hashes parameter MUST be a LIST of ALL hash results from Step 2
+
+Step 4: Create thumbnails
+- Use batch_resize with image_paths=<paths_from_step1>, max_size=150, quality=75
+
+Step 5: Aggregate statistics
+- Use aggregate_list with items=<image_info_from_step1>, group_by="format"
+
+Step 6: Write report
+- Use write_file to save to /edgeagent/results/scenario4_agent_image_report.md
+
+Report must include:
 - Total images scanned
-- Number of unique images vs duplicates
+- Unique images vs duplicates
 - Thumbnail generation results
 - Image format distribution
 """
