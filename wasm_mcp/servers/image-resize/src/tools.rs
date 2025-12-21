@@ -498,7 +498,8 @@ pub fn batch_resize(
                 let new_w = (orig_w as f64 * ratio) as u32;
                 let new_h = (orig_h as f64 * ratio) as u32;
 
-                let resized = img.resize(new_w, new_h, FilterType::Lanczos3);
+                // Use Triangle filter for faster performance (Lanczos3 is slower but higher quality)
+                let resized = img.resize(new_w, new_h, FilterType::Triangle);
 
                 let output_img = if format == ImageFormat::Jpeg {
                     image::DynamicImage::ImageRgb8(resized.to_rgb8())
