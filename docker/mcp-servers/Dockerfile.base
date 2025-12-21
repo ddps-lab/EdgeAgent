@@ -1,5 +1,5 @@
 # EdgeAgent MCP Server Base Image
-# Python 3.11 + FastMCP + common dependencies
+# Python 3.11 + FastMCP + common dependencies + timing instrumentation
 
 FROM python:3.11-slim
 
@@ -10,6 +10,9 @@ RUN pip install --no-cache-dir \
     fastmcp>=2.0.0 \
     httpx>=0.27.0 \
     pydantic>=2.0.0
+
+# Copy timing module (used by all servers for profiling)
+COPY servers/timing.py /app/
 
 # Environment variables for HTTP transport
 ENV MCP_TRANSPORT=http

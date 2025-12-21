@@ -4,6 +4,7 @@
  */
 
 import fs from "fs/promises";
+import { createReadStream } from "fs";
 import path from "path";
 import os from 'os';
 import { randomBytes } from 'crypto';
@@ -136,6 +137,31 @@ export async function getFileStats(filePath: string): Promise<FileInfo> {
 export async function readFileContent(filePath: string, encoding: string = 'utf-8'): Promise<string> {
   // PATCHED: Wrap I/O with measureIO
   return await measureIO(() => fs.readFile(filePath, encoding as BufferEncoding));
+}
+
+/**
+ * Read a binary file and return its contents as a base64 string.
+ * PATCHED: Wrap entire stream operation with measureIO for accurate I/O timing.
+ */
+export async function readFileAsBase64Stream(filePath: string): Promise<string> {
+  // PATCHED: Wrap the entire stream read operation with measureIO
+  return await measureIO(() => new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const stream = createReadStream(filePath);
+
+    stream.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    stream.on('end', () => {
+      const finalBuffer = Buffer.concat(chunks);
+      resolve(finalBuffer.toString('base64'));
+    });
+
+    stream.on('error', (error) => {
+      reject(error);
+    });
+  }));
 }
 
 export async function writeFileContent(filePath: string, content: string): Promise<void> {
