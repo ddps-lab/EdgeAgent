@@ -155,6 +155,7 @@ def create_llm_with_latency_tracking(
     llm_kwargs = {"model": model}
     if "gpt-5" not in model:
         llm_kwargs["temperature"] = temperature
+    llm_kwargs["seed"] = 42  # Ensure deterministic behavior
 
     # LLM 생성 시 callback 직접 등록 (LangGraph에서 제대로 전파됨)
     llm_kwargs["callbacks"] = [llm_tracker]

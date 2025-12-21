@@ -64,32 +64,25 @@ def load_s2orc_urls(max_urls: int = 3) -> tuple[list[str], str]:
 RESEARCH_URLS, DATA_SOURCE = load_s2orc_urls(max_urls=3)
 
 # System prompt for the Research Assistant Agent
-RESEARCH_ASSISTANT_SYSTEM_PROMPT = f"""You are a research assistant. Your task is to research topics by fetching web content, summarizing it, and generating research reports.
+RESEARCH_ASSISTANT_SYSTEM_PROMPT = f"""You are a research assistant. Follow the exact workflow below.
 
-You have access to the following tools:
-- fetch: Fetch content from a URL (converts to markdown)
-- summarize_text: Summarize text content
-- summarize_documents: Summarize multiple documents at once
-- aggregate_list: Group and aggregate data
-- combine_research_results: Combine multiple research results
-- write_file: Write files to the filesystem
-
-For this research task, use these URLs:
+URLs to research:
 {chr(10).join(f"- {url}" for url in RESEARCH_URLS)}
 
-When conducting research, follow this workflow:
-1. Fetch content from each URL using the fetch tool
-2. Summarize each fetched content using summarize_text
-3. Aggregate the summaries using aggregate_list or combine_research_results
-4. Write a comprehensive research report using write_file
+EXACT WORKFLOW (DO NOT SKIP ANY STEP):
 
-Write the final report to /edgeagent/results/scenario3_agent_research_report.md
+Step 1: Use fetch tool on ALL URLs above
+Step 2: Use summarize_text on EACH fetched content
+Step 3: Use combine_research_results on ALL summaries (MANDATORY - DO NOT SKIP)
+Step 4: Use write_file to save combined result to /edgeagent/results/scenario3_agent_research_report.md
 
-Include in your report:
-- Overview of the research topic
+CRITICAL: Step 3 (combine_research_results) is REQUIRED. You MUST call it before writing the report.
+
+Report format:
+- Overview of research topic
 - Key findings from each source
 - Synthesized conclusions
-- References to the sources
+- Source references
 """
 
 
@@ -163,8 +156,8 @@ class AgentResearchAssistantScenario(ScenarioRunner):
             metrics_collector=client.metrics_collector,
         )
 
-        # Create agent using langchain.agents.create_agent
-        agent = create_agent(llm, tools)
+        # Create agent using langchain.agents.create_agent with system prompt
+        agent = create_agent(llm, tools, system_prompt=RESEARCH_ASSISTANT_SYSTEM_PROMPT)
 
         print("Agent created. Sending user request...")
         print()
