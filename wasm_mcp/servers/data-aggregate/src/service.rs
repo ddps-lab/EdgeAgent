@@ -2,6 +2,7 @@
 //!
 //! Based on edgeagent's data_aggregate_server.py (FastMCP)
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -216,9 +217,21 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<AggregateListParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let items = params.items;
         if items.is_empty() {
-            return Ok(json!({"total_count": 0, "groups": {}}).to_string());
+            let timing = timer.finish("aggregate_list");
+            return Ok(json!({
+                "total_count": 0,
+                "groups": {},
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let input_size = serde_json::to_string(&items).map(|s| s.len()).unwrap_or(0);
@@ -289,6 +302,14 @@ impl DataAggregateService {
         result["output_size_estimate"] = json!(output_size);
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
+        let timing = timer.finish("aggregate_list");
+        result["_timing"] = json!({
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        });
+
         Ok(result.to_string())
     }
 
@@ -298,9 +319,20 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<MergeSummariesParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let summaries = params.summaries;
         if summaries.is_empty() {
-            return Ok(json!({"merged_count": 0}).to_string());
+            let timing = timer.finish("merge_summaries");
+            return Ok(json!({
+                "merged_count": 0,
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let weights = params.weights.unwrap_or_else(|| vec![1.0; summaries.len()]);
@@ -366,6 +398,14 @@ impl DataAggregateService {
             }
         }
 
+        let timing = timer.finish("merge_summaries");
+        merged["_timing"] = json!({
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        });
+
         Ok(merged.to_string())
     }
 
@@ -375,9 +415,21 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<CombineResearchResultsParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let results = params.results;
         if results.is_empty() {
-            return Ok(json!({"result_count": 0, "combined_summary": ""}).to_string());
+            let timing = timer.finish("combine_research_results");
+            return Ok(json!({
+                "result_count": 0,
+                "combined_summary": "",
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let title_field = &params.title_field;
@@ -425,12 +477,19 @@ impl DataAggregateService {
             .map(|r| serde_json::to_string(r).map(|s| s.len()).unwrap_or(0))
             .sum();
 
+        let timing = timer.finish("combine_research_results");
         Ok(json!({
             "result_count": results.len(),
             "items": items,
             "combined_text": combined_text,
             "input_size": input_size,
             "output_size": combined_text.len(),
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
@@ -440,9 +499,22 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<DeduplicateParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let items = params.items;
         if items.is_empty() {
-            return Ok(json!({"original_count": 0, "unique_count": 0, "items": []}).to_string());
+            let timing = timer.finish("deduplicate");
+            return Ok(json!({
+                "original_count": 0,
+                "unique_count": 0,
+                "items": [],
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let key_fields = params.key_fields;
@@ -477,12 +549,19 @@ impl DataAggregateService {
         let unique_count = result.len();
         let duplicates_removed = items.len() - unique_count;
 
+        let timing = timer.finish("deduplicate");
         Ok(json!({
             "original_count": items.len(),
             "unique_count": unique_count,
             "duplicates_removed": duplicates_removed,
             "key_fields": key_fields,
             "items": result,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
@@ -492,9 +571,21 @@ impl DataAggregateService {
         &self,
         Parameters(params): Parameters<ComputeTrendsParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let time_series = params.time_series;
         if time_series.is_empty() {
-            return Ok(json!({"data_points": 0, "trend": "insufficient_data"}).to_string());
+            let timing = timer.finish("compute_trends");
+            return Ok(json!({
+                "data_points": 0,
+                "trend": "insufficient_data",
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let time_field = &params.time_field;
@@ -515,7 +606,17 @@ impl DataAggregateService {
         }
 
         if data.len() < 2 {
-            return Ok(json!({"data_points": data.len(), "trend": "insufficient_data"}).to_string());
+            let timing = timer.finish("compute_trends");
+            return Ok(json!({
+                "data_points": data.len(),
+                "trend": "insufficient_data",
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
@@ -542,6 +643,7 @@ impl DataAggregateService {
 
         let stats = compute_stats(&values);
 
+        let timing = timer.finish("compute_trends");
         Ok(json!({
             "data_points": data.len(),
             "trend": trend,
@@ -549,6 +651,12 @@ impl DataAggregateService {
             "first_half_avg": first_avg,
             "second_half_avg": second_avg,
             "change_percent": change_percent,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 }

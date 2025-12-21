@@ -128,3 +128,19 @@ pub fn init_wasm_start() {
 pub fn get_wasm_start() -> Option<Instant> {
     unsafe { WASM_START }
 }
+
+/// Reset WASM start time (call at beginning of each request for per-request timing)
+pub fn reset_wasm_start() {
+    unsafe {
+        WASM_START = Some(Instant::now());
+    }
+}
+
+/// Get WASM total elapsed time in milliseconds (from request start to now)
+pub fn get_wasm_total_ms() -> f64 {
+    unsafe {
+        WASM_START
+            .map(|start| start.elapsed().as_secs_f64() * 1000.0)
+            .unwrap_or(0.0)
+    }
+}

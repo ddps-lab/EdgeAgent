@@ -1,6 +1,7 @@
 //! Log Parser MCP Service - parse and analyze log files
 
 use regex::Regex;
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -222,6 +223,8 @@ pub struct ExtractTimeRangeParams {
 impl LogParserService {
     #[tool(description = "Parse raw log content into structured entries. Returns entries with _level field added.")]
     fn parse_logs(&self, Parameters(params): Parameters<ParseLogsParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let lines: Vec<&str> = params.log_content.lines().collect();
 
         // Auto-detect format if needed
@@ -246,17 +249,26 @@ impl LogParserService {
             }
         }
 
+        let timing = timer.finish("parse_logs");
         Ok(json!({
             "format_detected": format,
             "total_lines": lines.len(),
             "parsed_count": entries.len(),
             "error_count": errors,
-            "entries": entries
+            "entries": entries,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
     #[tool(description = "Filter log entries by severity level. Pass entries from parse_logs result.")]
     fn filter_entries(&self, Parameters(params): Parameters<FilterEntriesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let mut filtered = Vec::new();
         let mut level_counts: HashMap<String, i32> = HashMap::new();
 
@@ -278,19 +290,38 @@ impl LogParserService {
             }
         }
 
+        let timing = timer.finish("filter_entries");
         Ok(json!({
             "original_count": params.entries.len(),
             "filtered_count": filtered.len(),
             "levels_included": level_counts.keys().collect::<Vec<_>>(),
             "by_level": level_counts,
-            "entries": filtered
+            "entries": filtered,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
     #[tool(description = "Compute statistics from parsed log entries.")]
     fn compute_log_statistics(&self, Parameters(params): Parameters<ComputeStatisticsParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         if params.entries.is_empty() {
-            return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
+            let timing = timer.finish("compute_log_statistics");
+            return Ok(json!({
+                "entry_count": 0,
+                "by_level": {},
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
+            }).to_string());
         }
 
         let mut level_counts: HashMap<String, i32> = HashMap::new();
@@ -341,11 +372,21 @@ impl LogParserService {
             result["top_paths"] = json!(top_paths);
         }
 
+        let timing = timer.finish("compute_log_statistics");
+        result["_timing"] = json!({
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        });
+
         Ok(result.to_string())
     }
 
     #[tool(description = "Search log entries by regex pattern.")]
     fn search_entries(&self, Parameters(params): Parameters<SearchEntriesParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let fields = params.fields.unwrap_or_else(|| vec!["message".to_string(), "raw".to_string()]);
 
         let regex = if params.case_sensitive {
@@ -372,17 +413,26 @@ impl LogParserService {
             if matches.len() >= 100 { break; }
         }
 
+        let timing = timer.finish("search_entries");
         Ok(json!({
             "search_pattern": params.pattern,
             "fields_searched": fields,
             "total_entries": params.entries.len(),
             "match_count": matches.len(),
-            "matches": matches
+            "matches": matches,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 
     #[tool(description = "Extract time range information from log entries.")]
     fn extract_time_range(&self, Parameters(params): Parameters<ExtractTimeRangeParams>) -> Result<String, String> {
+        let timer = ToolTimer::start();
+
         let mut times = Vec::new();
 
         for entry in &params.entries {
@@ -392,18 +442,32 @@ impl LogParserService {
         }
 
         if times.is_empty() {
+            let timing = timer.finish("extract_time_range");
             return Ok(json!({
                 "has_timestamps": false,
-                "entry_count": params.entries.len()
+                "entry_count": params.entries.len(),
+                "_timing": {
+                    "wasm_total_ms": get_wasm_total_ms(),
+                    "fn_total_ms": timing.fn_total_ms,
+                    "io_ms": timing.io_ms,
+                    "compute_ms": timing.compute_ms
+                }
             }).to_string());
         }
 
+        let timing = timer.finish("extract_time_range");
         Ok(json!({
             "has_timestamps": true,
             "entry_count": params.entries.len(),
             "first_timestamp": times.first(),
             "last_timestamp": times.last(),
-            "sample_timestamps": times.iter().take(5).collect::<Vec<_>>()
+            "sample_timestamps": times.iter().take(5).collect::<Vec<_>>(),
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string())
     }
 }

@@ -7,6 +7,7 @@
 //! Note: This is a stateless implementation. Each thought step is processed
 //! independently, with the client maintaining the thinking history.
 
+use wasmmcp::timing::{ToolTimer, get_wasm_total_ms};
 use rmcp::{
     ServerHandler,
     handler::server::{
@@ -98,6 +99,7 @@ impl SequentialThinkingService {
         &self,
         Parameters(params): Parameters<SequentialThinkingParams>,
     ) -> Result<String, String> {
+        let timer = ToolTimer::start();
         // TypeScript validates thoughtNumber >= 1 and totalThoughts >= 1 via zod schema
         if params.thought_number < 1 {
             return Err("thoughtNumber must be >= 1".to_string());
@@ -109,13 +111,20 @@ impl SequentialThinkingService {
         // Build branches array (empty for now, matching Node server)
         let branches: Vec<String> = Vec::new();
 
+        let timing = timer.finish("sequentialthinking");
         // Build response - matches Node mcp-server-sequential-thinking output format
         let response = json!({
             "thoughtNumber": params.thought_number,
             "totalThoughts": params.total_thoughts,
             "nextThoughtNeeded": params.next_thought_needed,
             "branches": branches,
-            "thoughtHistoryLength": params.thought_number
+            "thoughtHistoryLength": params.thought_number,
+            "_timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         });
 
         Ok(response.to_string())
