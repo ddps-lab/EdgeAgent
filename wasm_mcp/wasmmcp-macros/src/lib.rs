@@ -494,6 +494,15 @@ pub fn export_http(input: TokenStream) -> TokenStream {
 
                 let response = result.to_response(id);
 
+                // Add timing headers
+                let wasm_total_ms = wasmmcp::timing::get_wasm_total_ms();
+                let disk_io_ms = wasmmcp::timing::get_disk_io_duration().as_secs_f64() * 1000.0;
+                let network_io_ms = wasmmcp::timing::get_network_io_duration().as_secs_f64() * 1000.0;
+
+                let _ = headers.set(&"X-WASM-Total-Ms".to_string(), &[format!("{:.3}", wasm_total_ms).into_bytes()]);
+                let _ = headers.set(&"X-Disk-IO-Ms".to_string(), &[format!("{:.3}", disk_io_ms).into_bytes()]);
+                let _ = headers.set(&"X-Network-IO-Ms".to_string(), &[format!("{:.3}", network_io_ms).into_bytes()]);
+
                 let response_body = match serde_json::to_vec(&response) {
                     Ok(body) => body,
                     Err(e) => {
