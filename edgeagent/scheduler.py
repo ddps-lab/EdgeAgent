@@ -384,12 +384,15 @@ class HeuristicScheduler(BaseScheduler):
 
         우선순위:
         1. Type C (local_data) → path 기반 노드 고정
-        2. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
-        3. wasi_compatible=False → EDGE 제외
-        4. privacy_sensitive → DEVICE
-        5. 기본값 → DEVICE
+        2. Type B (external_data) → CLOUD (외부 API 접근은 클라우드가 유리)
+        3. requires_gpu → CLOUD (GPU는 클라우드에만 존재)
+        4. wasi_compatible=False → EDGE 제외
+        5. privacy_sensitive → DEVICE
+        6. 기본값 → DEVICE
         """
         constraints = self._get_constraints(tool_name)
+        profile = self.registry.get_profile(tool_name)
+        data_locality = getattr(profile, 'data_locality', 'args_only') if profile else 'args_only'
 
         # 1. Type C (local_data) 체크 → 노드 고정
         fixed_location = self._extract_fixed_location(tool_name, args)
@@ -399,19 +402,23 @@ class HeuristicScheduler(BaseScheduler):
                 return "DEVICE"
             return fixed_location
 
-        # 2. requires_gpu → CLOUD
+        # 2. Type B (external_data) → CLOUD
+        if data_locality == "external_data":
+            return "CLOUD"
+
+        # 3. requires_gpu → CLOUD
         if constraints.requires_gpu:
             return "CLOUD"
 
-        # 3. wasi_compatible=False → EDGE 제외
+        # 4. wasi_compatible=False → EDGE 제외
         if not constraints.wasi_compatible:
             return "DEVICE"
 
-        # 4. privacy_sensitive → DEVICE
+        # 5. privacy_sensitive → DEVICE
         if constraints.privacy_sensitive:
             return "DEVICE"
 
-        # 5. 기본값 DEVICE
+        # 6. 기본값 DEVICE
         return "DEVICE"
 
     def get_location_for_call_with_reason(
@@ -425,6 +432,8 @@ class HeuristicScheduler(BaseScheduler):
         """
         start_time_ns = time.perf_counter_ns()
         constraints = self._get_constraints(tool_name)
+        profile = self.registry.get_profile(tool_name)
+        data_locality = getattr(profile, 'data_locality', 'args_only') if profile else 'args_only'
 
         # 1. Type C (local_data) 체크 → 노드 고정
         fixed_location = self._extract_fixed_location(tool_name, args)
@@ -443,7 +452,19 @@ class HeuristicScheduler(BaseScheduler):
                 fixed=True,
             )
 
-        # 2. requires_gpu → CLOUD
+        # 2. Type B (external_data) → CLOUD
+        if data_locality == "external_data":
+            decision_time_ns = time.perf_counter_ns() - start_time_ns
+            return SchedulingResult(
+                tool_name=tool_name,
+                location="CLOUD",
+                reason="external_data_cloud",
+                available_locations=["CLOUD"],
+                decision_time_ns=decision_time_ns,
+                constraints=constraints,
+            )
+
+        # 3. requires_gpu → CLOUD
         if constraints.requires_gpu:
             decision_time_ns = time.perf_counter_ns() - start_time_ns
             return SchedulingResult(
