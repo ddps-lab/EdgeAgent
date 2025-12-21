@@ -214,7 +214,7 @@ tools:
     tool_profiles:
       git_status:
         description: Get repository status
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -227,7 +227,7 @@ tools:
             edge-nuc: 54.745
       git_log:
         description: Get commit history
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -240,7 +240,7 @@ tools:
             edge-nuc: 55.861
       git_diff:
         description: Get diff between commits or branches
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -253,7 +253,7 @@ tools:
             edge-nuc: 86.959
       git_diff_staged:
         description: Get staged changes
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -266,7 +266,7 @@ tools:
             edge-nuc: 55.018
       git_diff_unstaged:
         description: Get unstaged changes
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -279,7 +279,7 @@ tools:
             edge-nuc: 54.736
       git_show:
         description: Show commit details
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -292,7 +292,7 @@ tools:
             edge-nuc: 55.299
       git_commit:
         description: Records changes to the repository
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -305,7 +305,7 @@ tools:
             edge-nuc: 61.843
       git_add:
         description: Adds file contents to the staging area
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -318,7 +318,7 @@ tools:
             edge-nuc: 54.928
       git_reset:
         description: Unstages all staged changes
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -331,7 +331,7 @@ tools:
             edge-nuc: 55.243
       git_create_branch:
         description: Creates a new branch from an optional base branch
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -344,7 +344,7 @@ tools:
             edge-nuc: 54.405
       git_checkout:
         description: Switches branches
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
@@ -357,7 +357,7 @@ tools:
             edge-nuc: 54.604
       git_branch:
         description: List Git branches
-        data_locality: local_data
+        data_locality: args_only
         requires_gpu: false
         privacy_sensitive: true
         wasi_compatible: true
