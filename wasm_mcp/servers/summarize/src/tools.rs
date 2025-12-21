@@ -50,29 +50,31 @@ pub fn http_post(url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16
     request.set_path_with_query(Some(path))
         .map_err(|_| "Failed to set path")?;
 
-    // Set request body
+    // Get request body handle
     let outgoing_body = request.body()
         .map_err(|_| "Failed to get request body")?;
 
-    {
-        let stream = outgoing_body.write()
-            .map_err(|_| "Failed to get body stream")?;
-        // Write in chunks due to WASI stream 4KB limit
-        const CHUNK_SIZE: usize = 4096;
-        for chunk in body.as_bytes().chunks(CHUNK_SIZE) {
-            stream.blocking_write_and_flush(chunk)
-                .map_err(|e| format!("Failed to write body: {:?}", e))?;
-        }
-    }
-
-    OutgoingBody::finish(outgoing_body, None)
-        .map_err(|_| "Failed to finish body")?;
-
     // Measure the entire HTTP I/O operation
     let (status, content_str) = measure_io(|| {
-        // Send request
+        // IMPORTANT: Start the request FIRST to avoid backpressure deadlock
+        // See: https://github.com/bytecodealliance/wasmtime/issues/9653
         let future_response = outgoing_handler::handle(request, None)
             .map_err(|e| format!("Failed to send request: {:?}", e))?;
+
+        // Now write body AFTER handle() is called
+        {
+            let stream = outgoing_body.write()
+                .map_err(|_| "Failed to get body stream")?;
+            // Write in chunks due to WASI stream 4KB limit
+            const CHUNK_SIZE: usize = 4096;
+            for chunk in body.as_bytes().chunks(CHUNK_SIZE) {
+                stream.blocking_write_and_flush(chunk)
+                    .map_err(|e| format!("Failed to write body: {:?}", e))?;
+            }
+        }
+
+        OutgoingBody::finish(outgoing_body, None)
+            .map_err(|_| "Failed to finish body")?;
 
         // Wait for response
         let response = loop {
@@ -124,7 +126,7 @@ pub fn call_llm(
         ),
         _ => (
             "https://api.openai.com/v1/chat/completions",
-            "gpt-4o-mini"
+            "gpt-5"
         ),
     };
 
@@ -151,7 +153,7 @@ pub fn call_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": format!("Summarize the following text:\n\n{}", text)}
         ],
-        "max_tokens": max_length.unwrap_or(500) as i64
+        "max_completion_tokens": max_length.unwrap_or(500) as i64
     });
 
     let auth_header = format!("Bearer {}", api_key);

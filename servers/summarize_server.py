@@ -47,7 +47,7 @@ def _summarize_openai(text: str, max_length: int, style: str) -> str:
     }
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5",
         messages=[
             {
                 "role": "system",
@@ -55,7 +55,7 @@ def _summarize_openai(text: str, max_length: int, style: str) -> str:
             },
             {"role": "user", "content": f"Summarize the following text:\n\n{text}"},
         ],
-        max_tokens=max_length * 2,  # Approximate token count
+        max_completion_tokens=max_length * 2,  # Approximate token count
     )
     return response.choices[0].message.content
 
