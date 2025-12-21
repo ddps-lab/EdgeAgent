@@ -479,8 +479,10 @@ pub fn export_http(input: TokenStream) -> TokenStream {
                 let params = json_request.get("params").cloned();
                 let id = json_request.get("id").cloned();
 
-                // Handle the request
+                // Handle the request (measure tool execution time)
+                let tool_start = std::time::Instant::now();
                 let result = server.handle_jsonrpc(method_str, params);
+                let tool_exec_ms = tool_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Notifications (no id) don't expect a response per JSON-RPC 2.0 spec
                 // Per MCP Streamable HTTP spec, return 202 Accepted with no body
@@ -498,10 +500,14 @@ pub fn export_http(input: TokenStream) -> TokenStream {
                 let wasm_total_ms = wasmmcp::timing::get_wasm_total_ms();
                 let disk_io_ms = wasmmcp::timing::get_disk_io_duration().as_secs_f64() * 1000.0;
                 let network_io_ms = wasmmcp::timing::get_network_io_duration().as_secs_f64() * 1000.0;
+                let compute_ms = (tool_exec_ms - disk_io_ms - network_io_ms).max(0.0);
+
+                let _ = headers.set(&"X-Tool-Exec-Ms".to_string(), &[format!("{:.3}", tool_exec_ms).into_bytes()]);
 
                 let _ = headers.set(&"X-WASM-Total-Ms".to_string(), &[format!("{:.3}", wasm_total_ms).into_bytes()]);
                 let _ = headers.set(&"X-Disk-IO-Ms".to_string(), &[format!("{:.3}", disk_io_ms).into_bytes()]);
                 let _ = headers.set(&"X-Network-IO-Ms".to_string(), &[format!("{:.3}", network_io_ms).into_bytes()]);
+                let _ = headers.set(&"X-Compute-Ms".to_string(), &[format!("{:.3}", compute_ms).into_bytes()]);
 
                 let response_body = match serde_json::to_vec(&response) {
                     Ok(body) => body,
