@@ -172,19 +172,23 @@ impl McpServer {
             serde_json::to_string(&result).unwrap_or_else(|_| result.to_string())
         };
 
-        // Include timing metadata in response for MCP clients that cannot access HTTP headers
+        // Return MCP response with timing as second content item
+        let timing_json = format!(
+            r#"{{"_wasm_timing":{{"fn_total_ms":{},"io_ms":{},"disk_io_ms":{},"network_io_ms":{},"compute_ms":{}}}}}"#,
+            tool_exec_ms, io_ms, disk_io_ms, network_io_ms, compute_ms
+        );
+
         Ok(json!({
-            "content": [{
-                "type": "text",
-                "text": text
-            }],
-            "_wasm_timing": {
-                "fn_total_ms": tool_exec_ms,
-                "io_ms": io_ms,
-                "disk_io_ms": disk_io_ms,
-                "network_io_ms": network_io_ms,
-                "compute_ms": compute_ms
-            }
+            "content": [
+                {
+                    "type": "text",
+                    "text": text
+                },
+                {
+                    "type": "text",
+                    "text": timing_json
+                }
+            ]
         }))
     }
 

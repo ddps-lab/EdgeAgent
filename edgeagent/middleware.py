@@ -165,21 +165,26 @@ class MetricsWrappedTool(BaseTool):
             return await self.backend_tool.ainvoke(kwargs)
 
     def _extract_wasm_timing(self, result: Any, ctx: Any):
-        """Extract WASM timing from MCP response _wasm_timing field"""
+        """Extract WASM timing from MCP response content items"""
         try:
-            # MCP response format: list of content items, possibly with _wasm_timing
             wasm_timing = None
 
-            if isinstance(result, dict):
-                wasm_timing = result.get("_wasm_timing")
-            elif isinstance(result, list) and len(result) > 0:
-                # Check if the list contains a dict with _wasm_timing at top level
-                # This handles the case where result is [{"type": "text", "text": "..."}, ...]
-                # and _wasm_timing might be in a wrapper dict
-                pass
+            # MCP response: list of content items [{"type": "text", "text": "..."}, ...]
+            if isinstance(result, list):
+                for item in result:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text = item.get("text", "")
+                        if isinstance(text, str) and "_wasm_timing" in text:
+                            try:
+                                parsed = json.loads(text)
+                                if isinstance(parsed, dict):
+                                    wasm_timing = parsed.get("_wasm_timing")
+                                    break
+                            except (json.JSONDecodeError, TypeError):
+                                pass
 
-            # If not found in direct result, check if result is string and parse
-            if wasm_timing is None and isinstance(result, str):
+            # Also check if result is a string containing timing
+            if wasm_timing is None and isinstance(result, str) and "_wasm_timing" in result:
                 try:
                     parsed = json.loads(result)
                     if isinstance(parsed, dict):
