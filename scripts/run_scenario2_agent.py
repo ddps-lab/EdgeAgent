@@ -48,7 +48,8 @@ def load_log_source() -> tuple[Path, str]:
             if candidate.exists():
                 return candidate, f"LogHub ({log_name})"
 
-        log_files = list(loghub_dir.glob("*.log"))
+        # Sort for deterministic fallback
+        log_files = sorted(loghub_dir.glob("*.log"))
         if log_files:
             return log_files[0], f"LogHub ({log_files[0].name})"
 
