@@ -3,7 +3,7 @@
 //! Shared between CLI and HTTP transports.
 
 use serde::Serialize;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 /// Provider info response
 #[derive(Debug, Serialize)]
@@ -184,6 +184,7 @@ pub fn summarize_text(
     max_length: i32,
     style: &str
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     // Match Python: empty text returns error
     if text.trim().is_empty() {
         return Err("Error: Empty text provided".to_string());
@@ -191,13 +192,32 @@ pub fn summarize_text(
 
     // Match Python: text too short to summarize
     if text.len() < 100 {
-        return Ok(text.to_string());
+        let timing = timer.finish("summarize_text");
+        return Ok(serde_json::json!({
+            "summary": text,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let api_key = api_key
         .ok_or_else(|| format!("API key not set for provider: {}", provider))?;
 
-    call_llm(provider, api_key, text, Some(max_length), style)
+    let summary = call_llm(provider, api_key, text, Some(max_length), style)?;
+    let timing = timer.finish("summarize_text");
+    Ok(serde_json::json!({
+        "summary": summary,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Summarize multiple documents
@@ -208,6 +228,7 @@ pub fn summarize_documents(
     max_length_per_doc: i32,
     style: &str
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let api_key = api_key
         .ok_or_else(|| format!("API key not set for provider: {}", provider))?;
 
@@ -223,23 +244,31 @@ pub fn summarize_documents(
         summaries.push(summary);
     }
 
-    // Return list of summaries (matching Python output format)
-    serde_json::to_string(&summaries)
-        .map_err(|e| format!("Failed to serialize result: {}", e))
+    let timing = timer.finish("summarize_documents");
+    Ok(serde_json::json!({
+        "summaries": summaries,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Get information about the summarization provider
 pub fn get_provider_info(provider: &str) -> Result<String, String> {
-    let result = ProviderInfo {
-        provider: provider.to_string(),
-        available_styles: vec![
-            "concise".to_string(),
-            "detailed".to_string(),
-            "bullet".to_string(),
-        ],
-        default_max_length: 150,
-    };
-
-    serde_json::to_string(&result)
-        .map_err(|e| format!("Failed to serialize result: {}", e))
+    let timer = ToolTimer::start();
+    let timing = timer.finish("get_provider_info");
+    Ok(serde_json::json!({
+        "provider": provider,
+        "available_styles": ["concise", "detailed", "bullet"],
+        "default_max_length": 150,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }

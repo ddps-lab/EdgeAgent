@@ -9,7 +9,8 @@ use std::fs::{self, File};
 use std::io::{Read as IoRead, Seek, SeekFrom, BufReader};
 use std::path::{Path, PathBuf};
 use flate2::read::ZlibDecoder;
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
+use serde_json::json;
 
 #[derive(Debug, Serialize)]
 pub struct CommitInfo {
@@ -559,6 +560,7 @@ fn collect_refs(
 
 /// Shows the working tree status
 pub fn git_status(repo_path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
     let head = read_head(&git_dir)?;
 
@@ -574,11 +576,21 @@ pub fn git_status(repo_path: &str) -> Result<String, String> {
     // Note: Full working tree status requires comparing index with working directory
     output.push_str("nothing to commit, working tree clean\n");
 
-    Ok(output)
+    let timing = timer.finish("git_status");
+    Ok(json!({
+        "output": output,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Shows the commit logs
 pub fn git_log(repo_path: &str, max_count: Option<usize>) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
     let max_count = max_count.unwrap_or(10);
 
@@ -607,11 +619,21 @@ pub fn git_log(repo_path: &str, max_count: Option<usize>) -> Result<String, Stri
         }
     }
 
-    Ok(output)
+    let timing = timer.finish("git_log");
+    Ok(json!({
+        "output": output,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Shows a commit or other object
 pub fn git_show(repo_path: &str, revision: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
 
     let sha = if revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -640,11 +662,21 @@ pub fn git_show(repo_path: &str, revision: &str) -> Result<String, String> {
         output.push_str(&format!("Parents: {}\n", commit.parents.join(", ")));
     }
 
-    Ok(output)
+    let timing = timer.finish("git_show");
+    Ok(json!({
+        "output": output,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Lists repository branches
 pub fn git_branch(repo_path: &str, branch_type: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
 
     let branches = list_branches(&git_dir, branch_type)?;
@@ -662,17 +694,46 @@ pub fn git_branch(repo_path: &str, branch_type: &str) -> Result<String, String> 
         output.push_str("No branches found\n");
     }
 
-    Ok(output)
+    let timing = timer.finish("git_branch");
+    Ok(json!({
+        "output": output,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Shows changes in working directory not yet staged
 pub fn git_diff_unstaged(_repo_path: &str, _context_lines: Option<u32>) -> Result<String, String> {
-    Ok("No unstaged changes".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_diff_unstaged");
+    Ok(json!({
+        "output": "No unstaged changes",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Shows changes that are staged for commit
 pub fn git_diff_staged(_repo_path: &str, _context_lines: Option<u32>) -> Result<String, String> {
-    Ok("No staged changes".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_diff_staged");
+    Ok(json!({
+        "output": "No staged changes",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Tree entry representation
@@ -936,6 +997,7 @@ fn resolve_revision(git_dir: &Path, revision: &str) -> Result<String, String> {
 
 /// Shows changes between commits
 pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
     let context = context_lines.unwrap_or(3) as usize;
 
@@ -959,6 +1021,7 @@ pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Re
 
     // 1. Add header like Cloud Python server
     let mut output = format!("Diff with {}:\n", target);
+    let timer_ref = &timer;
 
     let mut all_paths: std::collections::BTreeSet<&String> = std::collections::BTreeSet::new();
     all_paths.extend(head_files.keys());
@@ -1045,38 +1108,105 @@ pub fn git_diff(repo_path: &str, target: &str, context_lines: Option<u32>) -> Re
         }
     }
 
+    let timing = timer.finish("git_diff");
     if !has_changes {
-        Ok("No changes".to_string())
+        Ok(json!({
+            "output": "No changes",
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     } else {
-        Ok(output)
+        Ok(json!({
+            "output": output,
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string())
     }
 }
 
 /// Records changes to the repository (simulated in WASM)
 pub fn git_commit(repo_path: &str, _message: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let git_dir = git_dir(repo_path)?;
     let head = read_head(&git_dir)?;
     let current_sha = resolve_ref(&git_dir, &head).unwrap_or_default();
     let short_sha = if current_sha.len() >= 7 { &current_sha[..7] } else { &current_sha };
-    Ok(format!("Changes committed successfully with hash {}{}", short_sha, "0000000"))
+    let timing = timer.finish("git_commit");
+    Ok(json!({
+        "output": format!("Changes committed successfully with hash {}{}", short_sha, "0000000"),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Adds file contents to the staging area (simulated in WASM)
 pub fn git_add(_repo_path: &str, _files: &[String]) -> Result<String, String> {
-    Ok("Files staged successfully".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_add");
+    Ok(json!({
+        "output": "Files staged successfully",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Unstages all staged changes (simulated in WASM)
 pub fn git_reset(_repo_path: &str) -> Result<String, String> {
-    Ok("All staged changes reset".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_reset");
+    Ok(json!({
+        "output": "All staged changes reset",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Creates a new branch (disabled in WASM)
 pub fn git_create_branch(_repo_path: &str, _branch_name: &str, _base_branch: Option<&str>) -> Result<String, String> {
-    Err("git_create_branch is disabled in WASM for safety.".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_create_branch");
+    Ok(json!({
+        "error": "git_create_branch is disabled in WASM for safety.",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Switches branches (disabled in WASM)
 pub fn git_checkout(_repo_path: &str, _branch_name: &str) -> Result<String, String> {
-    Err("git_checkout is disabled in WASM for safety.".to_string())
+    let timer = ToolTimer::start();
+    let timing = timer.finish("git_checkout");
+    Ok(json!({
+        "error": "git_checkout is disabled in WASM for safety.",
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }

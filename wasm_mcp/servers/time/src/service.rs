@@ -75,7 +75,7 @@ impl TimeService {
         let timing = timer.finish("get_current_time");
         Ok(serde_json::json!({
             "output": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -96,7 +96,7 @@ impl TimeService {
         let timing = timer.finish("convert_time");
         Ok(serde_json::json!({
             "output": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

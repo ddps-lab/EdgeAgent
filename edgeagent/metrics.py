@@ -167,6 +167,9 @@ class MetricEntry:
     args_keys: list[str] = field(default_factory=list)
     custom_metadata: dict = field(default_factory=dict)
 
+    # === WASM Timing (Edge-deployed servers) ===
+    wasm_timing: dict = field(default_factory=dict)  # {wasm_total_ms, fn_total_ms, io_ms, compute_ms}
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -183,6 +186,7 @@ class MetricEntry:
                 "total_latency_ms": self.llm_latency_ms + self.latency_ms,  # LLM + Tool 실행 시간
                 "mcp_serialization_time_ms": self.mcp_serialization_time_ms,
                 "mcp_deserialization_time_ms": self.mcp_deserialization_time_ms,
+                "wasm_timing": self.wasm_timing,  # WASM 서버 내부 타이밍
             },
             "llm": {
                 "input_tokens": self.llm_input_tokens,
@@ -1028,6 +1032,9 @@ class CallContext:
         self.llm_input_tokens: int = 0
         self.llm_output_tokens: int = 0
 
+        # WASM timing (Edge 서버에서 반환)
+        self.wasm_timing: dict = {}
+
     async def __aenter__(self) -> "CallContext":
         """Start timing and resource tracking"""
         self.timestamp = time.time()
@@ -1121,6 +1128,7 @@ class CallContext:
             request_bytes=input_size,
             response_bytes=output_size,
             args_keys=list(self.args.keys()),
+            wasm_timing=self.wasm_timing,
         )
 
         self.collector.record_entry(entry)
@@ -1129,8 +1137,46 @@ class CallContext:
         return False
 
     def set_result(self, result: Any):
-        """Set the result for size calculation"""
+        """Set the result for size calculation and extract WASM timing"""
         self.result = result
+        # Extract timing from WASM server response
+        # Handle multiple result formats from langchain-mcp-adapters
+        try:
+            text_content = None
+
+            # Case 0: result is a list of content blocks (from langchain-mcp-adapters)
+            # Format: [{"type": "text", "text": "...JSON..."}]
+            # Note: ainvoke() returns content directly (not tuple) when tool_call_id is None
+            if isinstance(result, list) and len(result) > 0:
+                first_item = result[0]
+                if isinstance(first_item, dict) and first_item.get("type") == "text":
+                    text_content = first_item.get("text")
+            # Case 1: result is already a string
+            elif isinstance(result, str):
+                text_content = result
+            # Case 2: result is a dict with 'content' key (parsed MCP response)
+            elif isinstance(result, dict):
+                if "timing" in result:
+                    self.wasm_timing = result["timing"]
+                    return
+                elif "content" in result:
+                    text_content = result.get("content")
+            # Case 3: result has content attribute (MCP CallToolResult object)
+            elif hasattr(result, 'content') and result.content:
+                first_content = result.content[0] if result.content else None
+                if first_content:
+                    if hasattr(first_content, 'text'):
+                        text_content = first_content.text
+                    elif isinstance(first_content, dict):
+                        text_content = first_content.get('text')
+
+            # Parse text_content to extract timing
+            if text_content and isinstance(text_content, str):
+                parsed = json.loads(text_content)
+                if isinstance(parsed, dict) and "timing" in parsed:
+                    self.wasm_timing = parsed["timing"]
+        except (json.JSONDecodeError, TypeError, AttributeError, IndexError):
+            pass
 
     def set_actual_location(self, location: str, fallback: bool = False):
         """Update actual location if different from scheduled"""

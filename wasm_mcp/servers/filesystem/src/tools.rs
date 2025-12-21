@@ -4,7 +4,8 @@
 
 use std::fs;
 use std::path::Path;
-use wasmmcp::timing::measure_io;
+use serde_json::json;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 // ============================================================================
 // Helper Functions
@@ -181,6 +182,7 @@ fn search_files_recursive(dir: &Path, pattern: &str, exclude_patterns: &[String]
 
 /// 1. read_file (deprecated)
 pub fn read_file(path: &str, head: Option<usize>, tail: Option<usize>) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let content = measure_io(|| fs::read_to_string(path))
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -188,13 +190,24 @@ pub fn read_file(path: &str, head: Option<usize>, tail: Option<usize>) -> Result
         return Err("Cannot specify both head and tail parameters simultaneously".to_string());
     }
 
-    if let Some(n) = head {
-        Ok(head_lines(&content, n))
+    let result = if let Some(n) = head {
+        head_lines(&content, n)
     } else if let Some(n) = tail {
-        Ok(tail_lines(&content, n))
+        tail_lines(&content, n)
     } else {
-        Ok(content)
-    }
+        content
+    };
+
+    let timing = timer.finish("read_file");
+    Ok(json!({
+        "content": result,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 2. read_text_file
@@ -204,17 +217,28 @@ pub fn read_text_file(path: &str, head: Option<usize>, tail: Option<usize>) -> R
 
 /// 3. read_media_file
 pub fn read_media_file(path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let data = measure_io(|| fs::read(path))
         .map_err(|e| format!("Failed to read media file: {}", e))?;
 
     let base64_data = base64_encode(&data);
     let mime_type = get_mime_type(path);
 
-    Ok(format!("data:{};base64,{}", mime_type, base64_data))
+    let timing = timer.finish("read_media_file");
+    Ok(json!({
+        "content": format!("data:{};base64,{}", mime_type, base64_data),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 4. read_multiple_files
 pub fn read_multiple_files(paths: &[String]) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let results: Vec<String> = paths.iter().map(|path| {
         match measure_io(|| fs::read_to_string(path)) {
             Ok(content) => format!("{}:\n{}", path, content),
@@ -222,15 +246,34 @@ pub fn read_multiple_files(paths: &[String]) -> Result<String, String> {
         }
     }).collect();
 
-    Ok(results.join("\n---\n"))
+    let timing = timer.finish("read_multiple_files");
+    Ok(json!({
+        "content": results.join("\n---\n"),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 5. write_file
 pub fn write_file(path: &str, content: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     measure_io(|| fs::write(path, content))
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
-    Ok(format!("Successfully wrote to {}", path))
+    let timing = timer.finish("write_file");
+    Ok(json!({
+        "content": format!("Successfully wrote to {}", path),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// Edit operation struct
@@ -241,6 +284,7 @@ pub struct EditOp {
 
 /// 6. edit_file
 pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let original = measure_io(|| fs::read_to_string(path))
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -256,25 +300,47 @@ pub fn edit_file(path: &str, edits: &[EditOp], dry_run: bool) -> Result<String, 
         }
     }
 
-    if dry_run {
-        Ok(format!("Dry run - changes that would be made:\n{}", changes.join("\n")))
+    let result = if dry_run {
+        format!("Dry run - changes that would be made:\n{}", changes.join("\n"))
     } else {
         measure_io(|| fs::write(path, &content))
             .map_err(|e| format!("Failed to write file: {}", e))?;
-        Ok(format!("Applied {} edit(s) to {}", edits.len(), path))
-    }
+        format!("Applied {} edit(s) to {}", edits.len(), path)
+    };
+
+    let timing = timer.finish("edit_file");
+    Ok(json!({
+        "content": result,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 7. create_directory
 pub fn create_directory(path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     measure_io(|| fs::create_dir_all(path))
         .map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    Ok(format!("Successfully created directory {}", path))
+    let timing = timer.finish("create_directory");
+    Ok(json!({
+        "content": format!("Successfully created directory {}", path),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 8. list_directory
 pub fn list_directory(path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let entries = measure_io(|| fs::read_dir(path))
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
@@ -291,15 +357,27 @@ pub fn list_directory(path: &str) -> Result<String, String> {
 
     items.sort();
 
-    Ok(if items.is_empty() {
+    let result = if items.is_empty() {
         "Directory is empty".to_string()
     } else {
         items.join("\n")
-    })
+    };
+
+    let timing = timer.finish("list_directory");
+    Ok(json!({
+        "content": result,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 9. list_directory_with_sizes
 pub fn list_directory_with_sizes(path: &str, sort_by: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let entries = measure_io(|| fs::read_dir(path))
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
@@ -351,40 +429,77 @@ pub fn list_directory_with_sizes(path: &str, sort_by: &str) -> Result<String, St
     result.push(format!("Total: {} files, {} directories", file_count, dir_count));
     result.push(format!("Combined size: {}", format_size(total_size)));
 
-    Ok(result.join("\n"))
+    let timing = timer.finish("list_directory_with_sizes");
+    Ok(json!({
+        "content": result.join("\n"),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 10. directory_tree
 pub fn directory_tree(path: &str, exclude_patterns: &[String]) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let path = Path::new(path);
     let tree = build_directory_tree_json(path, exclude_patterns)?;
-    Ok(serde_json::to_string_pretty(&tree).unwrap_or_else(|_| "[]".to_string()))
+    let timing = timer.finish("directory_tree");
+    Ok(json!({
+        "tree": tree,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 11. move_file
 pub fn move_file(source: &str, destination: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     measure_io(|| fs::rename(source, destination))
         .map_err(|e| format!("Failed to move file: {}", e))?;
 
-    Ok(format!("Successfully moved {} to {}", source, destination))
+    let timing = timer.finish("move_file");
+    Ok(json!({
+        "message": format!("Successfully moved {} to {}", source, destination),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 12. search_files
 pub fn search_files(path: &str, pattern: &str, exclude_patterns: &[String]) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let path = Path::new(path);
     let mut results = Vec::new();
 
     search_files_recursive(path, pattern, exclude_patterns, &mut results)?;
 
-    if results.is_empty() {
-        Ok("No matches found".to_string())
-    } else {
-        Ok(results.join("\n"))
-    }
+    let timing = timer.finish("search_files");
+    Ok(json!({
+        "matches": results,
+        "count": results.len(),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string())
 }
 
 /// 13. get_file_info
 pub fn get_file_info(path: &str) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let path = Path::new(path);
     let metadata = measure_io(|| fs::metadata(path))
         .map_err(|e| format!("Failed to get file info: {}", e))?;
@@ -399,24 +514,44 @@ pub fn get_file_info(path: &str) -> Result<String, String> {
         "other"
     };
 
-    let mut info = Vec::new();
-    info.push(format!("size: {}", metadata.len()));
-    info.push(format!("type: {}", file_type));
-    info.push(format!("readonly: {}", metadata.permissions().readonly()));
+    let mut info = json!({
+        "size": metadata.len(),
+        "type": file_type,
+        "readonly": metadata.permissions().readonly()
+    });
 
     // Try to get timestamps (may not be available on all platforms)
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        info.push(format!("modified: {}", metadata.mtime()));
-        info.push(format!("accessed: {}", metadata.atime()));
-        info.push(format!("created: {}", metadata.ctime()));
+        info["modified"] = json!(metadata.mtime());
+        info["accessed"] = json!(metadata.atime());
+        info["created"] = json!(metadata.ctime());
     }
 
-    Ok(info.join("\n"))
+    let timing = timer.finish("get_file_info");
+    info["timing"] = json!({
+        "wasm_total_ms": get_wasm_total_ms(),
+        "fn_total_ms": timing.fn_total_ms,
+        "io_ms": timing.io_ms,
+        "compute_ms": timing.compute_ms
+    });
+
+    Ok(info.to_string())
 }
 
 /// 14. list_allowed_directories
 pub fn list_allowed_directories() -> String {
-    "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.".to_string()
+    let timer = ToolTimer::start();
+    let message = "Allowed directories are controlled by the WASI runtime.\nUse --dir flag when running with wasmtime to specify allowed directories.";
+    let timing = timer.finish("list_allowed_directories");
+    json!({
+        "message": message,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
+    }).to_string()
 }

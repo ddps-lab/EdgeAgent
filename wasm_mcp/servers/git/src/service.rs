@@ -363,7 +363,7 @@ impl GitService {
         let timing = timer.finish("git_status");
         Ok(serde_json::json!({
             "output": output,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -408,7 +408,7 @@ impl GitService {
         let timing = timer.finish("git_log");
         Ok(serde_json::json!({
             "output": output,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -453,7 +453,7 @@ impl GitService {
         let timing = timer.finish("git_show");
         Ok(serde_json::json!({
             "output": output,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -488,7 +488,7 @@ impl GitService {
         let timing = timer.finish("git_branch");
         Ok(serde_json::json!({
             "output": output,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -504,7 +504,7 @@ impl GitService {
         let timing = timer.finish("git_diff_unstaged");
         Ok(serde_json::json!({
             "output": "No unstaged changes",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -520,7 +520,7 @@ impl GitService {
         let timing = timer.finish("git_diff_staged");
         Ok(serde_json::json!({
             "output": "No staged changes",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -536,7 +536,7 @@ impl GitService {
         let timing = timer.finish("git_diff");
         Ok(serde_json::json!({
             "output": "No changes",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -560,7 +560,7 @@ impl GitService {
         let timing = timer.finish("git_commit");
         Ok(serde_json::json!({
             "output": output,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -578,7 +578,7 @@ impl GitService {
         let timing = timer.finish("git_add");
         Ok(serde_json::json!({
             "output": "Files staged successfully",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -596,7 +596,7 @@ impl GitService {
         let timing = timer.finish("git_reset");
         Ok(serde_json::json!({
             "output": "All staged changes reset",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -612,7 +612,7 @@ impl GitService {
         let timing = timer.finish("git_create_branch");
         Ok(serde_json::json!({
             "error": "git_create_branch is disabled in WASM for safety.",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -628,7 +628,7 @@ impl GitService {
         let timing = timer.finish("git_checkout");
         Ok(serde_json::json!({
             "error": "git_checkout is disabled in WASM for safety.",
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

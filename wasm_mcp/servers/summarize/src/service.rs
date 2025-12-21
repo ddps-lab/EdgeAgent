@@ -260,7 +260,7 @@ impl SummarizeService {
             let timing = timer.finish("summarize_text");
             return Ok(serde_json::json!({
                 "summary": params.text,
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -274,7 +274,7 @@ impl SummarizeService {
         let timing = timer.finish("summarize_text");
         Ok(serde_json::json!({
             "summary": summary,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -303,7 +303,7 @@ impl SummarizeService {
         let timing = timer.finish("summarize_documents");
         Ok(serde_json::json!({
             "summaries": summaries,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -321,7 +321,7 @@ impl SummarizeService {
             "provider": self.provider,
             "available_styles": ["concise", "detailed", "bullet"],
             "default_max_length": 150,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

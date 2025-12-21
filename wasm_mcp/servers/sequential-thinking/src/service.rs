@@ -119,7 +119,7 @@ impl SequentialThinkingService {
             "nextThoughtNeeded": params.next_thought_needed,
             "branches": branches,
             "thoughtHistoryLength": params.thought_number,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

@@ -256,7 +256,7 @@ impl LogParserService {
             "parsed_count": entries.len(),
             "error_count": errors,
             "entries": entries,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -297,7 +297,7 @@ impl LogParserService {
             "levels_included": level_counts.keys().collect::<Vec<_>>(),
             "by_level": level_counts,
             "entries": filtered,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -315,7 +315,7 @@ impl LogParserService {
             return Ok(json!({
                 "entry_count": 0,
                 "by_level": {},
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -373,7 +373,7 @@ impl LogParserService {
         }
 
         let timing = timer.finish("compute_log_statistics");
-        result["_timing"] = json!({
+        result["timing"] = json!({
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
             "io_ms": timing.io_ms,
@@ -420,7 +420,7 @@ impl LogParserService {
             "total_entries": params.entries.len(),
             "match_count": matches.len(),
             "matches": matches,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -446,7 +446,7 @@ impl LogParserService {
             return Ok(json!({
                 "has_timestamps": false,
                 "entry_count": params.entries.len(),
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -462,7 +462,7 @@ impl LogParserService {
             "first_timestamp": times.first(),
             "last_timestamp": times.last(),
             "sample_timestamps": times.iter().take(5).collect::<Vec<_>>(),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

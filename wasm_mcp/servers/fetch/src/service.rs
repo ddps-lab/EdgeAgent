@@ -240,7 +240,7 @@ impl FetchService {
         let timing = timer.finish("fetch");
         Ok(serde_json::json!({
             "content": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

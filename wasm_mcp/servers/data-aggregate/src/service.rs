@@ -225,7 +225,7 @@ impl DataAggregateService {
             return Ok(json!({
                 "total_count": 0,
                 "groups": {},
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -303,7 +303,7 @@ impl DataAggregateService {
         result["reduction_ratio"] = json!(if input_size > 0 { output_size as f64 / input_size as f64 } else { 0.0 });
 
         let timing = timer.finish("aggregate_list");
-        result["_timing"] = json!({
+        result["timing"] = json!({
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
             "io_ms": timing.io_ms,
@@ -326,7 +326,7 @@ impl DataAggregateService {
             let timing = timer.finish("merge_summaries");
             return Ok(json!({
                 "merged_count": 0,
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -399,7 +399,7 @@ impl DataAggregateService {
         }
 
         let timing = timer.finish("merge_summaries");
-        merged["_timing"] = json!({
+        merged["timing"] = json!({
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
             "io_ms": timing.io_ms,
@@ -423,7 +423,7 @@ impl DataAggregateService {
             return Ok(json!({
                 "result_count": 0,
                 "combined_summary": "",
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -484,7 +484,7 @@ impl DataAggregateService {
             "combined_text": combined_text,
             "input_size": input_size,
             "output_size": combined_text.len(),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -508,7 +508,7 @@ impl DataAggregateService {
                 "original_count": 0,
                 "unique_count": 0,
                 "items": [],
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -556,7 +556,7 @@ impl DataAggregateService {
             "duplicates_removed": duplicates_removed,
             "key_fields": key_fields,
             "items": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -579,7 +579,7 @@ impl DataAggregateService {
             return Ok(json!({
                 "data_points": 0,
                 "trend": "insufficient_data",
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -610,7 +610,7 @@ impl DataAggregateService {
             return Ok(json!({
                 "data_points": data.len(),
                 "trend": "insufficient_data",
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -651,7 +651,7 @@ impl DataAggregateService {
             "first_half_avg": first_avg,
             "second_half_avg": second_avg,
             "change_percent": change_percent,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

@@ -348,7 +348,7 @@ impl FilesystemService {
         let timing = timer.finish("read_file");
         Ok(serde_json::json!({
             "content": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -380,7 +380,7 @@ impl FilesystemService {
         let timing = timer.finish("read_text_file");
         Ok(serde_json::json!({
             "content": result,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -403,7 +403,7 @@ impl FilesystemService {
         let timing = timer.finish("read_media_file");
         Ok(serde_json::json!({
             "data": format!("data:{};base64,{}", mime_type, base64_data),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -427,7 +427,7 @@ impl FilesystemService {
         let timing = timer.finish("read_multiple_files");
         Ok(serde_json::json!({
             "content": results.join("\n---\n"),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -447,7 +447,7 @@ impl FilesystemService {
         let timing = timer.finish("write_file");
         Ok(serde_json::json!({
             "message": format!("Successfully wrote to {}", params.path),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -487,7 +487,7 @@ impl FilesystemService {
         let timing = timer.finish("edit_file");
         Ok(serde_json::json!({
             "message": message,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -507,7 +507,7 @@ impl FilesystemService {
         let timing = timer.finish("create_directory");
         Ok(serde_json::json!({
             "message": format!("Successfully created directory {}", params.path),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -546,7 +546,7 @@ impl FilesystemService {
         let timing = timer.finish("list_directory");
         Ok(serde_json::json!({
             "content": content,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -614,7 +614,7 @@ impl FilesystemService {
         let timing = timer.finish("list_directory_with_sizes");
         Ok(serde_json::json!({
             "content": result.join("\n"),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -634,7 +634,7 @@ impl FilesystemService {
         let timing = timer.finish("directory_tree");
         Ok(serde_json::json!({
             "tree": tree,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -654,7 +654,7 @@ impl FilesystemService {
         let timing = timer.finish("move_file");
         Ok(serde_json::json!({
             "message": format!("Successfully moved {} to {}", params.source, params.destination),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -683,7 +683,7 @@ impl FilesystemService {
         Ok(serde_json::json!({
             "content": content,
             "match_count": results.len(),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -728,7 +728,7 @@ impl FilesystemService {
         let timing = timer.finish("get_file_info");
         Ok(serde_json::json!({
             "content": info.join("\n"),
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -747,7 +747,7 @@ impl FilesystemService {
         let timing = timer.finish("list_allowed_directories");
         serde_json::json!({
             "message": message,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,

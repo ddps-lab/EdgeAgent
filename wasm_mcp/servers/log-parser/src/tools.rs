@@ -5,8 +5,7 @@
 use regex::Regex;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-#[allow(unused_imports)]
-use wasmmcp::timing::measure_io;
+use wasmmcp::timing::{measure_io, ToolTimer, get_wasm_total_ms};
 
 // ==========================================
 // Helper functions
@@ -121,6 +120,7 @@ pub fn parse_logs(
     format_type: &str,
     max_entries: usize,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let lines: Vec<&str> = log_content.lines().collect();
 
     let format = if format_type == "auto" {
@@ -144,12 +144,19 @@ pub fn parse_logs(
         }
     }
 
+    let timing = timer.finish("parse_logs");
     Ok(json!({
         "format_detected": format,
         "total_lines": lines.len(),
         "parsed_count": entries.len(),
         "error_count": errors,
-        "entries": entries
+        "entries": entries,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
@@ -159,6 +166,7 @@ pub fn filter_entries(
     min_level: &str,
     include_levels: Option<&[String]>,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let mut filtered = Vec::new();
     let mut level_counts: HashMap<String, i32> = HashMap::new();
 
@@ -180,19 +188,37 @@ pub fn filter_entries(
         }
     }
 
+    let timing = timer.finish("filter_entries");
     Ok(json!({
         "original_count": entries.len(),
         "filtered_count": filtered.len(),
         "levels_included": level_counts.keys().collect::<Vec<_>>(),
         "by_level": level_counts,
-        "entries": filtered
+        "entries": filtered,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
 /// Compute statistics from parsed log entries
 pub fn compute_log_statistics(entries: &[Value]) -> Result<String, String> {
+    let timer = ToolTimer::start();
     if entries.is_empty() {
-        return Ok(json!({"entry_count": 0, "by_level": {}}).to_string());
+        let timing = timer.finish("compute_log_statistics");
+        return Ok(json!({
+            "entry_count": 0,
+            "by_level": {},
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
+        }).to_string());
     }
 
     let mut level_counts: HashMap<String, i32> = HashMap::new();
@@ -225,9 +251,16 @@ pub fn compute_log_statistics(entries: &[Value]) -> Result<String, String> {
     top_paths.sort_by(|a, b| b.1.cmp(&a.1));
     let top_paths: HashMap<_, _> = top_paths.into_iter().take(10).collect();
 
+    let timing = timer.finish("compute_log_statistics");
     let mut result = json!({
         "entry_count": entries.len(),
         "by_level": level_counts,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     });
 
     if !status_counts.is_empty() {
@@ -250,6 +283,7 @@ pub fn search_entries(
     fields: Option<&[String]>,
     case_sensitive: bool,
 ) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let default_fields = vec!["message".to_string(), "raw".to_string()];
     let fields = fields.unwrap_or(&default_fields);
 
@@ -277,17 +311,25 @@ pub fn search_entries(
         if matches.len() >= 100 { break; }
     }
 
+    let timing = timer.finish("search_entries");
     Ok(json!({
         "search_pattern": pattern,
         "fields_searched": fields,
         "total_entries": entries.len(),
         "match_count": matches.len(),
-        "matches": matches
+        "matches": matches,
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }
 
 /// Extract time range information from log entries
 pub fn extract_time_range(entries: &[Value]) -> Result<String, String> {
+    let timer = ToolTimer::start();
     let mut times = Vec::new();
 
     for entry in entries {
@@ -296,10 +338,17 @@ pub fn extract_time_range(entries: &[Value]) -> Result<String, String> {
         }
     }
 
+    let timing = timer.finish("extract_time_range");
     if times.is_empty() {
         return Ok(json!({
             "has_timestamps": false,
-            "entry_count": entries.len()
+            "entry_count": entries.len(),
+            "timing": {
+                "wasm_total_ms": get_wasm_total_ms(),
+                "fn_total_ms": timing.fn_total_ms,
+                "io_ms": timing.io_ms,
+                "compute_ms": timing.compute_ms
+            }
         }).to_string());
     }
 
@@ -308,6 +357,12 @@ pub fn extract_time_range(entries: &[Value]) -> Result<String, String> {
         "entry_count": entries.len(),
         "first_timestamp": times.first(),
         "last_timestamp": times.last(),
-        "sample_timestamps": times.iter().take(5).collect::<Vec<_>>()
+        "sample_timestamps": times.iter().take(5).collect::<Vec<_>>(),
+        "timing": {
+            "wasm_total_ms": get_wasm_total_ms(),
+            "fn_total_ms": timing.fn_total_ms,
+            "io_ms": timing.io_ms,
+            "compute_ms": timing.compute_ms
+        }
     }).to_string())
 }

@@ -263,7 +263,7 @@ impl ImageResizeService {
             "height": height,
             "size_bytes": size_bytes,
             "aspect_ratio": if height > 0 { (width as f64 / height as f64 * 100.0).round() / 100.0 } else { 0.0 },
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -345,7 +345,7 @@ impl ImageResizeService {
             "reduction_ratio": if original_bytes > 0 { (output_bytes as f64 / original_bytes as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
             "format": output_format,
             "data_base64": data_base64,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -434,7 +434,7 @@ impl ImageResizeService {
         }
 
         let timing = timer.finish("scan_directory");
-        result["_timing"] = serde_json::json!({
+        result["timing"] = serde_json::json!({
             "wasm_total_ms": get_wasm_total_ms(),
             "fn_total_ms": timing.fn_total_ms,
             "io_ms": timing.io_ms,
@@ -460,7 +460,7 @@ impl ImageResizeService {
                     "hash": null,
                     "hash_type": null,
                     "error": format!("Cannot open image: {}", e),
-                    "_timing": {
+                    "timing": {
                         "wasm_total_ms": get_wasm_total_ms(),
                         "fn_total_ms": timing.fn_total_ms,
                         "io_ms": timing.io_ms,
@@ -481,7 +481,7 @@ impl ImageResizeService {
             "path": path,
             "hash": hash_value,
             "hash_type": hash_type,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -513,7 +513,7 @@ impl ImageResizeService {
                 "duplicate_groups": [],
                 "unique_count": valid_hashes.len(),
                 "errors": errors,
-                "_timing": {
+                "timing": {
                     "wasm_total_ms": get_wasm_total_ms(),
                     "fn_total_ms": timing.fn_total_ms,
                     "io_ms": timing.io_ms,
@@ -576,7 +576,7 @@ impl ImageResizeService {
             "unique_count": unique.len(),
             "threshold": threshold,
             "errors": errors,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
@@ -671,7 +671,7 @@ impl ImageResizeService {
             "total_output_bytes": total_output,
             "overall_reduction": if total_input > 0 { (total_output as f64 / total_input as f64 * 10000.0).round() / 10000.0 } else { 0.0 },
             "results": results,
-            "_timing": {
+            "timing": {
                 "wasm_total_ms": get_wasm_total_ms(),
                 "fn_total_ms": timing.fn_total_ms,
                 "io_ms": timing.io_ms,
