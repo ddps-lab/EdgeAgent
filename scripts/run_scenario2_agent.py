@@ -80,8 +80,10 @@ IMPORTANT - Data Flow:
 - filter_entries(entries=<parsed_result>["entries"], min_level="warning")
 - compute_log_statistics(entries=<parsed_result>["entries"])
 
+CRITICAL: Always use max_lines parameter to ensure consistent performance!
+
 Example workflow:
-1. log_content = read_text_file("{LOG_SOURCE}")
+1. log_content = read_text_file("{LOG_SOURCE}", max_lines=200)  # Read EXACTLY 200 lines
 2. parsed = parse_logs(log_content=log_content, format_type="auto")
 3. stats = compute_log_statistics(entries=parsed["entries"])
 4. filtered = filter_entries(entries=parsed["entries"], min_level="warning")
@@ -127,7 +129,7 @@ class AgentLogAnalysisScenario(ScenarioRunner):
         return (
             f"Analyze the server log file at {LOG_SOURCE}. "
             "Follow these steps: "
-            "1) Read the log file with read_text_file, "
+            "1) Read EXACTLY the first 200 lines with read_text_file(max_lines=200), "
             "2) Parse using parse_logs with format_type='auto' to get entries array, "
             "3) Compute statistics using compute_log_statistics with the entries array, "
             "4) Write a comprehensive analysis report to /edgeagent/results/scenario2_agent_log_report.md"
