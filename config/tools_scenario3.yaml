@@ -21,12 +21,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.83e-04
+          input_datasize_mb: 0.000183
           output_datasize_mb: 0.488478
           T_exec_ms:
-            cloud-x8aedz.xlarge: 413.4
+            cloud-x8aedz.xlarge: 0.8
             device-rpi: 7.0
-            edge-nuc: 58.4
+            edge-nuc: 0.7
       write_file:
         description: Write content to a file
         data_locality: local_data
@@ -35,11 +35,11 @@ tools:
         wasi_compatible: true
         measurements:
           input_datasize_mb: 0.488423
-          output_datasize_mb: 2.38e-04
+          output_datasize_mb: 0.000238
           T_exec_ms:
-            cloud-x8aedz.xlarge: 394.0
+            cloud-x8aedz.xlarge: 1.6
             device-rpi: 11.2
-            edge-nuc: 59.9
+            edge-nuc: 1.0
       read_multiple_files:
         description: Read multiple files at once
         data_locality: local_data
@@ -47,12 +47,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.94e-04
+          input_datasize_mb: 0.000194
           output_datasize_mb: 0.001252
           T_exec_ms:
-            cloud-x8aedz.xlarge: 388.5
+            cloud-x8aedz.xlarge: 0.6
             device-rpi: 4.2
-            edge-nuc: 54.9
+            edge-nuc: 0.2
       list_directory:
         description: List directory contents
         data_locality: local_data
@@ -60,12 +60,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.88e-04
+          input_datasize_mb: 0.000188
           output_datasize_mb: 0.002304
           T_exec_ms:
-            cloud-x8aedz.xlarge: 384.7
+            cloud-x8aedz.xlarge: 0.7
             device-rpi: 4.9
-            edge-nuc: 55.9
+            edge-nuc: 1.3
       list_directory_with_sizes:
         description: List directory with file sizes
         data_locality: local_data
@@ -73,12 +73,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.98e-04
+          input_datasize_mb: 0.000198
           output_datasize_mb: 0.005019
           T_exec_ms:
-            cloud-x8aedz.xlarge: 398.7
+            cloud-x8aedz.xlarge: 5.3
             device-rpi: 42.2
-            edge-nuc: 55.9
+            edge-nuc: 1.2
       directory_tree:
         description: Get directory tree structure
         data_locality: local_data
@@ -86,12 +86,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.68e-04
+          input_datasize_mb: 0.000168
           output_datasize_mb: 0.133703
           T_exec_ms:
-            cloud-x8aedz.xlarge: 412.179
+            cloud-x8aedz.xlarge: 12.8
             device-rpi: 360.1
-            edge-nuc: 80.1
+            edge-nuc: 23.4
       search_files:
         description: Search for files by pattern
         data_locality: local_data
@@ -99,12 +99,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.85e-04
+          input_datasize_mb: 0.000185
           output_datasize_mb: 0.123352
           T_exec_ms:
-            cloud-x8aedz.xlarge: 446.56
+            cloud-x8aedz.xlarge: 57.5
             device-rpi: 1091.9
-            edge-nuc: 55.2
+            edge-nuc: 0.4
       get_file_info:
         description: Get file metadata
         data_locality: local_data
@@ -112,12 +112,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.85e-04
-          output_datasize_mb: 2.45e-04
+          input_datasize_mb: 0.000185
+          output_datasize_mb: 0.000245
           T_exec_ms:
-            cloud-x8aedz.xlarge: 392.359
+            cloud-x8aedz.xlarge: 0.6
             device-rpi: 3.5
-            edge-nuc: 54.8
+            edge-nuc: 0.1
       create_directory:
         description: Create a new directory
         data_locality: local_data
@@ -125,12 +125,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.28e-04
-          output_datasize_mb: 2.40e-04
+          input_datasize_mb: 0.000128
+          output_datasize_mb: 0.00024
           T_exec_ms:
-            cloud-x8aedz.xlarge: 390.4
+            cloud-x8aedz.xlarge: 0.4
             device-rpi: 2.9
-            edge-nuc: 54.7
+            edge-nuc: 0.2
       move_file:
         description: Move or rename a file
         data_locality: local_data
@@ -138,12 +138,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.37e-04
-          output_datasize_mb: 1.41e-04
+          input_datasize_mb: 0.000137
+          output_datasize_mb: 0.000141
           T_exec_ms:
-            cloud-x8aedz.xlarge: 398.0
+            cloud-x8aedz.xlarge: 0.6
             device-rpi: 3.7
-            edge-nuc: 54.5
+            edge-nuc: 0.0
       edit_file:
         description: Edit file contents
         data_locality: local_data
@@ -151,12 +151,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 2.14e-04
-          output_datasize_mb: 1.51e-04
+          input_datasize_mb: 0.000214
+          output_datasize_mb: 0.000151
           T_exec_ms:
-            cloud-x8aedz.xlarge: 395.4
+            cloud-x8aedz.xlarge: 1.1
             device-rpi: 7.8
-            edge-nuc: 55.3
+            edge-nuc: 0.2
       read_text_file:
         description: Read text file contents
         data_locality: local_data
@@ -164,12 +164,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.88e-04
+          input_datasize_mb: 0.000188
           output_datasize_mb: 0.488478
           T_exec_ms:
-            cloud-x8aedz.xlarge: 401.9
+            cloud-x8aedz.xlarge: 0.8
             device-rpi: 6.0
-            edge-nuc: 57.5
+            edge-nuc: 0.6
       read_media_file:
         description: Read media file as base64
         data_locality: local_data
@@ -177,12 +177,12 @@ tools:
         privacy_sensitive: true
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.84e-04
-          output_datasize_mb: 4.90e-04
+          input_datasize_mb: 0.000184
+          output_datasize_mb: 0.00049
           T_exec_ms:
-            cloud-x8aedz.xlarge: 388.9
+            cloud-x8aedz.xlarge: 1.2
             device-rpi: 12.7
-            edge-nuc: 54.9
+            edge-nuc: 0.2
       list_allowed_directories:
         description: List allowed directories for access
         data_locality: args_only
@@ -190,12 +190,12 @@ tools:
         privacy_sensitive: false
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 1.11e-04
-          output_datasize_mb: 2.99e-04
+          input_datasize_mb: 0.000111
+          output_datasize_mb: 0.000299
           T_exec_ms:
-            cloud-x8aedz.xlarge: 389.387
+            cloud-x8aedz.xlarge: 0.0
             device-rpi: 0.4
-            edge-nuc: 55.1
+            edge-nuc: 0.0
   fetch:
     endpoints:
       DEVICE:
@@ -218,12 +218,12 @@ tools:
         privacy_sensitive: false
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 3.47e-04
-          output_datasize_mb: 5.00e-04
+          input_datasize_mb: 0.000347
+          output_datasize_mb: 0.0005
           T_exec_ms:
-            cloud-x8aedz.xlarge: 1286.881
+            cloud-x8aedz.xlarge: 808.3
             device-rpi: 1532.9
-            edge-nuc: 2052.929
+            edge-nuc: 1997.9
   summarize:
     endpoints:
       DEVICE:
@@ -248,12 +248,12 @@ tools:
         privacy_sensitive: false
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 8.59e-04
-          output_datasize_mb: 3.01e-04
+          input_datasize_mb: 0.000859
+          output_datasize_mb: 0.000301
           T_exec_ms:
-            cloud-x8aedz.xlarge: 1876.252
+            cloud-x8aedz.xlarge: 1256.3
             device-rpi: 2943.9
-            edge-nuc: 717.199
+            edge-nuc: 662.7
       summarize_documents:
         description: Summarize multiple documents.
         data_locality: external_data
@@ -261,12 +261,12 @@ tools:
         privacy_sensitive: false
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 4.18e-04
-          output_datasize_mb: 2.76e-04
+          input_datasize_mb: 0.000418
+          output_datasize_mb: 0.000276
           T_exec_ms:
-            cloud-x8aedz.xlarge: 2140.833
+            cloud-x8aedz.xlarge: 1713.2
             device-rpi: 4533.2
-            edge-nuc: 827.667
+            edge-nuc: 772.6
       get_provider_info:
         description: Get information about the current summarization provider
         data_locality: args_only
@@ -274,12 +274,12 @@ tools:
         privacy_sensitive: false
         wasi_compatible: true
         measurements:
-          input_datasize_mb: 3.28e-04
-          output_datasize_mb: 3.24e-04
+          input_datasize_mb: 0.000328
+          output_datasize_mb: 0.000324
           T_exec_ms:
-            cloud-x8aedz.xlarge: 878.271
+            cloud-x8aedz.xlarge: 0.0
             device-rpi: 0.0
-            edge-nuc: 54.657
+            edge-nuc: 0.0
   data_aggregate:
     endpoints:
       DEVICE:
@@ -303,11 +303,11 @@ tools:
         wasi_compatible: true
         measurements:
           input_datasize_mb: 0.228205
-          output_datasize_mb: 2.77e-04
+          output_datasize_mb: 0.000277
           T_exec_ms:
-            cloud-x8aedz.xlarge: 876.312
+            cloud-x8aedz.xlarge: 0.8
             device-rpi: 8.5
-            edge-nuc: 280.73
+            edge-nuc: 73.0
       merge_summaries:
         description: Merge multiple summary dictionaries
         data_locality: args_only
@@ -316,11 +316,11 @@ tools:
         wasi_compatible: true
         measurements:
           input_datasize_mb: 0.031133
-          output_datasize_mb: 2.82e-04
+          output_datasize_mb: 0.000282
           T_exec_ms:
-            cloud-x8aedz.xlarge: 879.801
+            cloud-x8aedz.xlarge: 0.1
             device-rpi: 0.9
-            edge-nuc: 243.526
+            edge-nuc: 46.7
       combine_research_results:
         description: Combine research/search results into summary
         data_locality: args_only
@@ -331,9 +331,9 @@ tools:
           input_datasize_mb: 0.387362
           output_datasize_mb: 0.039001
           T_exec_ms:
-            cloud-x8aedz.xlarge: 876.138
+            cloud-x8aedz.xlarge: 0.3
             device-rpi: 2.4
-            edge-nuc: 1172.45
+            edge-nuc: 636.2
       deduplicate:
         description: Remove duplicate items based on key fields
         data_locality: args_only
@@ -342,11 +342,11 @@ tools:
         wasi_compatible: true
         measurements:
           input_datasize_mb: 0.16428
-          output_datasize_mb: 2.81e-04
+          output_datasize_mb: 0.000281
           T_exec_ms:
-            cloud-x8aedz.xlarge: 878.966
+            cloud-x8aedz.xlarge: 0.9
             device-rpi: 7.4
-            edge-nuc: 414.731
+            edge-nuc: 185.8
       compute_trends:
         description: Compute trends from time-series data
         data_locality: args_only
@@ -355,11 +355,11 @@ tools:
         wasi_compatible: true
         measurements:
           input_datasize_mb: 0.441544
-          output_datasize_mb: 2.82e-04
+          output_datasize_mb: 0.000282
           T_exec_ms:
-            cloud-x8aedz.xlarge: 882.984
+            cloud-x8aedz.xlarge: 1.1
             device-rpi: 10.5
-            edge-nuc: 254.894
+            edge-nuc: 42.5
 static_mapping:
   filesystem: DEVICE
   fetch: CLOUD
